@@ -3,11 +3,15 @@ name = "astro-color"
 version = "0.1.0"
 description = "Library to perform spectral reconstruction, calculate synthetic photometry and colors."
 readme = "README.md"
+license = { file = "LICENSE" }
 authors = [
     { name = "Askaniy", email = "aaskaniy@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "numpy>=2.4.4",
+    "scipy>=1.17.1",
+]
 
 [build-system]
 requires = ["uv_build>=0.10.3,<0.11.0"]
