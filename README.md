@@ -21,9 +21,9 @@ uv add git+https://github.com/Askaniy/astro-color.git
 ```
 
 
-## Features
+## Key features
 
-- Synthetic photometry calculation
+- Calculate synthetic photometry
 ```py
 import astro_color as ac
 
@@ -31,13 +31,18 @@ spectrum = ac.Spectrum(
     wavelength_nm=[400, 500, 600, 700],
     spectral_dist=[1, 2, 2, 1]
 )
+v_band = ac.Filter('Generic_Bessell.V')
+flux_value, flux_error = ac.observe(spectrum, v_band)
+```
+
+- Create a filter system for optimizations
+```py
 johnson_system = ac.FilterSet(
     'Generic_Bessell.B',
     'Generic_Bessell.V',
     'Generic_Bessell.R'
 )
 photospectrum_BVR = ac.observe(spectrum, johnson_system)
-flux_value, flux_error = ac.observe(spectrum, ac.Filter('Generic_Bessell.V'))
 ```
 
 - Reconstruct photometry measurements into a smooth spectrum
@@ -51,14 +56,21 @@ sloan_system = ac.FilterSet('SLOAN_SDSS.g', 'SLOAN_SDSS.r')
 photospectrum_gr = ac.observe(photospectrum_BVR, sloan_system)
 ```
 
-- True color calculation
+- Calculate true colors
 ```py
 color_xyz = ac.ColorPoint.from_spectral_data(ac.sun_CALSPEC)
 color_system = ac.ColorSystem('sRGB', 'Illuminant E') # recommended
-color_html = color_xyz.to_color_system(color_system).to_html()
+color_rgb = color_xyz.to_color_system(color_system)
+color_rgb.maximize_brightness = True
+color_html = color_rgb.to_html()
 ```
 
-- Image processing via spectral cube reconstruction
+- Model spectra
+```py
+bb_3000K = ac.BlackBodyModel(3000).determine_at_wavelengths([400, 700])
+```
+
+- Process images via spectral cube reconstruction
 ```py
 # coming soon after debugging
 ```
@@ -67,6 +79,7 @@ color_html = color_xyz.to_color_system(color_system).to_html()
 ```py
 # coming soon after debugging
 ```
+
 
 
 ## History
