@@ -41,8 +41,7 @@ def observe(
 
 def observe(
         target: RealObject,
-        bandpass: Filter | FilterSet,
-        spectral_reconstruction_mode: str = ''
+        bandpass: Filter | FilterSet
     ):
     """
     Implementation of convolution between a (photo)spectral object and a filter or a filter set.
@@ -66,7 +65,7 @@ def observe(
                 #     br[i] = integrate((target.spectral_dist.T * profile).T, nm_step)
             error = None
             if target.covariance_matrix is not None:
-                error = np.einsum('ij..., jk..., lk... -> il...', bandpass.matrix, target.covariance_matrix, bandpass.matrix)
+                error = np.einsum('ij, jk..., lk -> il...', bandpass.matrix, target.covariance_matrix, bandpass.matrix)
             match target:
                 case Item():
                     return Photospectrum(bandpass, value, error, name=target.name)
