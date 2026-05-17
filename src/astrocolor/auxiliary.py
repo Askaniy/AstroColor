@@ -1,5 +1,3 @@
-""" File containing constant and functions required in various places, but without dependencies """
-
 import numpy as np
 import numpy.typing as npt
 from math import sqrt, ceil
@@ -49,14 +47,60 @@ def spectral_binning(
     # Cumulative distribution function
     br_cdf = np.zeros(br0.shape, dtype=np.float64)
     br_cdf[1:] = np.cumsum(0.5 * (br0[:-1] + br0[1:]) * nm0_diff, axis=0) # Riemann sum
-    br1 = np.diff(linear_interp(nm0, br_cdf, nm1_edges), axis=0) / step
+    br1 = np.diff(linear_interp(nm0, br_cdf, nm1_edges, extrap_mode='linear'), axis=0) / step
     std1 = None
     if std0 is not None:
         # Problem 2
         std_cdf = np.zeros(nm0.shape, dtype=np.float64)
         std_cdf[1:] = np.cumsum(0.5 * (std0[:-1] + std0[1:]) * nm0_diff, axis=0)
-        std1 = np.diff(linear_interp(nm0, br_cdf, nm1_edges), axis=0) / step
+        std1 = np.diff(linear_interp(nm0, br_cdf, nm1_edges, extrap_mode='linear'), axis=0) / step
     return br1, std1
+
+def linear_interp(x0: npt.NDArray, y0: npt.NDArray, x1: npt.NDArray, extrap_mode='constant'):
+    """
+    Equivalent to the `np.interp(x1, x0, y0)`, but also works for sets and cubes.
+    Allows two extrapolation modes: `constant` and `linear`.
+    `x0` must be sorted!
+    """
+    idx_all = np.searchsorted(x0, x1)
+    extrap_mask_left = idx_all == 0
+    extrap_mask_right = idx_all == len(x0)
+    extrap_mask = extrap_mask_left ^ extrap_mask_right
+    idx_interp = idx_all[~extrap_mask]
+    x_left = x0[idx_interp - 1]
+    y_left = y0[idx_interp - 1]
+    delta_x = x0[idx_interp] - x_left
+    delta_y = y0[idx_interp] - y_left
+    slope = delta_y.T / delta_x
+    interp_x = x1[~extrap_mask]
+    interp_y = y_left + (slope * (interp_x - x_left)).T
+    if np.any(extrap_mask):
+        # Extrapolation
+        y1 = np.empty(x1.size)
+        y1[~extrap_mask] = interp_y
+        match extrap_mode:
+            case 'constant':
+                if np.any(extrap_mask_left):
+                    y1[extrap_mask_left] = y0[0]
+                if np.any(extrap_mask_right):
+                    y1[extrap_mask_right] = y0[-1]
+            case 'linear':
+                if np.any(extrap_mask_left):
+                    delta_x = x0[0] - x0[1]
+                    delta_y = y0[0] - y0[1]
+                    slope = delta_y.T / delta_x
+                    extrap = y0[0] + slope * (x1[extrap_mask_left] - x0[0])
+                    y1[extrap_mask_left] = extrap
+                if np.any(extrap_mask_right):
+                    delta_x = x0[-1] - x0[-2]
+                    delta_y = y0[-1] - y0[-2]
+                    slope = delta_y.T / delta_x
+                    extrap = y0[-1] + slope * (x1[extrap_mask_right] - x0[-1])
+                    y1[extrap_mask_right] = extrap
+    else:
+        # Only interpolation
+        y1 = interp_y
+    return y1
 
 fwhm_factor = np.sqrt(8 * np.log(2))
 
@@ -213,18 +257,6 @@ def expand2x(array0: npt.NDArray):
     array1[0::2] = array0
     array1[1::2] = (array0[:-1] + array0[1:]) * 0.5
     return array1
-
-def linear_interp(x0: npt.NDArray, y0: npt.NDArray, x1: npt.NDArray):
-    """
-    Equivalent to the `np.interp(x1, x0, y0)`, but also works for sets and cubes.
-    Allows extrapolation by using the first or last point.
-    """
-    idx = np.clip(np.searchsorted(x0, x1), 0, len(x0) - 1)
-    x_left = x0[idx - 1]
-    y_left = y0[idx - 1]
-    delta_x = x0[idx] - x_left
-    delta_y = y0[idx] - y_left
-    return y_left + ((x1 - x_left) / delta_x * delta_y.T).T
 
 def custom_interp(array0: npt.NDArray, k=16):
     """
