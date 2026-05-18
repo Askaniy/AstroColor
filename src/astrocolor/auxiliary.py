@@ -71,9 +71,9 @@ def linear_interp(x0: npt.NDArray, y0: npt.NDArray, x1: npt.NDArray, extrap_mode
     y_left = y0[idx_interp - 1]
     delta_x = x0[idx_interp] - x_left
     delta_y = y0[idx_interp] - y_left
-    slope = delta_y.T / delta_x
+    slopes = delta_y.T / delta_x
     interp_x = x1[~extrap_mask]
-    interp_y = y_left + (slope * (interp_x - x_left)).T
+    interp_y = y_left + (slopes * (interp_x - x_left)).T
     if np.any(extrap_mask):
         # Extrapolation
         y1 = np.empty(x1.size)
@@ -86,16 +86,10 @@ def linear_interp(x0: npt.NDArray, y0: npt.NDArray, x1: npt.NDArray, extrap_mode
                     y1[extrap_mask_right] = y0[-1]
             case 'linear':
                 if np.any(extrap_mask_left):
-                    delta_x = x0[0] - x0[1]
-                    delta_y = y0[0] - y0[1]
-                    slope = delta_y.T / delta_x
-                    extrap = y0[0] + slope * (x1[extrap_mask_left] - x0[0])
+                    extrap = y0[0] + slopes[0] * (x1[extrap_mask_left] - x0[0])
                     y1[extrap_mask_left] = extrap
                 if np.any(extrap_mask_right):
-                    delta_x = x0[-1] - x0[-2]
-                    delta_y = y0[-1] - y0[-2]
-                    slope = delta_y.T / delta_x
-                    extrap = y0[-1] + slope * (x1[extrap_mask_right] - x0[-1])
+                    extrap = y0[-1] + slopes[-1] * (x1[extrap_mask_right] - x0[-1])
                     y1[extrap_mask_right] = extrap
     else:
         # Only interpolation
