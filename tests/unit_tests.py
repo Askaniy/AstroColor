@@ -1,9 +1,319 @@
 import unittest
 import numpy as np
-from astrocolor.auxiliary import linear_interp, spectral_binning
+from astrocolor.auxiliary import (
+    linear_interp,
+    spectral_binning,
+    parse_value_std
+)
+from astrocolor import (
+    Spectrum,
+    SpectralSet,
+    SpectralCube,
+    Photospectrum,
+    PhotospectralSet,
+    PhotospectralCube,
+    ReconstructedSpectrum,
+    ReconstructedSpectralSet,
+    ReconstructedSpectralCube,
+    spectral_reconstruction,
+    Filter,
+    FilterSet,
+    observe,
+    scale_spectrum,
+    ColorSystem,
+    ColorPoint,
+    ColorLine,
+    ColorImage,
+    visible_range,
+    sun_CALSPEC,
+    vega_CALSPEC,
+    BlackBodyModel
+)
 
 np.random.seed(42)
 
+
+
+# === Filter & FilterSet Statistics Tests ===
+
+class TestFilterStatistics(unittest.TestCase):
+    """ Tests for mean_nm() and std_of_nm() on filters, spectra, and their sets. """
+
+    def setUp(self):
+        self.v = Filter('Generic_Bessell.V')
+        self.ubv = FilterSet('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
+
+    # - mean_nm() tests
+
+    def test_mean_nm_spectra(self):
+        np.testing.assert_allclose(sun_CALSPEC.mean_nm(), 857.052056, rtol=0.01)
+        np.testing.assert_allclose(vega_CALSPEC.mean_nm(), 510.428463, rtol=0.01)
+
+    def test_mean_nm_filter(self):
+        # 551.210 in SVO Filter Profile Service — our value is ~551.204
+        np.testing.assert_allclose(self.v.mean_nm(), 551.204273, rtol=0.01)
+
+    def test_mean_nm_filter_set(self):
+        np.testing.assert_allclose(
+            self.ubv.mean_nm(), [360.507105, 441.301389, 551.204273], rtol=0.01
+        )
+
+    # - std_of_nm() tests
+
+    def test_std_of_nm_spectra(self):
+        np.testing.assert_allclose(sun_CALSPEC.std_of_nm(), 468.978657, rtol=0.01)
+        np.testing.assert_allclose(vega_CALSPEC.std_of_nm(), 353.430263, rtol=0.01)
+
+    def test_std_of_nm_filter(self):
+        np.testing.assert_allclose(self.v.std_of_nm(), 36.354015, rtol=0.01)
+
+    def test_std_of_nm_filter_set(self):
+        np.testing.assert_allclose(
+            self.ubv.std_of_nm(), [21.932217, 35.816641, 36.354015], rtol=0.01
+        )
+
+
+# === Convolution Tests ===
+
+class TestObservation(unittest.TestCase):
+    """ Tests for observe() and spectral convolution. """
+
+    def setUp(self):
+        self.v = Filter('Generic_Bessell.V')
+        self.ubv = FilterSet('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
+
+    # - stub / return-type tests
+
+    def test_stub_and_convolution_possibility(self):
+        self.assertIsInstance(observe(Spectrum.stub(), Filter.stub()), tuple)
+        self.assertIsInstance(observe(Spectrum.stub(), FilterSet.stub()), Photospectrum)
+        self.assertIsInstance(observe(SpectralSet.stub(), Filter.stub()), tuple)
+        self.assertIsInstance(observe(SpectralSet.stub(), FilterSet.stub()), PhotospectralSet)
+        self.assertIsInstance(observe(SpectralCube.stub(), Filter.stub()), tuple)
+        self.assertIsInstance(observe(SpectralCube.stub(), FilterSet.stub()), PhotospectralCube)
+        self.assertIsInstance(observe(Photospectrum.stub(), Filter.stub()), tuple)
+        self.assertIsInstance(observe(Photospectrum.stub(), FilterSet.stub()), Photospectrum)
+        self.assertIsInstance(observe(PhotospectralSet.stub(), Filter.stub()), tuple)
+        self.assertIsInstance(observe(PhotospectralSet.stub(), FilterSet.stub()), PhotospectralSet)
+        self.assertIsInstance(observe(PhotospectralCube.stub(), Filter.stub()), tuple)
+        self.assertIsInstance(observe(PhotospectralCube.stub(), FilterSet.stub()), PhotospectralCube)
+
+    # - convolution correctness
+
+    def test_convolution(self):
+        np.testing.assert_allclose(
+            observe(vega_CALSPEC, self.v)[0], (vega_CALSPEC * self.v).integrate(), rtol=0.01
+        )
+        np.testing.assert_allclose(
+            observe(vega_CALSPEC, self.ubv).spectral_dist,
+            (vega_CALSPEC * self.ubv).integrate(),
+            rtol=0.01,
+        )
+
+    # - zero-point calibration against Spanish Virtual Observatory
+
+    def test_vega_system_zero_points(self):
+        # TODO: check the agreement percent
+        np.testing.assert_allclose(observe(vega_CALSPEC, self.v)[0], 3.62708e-11, rtol=0.0025)
+        np.testing.assert_allclose(
+            observe(vega_CALSPEC, self.ubv).spectral_dist,
+            [4.089744e-11, 6.365467e-11, 3.623954e-11],
+            rtol=0.035,
+        )
+
+
+# === Arithmetic Operations Tests ===
+
+class TestArithmetic(unittest.TestCase):
+    """ Tests for +, *, / operations between spectra and filters. """
+
+    def setUp(self):
+        self.v = Filter('Generic_Bessell.V')
+        self.ubv = FilterSet('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
+
+    # - addition
+
+    def test_addition_spectrum(self):
+        np.testing.assert_allclose(
+            (vega_CALSPEC + vega_CALSPEC).spectral_dist,
+            (vega_CALSPEC * 2).spectral_dist,
+            rtol=0.01,
+        )
+
+    # - multiplication
+
+    def test_multiplication_filter_spectrum_mean(self):
+        np.testing.assert_allclose(
+            (self.v * vega_CALSPEC).mean_nm(), 544.601418, rtol=0.01
+        )  # 544.543 in SVO Filter Profile Service
+        np.testing.assert_allclose(
+            (self.ubv * vega_CALSPEC).mean_nm(),
+            [366.764603, 435.741381, 544.601418],
+            rtol=0.01,
+        )
+
+    def test_multiplication_observation(self):
+        np.testing.assert_allclose(
+            observe(vega_CALSPEC * 2, self.v)[0],
+            observe(vega_CALSPEC, self.v)[0] * 2,
+            rtol=0.01,
+        )
+        np.testing.assert_allclose(
+            observe(vega_CALSPEC * 2, self.ubv).spectral_dist,
+            observe(vega_CALSPEC, self.ubv * 2).spectral_dist,
+            rtol=0.01,
+        )
+
+    # - division
+
+    def test_division_filter_spectrum_mean(self):
+        np.testing.assert_allclose(
+            (self.v / vega_CALSPEC).mean_nm(), 558.681024, rtol=0.01
+        )
+        np.testing.assert_allclose(
+            (self.ubv / vega_CALSPEC).mean_nm(),
+            [356.283866, 447.589411, 558.681024],
+            rtol=0.01,
+        )
+
+    def test_division_spectrum_wavelength(self):
+        np.testing.assert_allclose(
+            (sun_CALSPEC / sun_CALSPEC.wavelength_nm).mean_nm(), 670.9781529, rtol=0.01
+        )
+        np.testing.assert_allclose(
+            (self.ubv / self.ubv.wavelength_nm).mean_nm(),
+            [359.158258, 438.480057, 548.890305],
+            rtol=0.01,
+        )
+
+    # - normalization
+
+    def test_normalization(self):
+        np.testing.assert_allclose(
+            observe(vega_CALSPEC, (self.v * 2).normalize())[0],
+            observe(vega_CALSPEC, self.v)[0],
+            rtol=0.01,
+        )
+        np.testing.assert_allclose(
+            observe(vega_CALSPEC, (self.ubv * 2).normalize()).spectral_dist,
+            observe(vega_CALSPEC, self.ubv).spectral_dist,
+            rtol=0.01,
+        )
+
+
+# === Spectrum Creation & Properties Tests ===
+
+class TestSpectrumCreation(unittest.TestCase):
+
+    def test_spectrum_from_nm_float(self):
+        spectrum = Spectrum.monochromatic(555.5)
+        np.testing.assert_allclose(spectrum.integrate(), 1.0, rtol=1e-10)
+        np.testing.assert_allclose(spectrum.mean_nm(), 555.5, rtol=1e-10)
+
+    def test_spectrum_from_nm_integer(self):
+        spectrum = Spectrum.monochromatic(555)
+        np.testing.assert_allclose(spectrum.integrate(), 1.0, rtol=1e-10)
+        np.testing.assert_allclose(spectrum.mean_nm(), 555, rtol=1e-10)
+
+    def test_filter_edges(self):
+        v = Filter('Generic_Bessell.V')
+        self.assertEqual(v.spectral_dist[0], 0.)
+        self.assertEqual(v.spectral_dist[-1], 0.)
+
+    def test_filter_edges_extrapolated(self):
+        v = Filter('Generic_Bessell.V')
+        extrapolated_v = v.determine_at_wavelengths(visible_range)
+        self.assertEqual(extrapolated_v.spectral_dist[0], 0.)
+        self.assertEqual(extrapolated_v.spectral_dist[-1], 0.)
+
+    def test_filter_system_getitem(self):
+        ubv = FilterSet('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
+        v = Filter('Generic_Bessell.V')
+        np.testing.assert_equal(ubv[2].mean_nm(), v.mean_nm())
+
+
+# === Extrapolation Tests ===
+
+class TestExtrapolation(unittest.TestCase):
+
+    def test_extrapolation_flat_spectrum(self):
+        """ A flat spectrum should remain flat after extrapolation. """
+        nm = np.arange(500, 701, 5)
+        spectrum = Spectrum(nm, np.ones_like(nm))
+        np.testing.assert_equal(
+            spectrum.determine_at_wavelengths(visible_range, strictly=True).spectral_dist,
+            np.ones(visible_range.size),
+        )
+
+    def test_extrapolation_flat_photospectrum(self):
+        """ A photospectrum with uniform magnitudes should remain flat after extrapolation. """
+        ubv = FilterSet('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
+        photospectrum = Photospectrum(ubv, (1, 1, 1), name='test photospectrum')
+        np.testing.assert_allclose(
+            photospectrum.determine_at_wavelengths(visible_range, strictly=True).spectral_dist,
+            np.ones(visible_range.size),
+        )
+
+
+# === Color System Tests ===
+
+class TestColorSystem(unittest.TestCase):
+
+    def test_color_system_reversibility(self):
+        """ Converting a color point between systems should be reversible to machine precision. """
+        srgb = ColorSystem('sRGB')
+        xyz = ColorSystem('CIE 1931 XYZ')
+        color0 = ColorPoint.from_spectral_data(sun_CALSPEC)  # in XYZ
+        color1 = color0.to_color_system(srgb)
+        color2 = color1.to_color_system(xyz)
+        np.testing.assert_allclose(color0.to_array(), color2.to_array(), rtol=1e-13)
+
+    def test_adaptation_white_point(self):
+        """ CIE 1931 RGB should have Illuminant E white point """
+        rgb = ColorSystem('CIE 1931 RGB')
+        rgb_ = ColorSystem('CIE 1931 RGB', adaptation_white_point='Illuminant E')
+        color0 = ColorPoint.from_spectral_data(sun_CALSPEC)  # in XYZ
+        color1 = color0.to_color_system(rgb)
+        color2 = color1.to_color_system(rgb_)
+        np.testing.assert_allclose(color1.to_array(), color2.to_array(), rtol=1e-13)
+
+
+# === Auxiliary Utilities Tests ===
+
+class TestParsing(unittest.TestCase):
+
+    def test_sd_parsing_scalar(self):
+        np.testing.assert_equal(parse_value_std(0.202), (0.202, None))
+
+    def test_sd_parsing_two_values(self):
+        np.testing.assert_equal(
+            parse_value_std([0.202, 0.0665]), (0.202, 0.0665)
+        )
+
+    def test_sd_parsing_three_positive(self):
+        np.testing.assert_equal(
+            parse_value_std([0.202, 0.084, 0.049]), (0.202, 0.0665)
+        )
+
+    def test_sd_parsing_mixed_sign(self):
+        np.testing.assert_equal(
+            parse_value_std([0.202, +0.084, -0.049]), (0.202, 0.0665)
+        )
+
+class TestSpectralBinning(unittest.TestCase):
+    """ Tests for the spectral binning function """
+
+    def test_spectral_binning(self):
+        nm0_len = 100
+        nm0 = np.sort(
+            np.linspace(402, 650, nm0_len) + np.random.normal(0, 5, nm0_len)
+        )
+        br0 = nm0 / 100
+        step = 5  # nm
+        nm1 = np.arange(400, 700, step)
+        nm0_diff = np.diff(nm0)
+        br1, std1 = spectral_binning(nm0, br0, None, nm1, step, nm0_diff)
+        np.testing.assert_allclose(br1, nm1 / 100, rtol=0.1)
 
 class TestLinearInterp(unittest.TestCase):
     """ Tests for the linear interpolation function. """
@@ -51,7 +361,7 @@ class TestLinearInterp(unittest.TestCase):
         np.testing.assert_allclose(y_multi_const[3], y0_2d[-1])  # right ext
         np.testing.assert_allclose(y_multi_const[0, 0], 0.5)     # interior
 
-    # Multidimensional y0 — 3D array with linear extrapolation
+    # Multidimensional y0: 3D array with linear extrapolation
     def test_multidim_3d_linear(self):
         x0 = np.array([0.0, 1.0, 2.0, 3.0])
         y0_3d = np.ones((4, 2, 3)) * np.arange(4)[:, None, None]
@@ -142,22 +452,6 @@ class TestLinearInterp(unittest.TestCase):
         ]
         np.testing.assert_allclose(y_nearest, expected_nearest, rtol=1e-5)
         np.testing.assert_allclose(y_linear, expected_linear, rtol=1e-5)
-
-
-class TestSpectralBinning(unittest.TestCase):
-    """ Tests for the spectral binning function """
-
-    def test_spectral_binning(self):
-        nm0_len = 100
-        nm0 = np.sort(
-            np.linspace(402, 650, nm0_len) + np.random.normal(0, 5, nm0_len)
-        )
-        br0 = nm0 / 100
-        step = 5  # nm
-        nm1 = np.arange(400, 700, step)
-        nm0_diff = np.diff(nm0)
-        br1, std1 = spectral_binning(nm0, br0, None, nm1, step, nm0_diff)
-        np.testing.assert_allclose(br1, nm1 / 100, rtol=0.1)
 
 
 if __name__ == '__main__':
