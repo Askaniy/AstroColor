@@ -26,8 +26,6 @@ class BaseObject:
     # its discretization step is fixed and frozen.
     nm_step: Final[int] = 5  # nm
 
-    # Maximum wavelength, the clipping level
-    nm_red_limit: Final[int] = 65535  # nm
     # it is possible to set the red limit to 327 675 nm
     # with compression by 5 nm step, but it was not implemented
 
@@ -36,8 +34,13 @@ class BaseObject:
     ignore_uncertainty_forCubes: bool = True
 
     # Wavelength and brightness axis storage data type
-    _wavelength_nm_dtype: Final = np.uint16
+    _wavelength_nm_dtype: Final = np.int32
     _spectral_dist_dtype: Final = np.float64
+
+    # Maximum wavelength, the clipping level
+    # It is important that there be no overflow when raising a number to the second power
+    # See convert_from_energy_spectral_density_per_frequency()
+    nm_red_limit: Final[int] = int(np.sqrt(np.iinfo(_wavelength_nm_dtype).max)) # 46340 nm
 
     @property
     def spectral_size(self) -> int:
@@ -126,7 +129,7 @@ class BaseObject:
         self,
         start: int | float,
         end: int | float
-    ) -> npt.NDArray[np.uint16]:
+    ) -> npt.NDArray[_wavelength_nm_dtype]:
         """
         Wavelength grid generation pipeline.
         Returns a uniform grid array with the points being multiples of the grid step (endpoints included).
@@ -136,7 +139,7 @@ class BaseObject:
             end: End wavelength value.
 
         Returns:
-            Array of wavelengths as uint16 values on a uniform grid.
+            Array of wavelengths as int values on a uniform grid.
         """
         start, end = self._grid_endpoints_preprocessing(start, end)
         return np.arange(start, end, self.nm_step, dtype=self._wavelength_nm_dtype)
@@ -249,11 +252,6 @@ class BaseObject:
         Returns:
             A new SpectralObject with the scalar operation applied.
         """
-        output = deepcopy(self)
-        output.spectral_dist = value_handling(self.spectral_dist, operand)
-        output.covariance_matrix = error_handling(self.spectral_dist, self.covariance_matrix, operand, None)
-        return output
-        """ Returns a new object of the same class transformed according to the operator """
         output = deepcopy(self)
         output.spectral_dist = value_handling(self.spectral_dist, operand)
         output.covariance_matrix = error_handling(self.spectral_dist, self.covariance_matrix, operand, None)

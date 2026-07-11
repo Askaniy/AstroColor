@@ -229,7 +229,7 @@ class SpectralObject(BaseObject):
         Returns a new SpectralObject converted from energy spectral density per frequency
         to energy spectral density per wavelength, using the fact that f_λ = f_ν c / λ².
         """
-        scale_factors = 1 / self.wavelength_nm / self.wavelength_nm # squaring nm will overflow uint16
+        scale_factors = 1 / self.wavelength_nm**2
         return (self / scale_factors).normalize()
 
     def mean_spectrum(self) -> Self:

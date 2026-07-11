@@ -96,8 +96,7 @@ class PhotospectralObject(BaseObject):
         """
         if len(self.filter_set) > 1:
             profiles = self.filter_set.normalize()
-            # (squaring the nm array will overflow uint16)
-            scale_factors = (profiles / profiles.wavelength_nm / profiles.wavelength_nm).integrate()
+            scale_factors = (profiles / profiles.wavelength_nm**2).integrate()
             scale_factors = cast(npt.NDArray, scale_factors)
             return self * (scale_factors / scale_factors.mean())
         else:

@@ -110,7 +110,7 @@ class FilterSet(SpectralSet):
         self.filters: tuple = filter_ids
 
     @property
-    def wavelength_nm(self) -> npt.NDArray[np.uint16]:
+    def wavelength_nm(self) -> npt.NDArray[SpectralSet._wavelength_nm_dtype]:
         if self.spectral_dist_cache is None:
             nm_min = np.inf
             nm_max = 0

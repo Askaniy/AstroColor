@@ -422,8 +422,7 @@ def extrapolating(
                     diff = np.average(np.diff(y_arr, axis=0), weights=avg_weights[:-1], axis=0)
                     corner_y = np.average(y_arr, weights=avg_weights, axis=0) - diff * avg_steps * weights_center_of_mass
                 y1 = custom_extrap(x1, diff/step, x[0], corner_y)
-                std1 = std_left + stretch(extrap_std(corner_y, np.arange(int(x[0]-x_arr[0]), 0, -step) - step), spatial_shape)
-                #                                                        ^^^ solves bug with uint16
+                std1 = std_left + stretch(extrap_std(corner_y, np.arange(x[0]-x_arr[0], 0, -step) - step), spatial_shape)
             x = np.append(x1, x)
             y = np.append(y1, y, axis=0)
             std = np.append(std1, std, axis=0)
