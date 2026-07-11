@@ -8,7 +8,11 @@ from .errors import UnsupportedDimensionError
 
 # ------------ Core Section ------------
 
-def integrate(array: npt.NDArray, step: int | float, precisely: bool = False): # -> float | npt.NDArray
+def integrate(
+    array: npt.NDArray,
+    step: int | float,
+    precisely: bool = False
+) -> float | npt.NDArray[np.floating]:
     """
     Integration along the spectral axis.
     Uses the rectangle method by default and Riemann sum with midpoint in the "precise" mode.
@@ -23,19 +27,19 @@ def integrate(array: npt.NDArray, step: int | float, precisely: bool = False): #
     else:
         return step * np.sum(array, axis=0) # rectangle method
 
-def is_smooth(array: npt.ArrayLike) -> bool:
+def is_smooth(array: npt.NDArray) -> bool:
     """ Boolean function, checks the second derivative for sign reversal, a simple criterion for smoothness """
     diff2 = np.diff(np.diff(array, axis=0), axis=0)
     return bool(np.all(diff2 <= 0) | np.all(diff2 >= 0))
 
 def spectral_binning(
-        nm0: npt.NDArray,
-        br0: npt.NDArray,
-        std0: npt.NDArray | None,
-        nm1: npt.NDArray,
-        step: int | float,
-        nm0_diff: npt.NDArray
-    ) -> tuple[npt.NDArray, npt.NDArray | None]:
+    nm0: npt.NDArray,
+    br0: npt.NDArray,
+    std0: npt.NDArray | None,
+    nm1: npt.NDArray,
+    step: int | float,
+    nm0_diff: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray[np.floating] | None]:
     """
     Cumulative-integral binning method for a uniform grid. Fast (O(N) complexity), vectorized.
     Requires at least one measurement per bin; otherwise use `spectral_downscaling()`.
@@ -53,15 +57,15 @@ def spectral_binning(
         # Problem 2
         std_cdf = np.zeros(nm0.shape, dtype=np.float64)
         std_cdf[1:] = np.cumsum(0.5 * (std0[:-1] + std0[1:]) * nm0_diff, axis=0)
-        std1 = np.diff(linear_interp(nm0, br_cdf, nm1_edges, extrap_mode='linear'), axis=0) / step
+        std1 = np.diff(linear_interp(nm0, std_cdf, nm1_edges, extrap_mode='linear'), axis=0) / step
     return br1, std1
 
 def linear_interp(
     x0: npt.NDArray,
     y0: npt.NDArray,
     x1: npt.NDArray,
-    extrap_mode: Literal['linear', 'nearest'] = 'linear',
-):
+    extrap_mode: Literal['linear', 'nearest'] = 'linear'
+) -> npt.NDArray[np.floating]:
     """
     Multivariate linear interpolation with optional extrapolation.
     Equivalent to the `np.interp(x1, x0, y0)`, but also works for sets and cubes.
@@ -114,10 +118,18 @@ def linear_interp(
 
 fwhm_factor = np.sqrt(8 * np.log(2))
 
-def gaussian_width(current_resolution, target_resolution):
+def gaussian_width(
+    current_resolution: npt.NDArray[np.floating],
+    target_resolution: int | float
+) -> npt.NDArray[np.floating]:
     return np.sqrt(np.abs(target_resolution**2 - current_resolution**2)) / fwhm_factor
 
-def gaussian_convolution(nm0: npt.NDArray, br0: npt.NDArray, nm1: npt.NDArray, step: int | float):
+def gaussian_convolution(
+    nm0: npt.NDArray,
+    br0: npt.NDArray,
+    nm1: npt.NDArray,
+    step: int | float
+) -> npt.NDArray[np.floating]:
     """
     Applies Gaussian convolution to a non-uniform sparse mesh. Eliminates holes and noise from spectral axis.
 
@@ -135,12 +147,12 @@ def gaussian_convolution(nm0: npt.NDArray, br0: npt.NDArray, nm1: npt.NDArray, s
     return br1
 
 def spectral_downscaling(
-        nm0: npt.NDArray,
-        br0: npt.NDArray,
-        std0: npt.NDArray | None,
-        nm1: npt.NDArray,
-        step: int | float
-    ) -> tuple[npt.NDArray, npt.NDArray]:
+    nm0: npt.NDArray,
+    br0: npt.NDArray,
+    std0: npt.NDArray | None,
+    nm1: npt.NDArray,
+    step: int | float
+) -> tuple[npt.NDArray, npt.NDArray[np.floating] | None]:
     """
     Returns spectrum brightness values with decreased resolution.
     Incoming graphs or point clouds may have gaps and areas of varying resolution.
@@ -206,10 +218,10 @@ def spectral_downscaling(
     return br1, std1
 
 def spatial_downscaling(
-        spectral_dist: npt.NDArray,
-        covariance_matrix: npt.NDArray | None,
-        pixels_limit: int
-    ) -> tuple[npt.NDArray, npt.NDArray | None]:
+    spectral_dist: npt.NDArray,
+    covariance_matrix: npt.NDArray | None,
+    pixels_limit: int
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """ Brings the spatial resolution of the cube to approximately match the number of pixels """
     # TODO: averaging like in https://stackoverflow.com/questions/10685654/reduce-resolution-of-array-through-summation
     _, x, y = spectral_dist.shape
@@ -219,7 +231,10 @@ def spatial_downscaling(
     else:
         return spectral_dist[:,::factor,::factor], covariance_matrix[:,:,::factor,::factor]
 
-def smoothness_matrix(n: int, order: int = 1):
+def smoothness_matrix(
+    n: int,
+    order: int = 1
+) -> np.ndarray:
     """
     Generates a smoothness operator matrix of the specified size n.
     Supported options:
@@ -252,7 +267,9 @@ def smoothness_matrix(n: int, order: int = 1):
                 raise ValueError(f'Order {order} of smoothness matrix is not supported.')
     return L
 
-def expand2x(array0: npt.NDArray):
+def expand2x(
+    array0: npt.NDArray
+) -> npt.NDArray[np.floating]:
     """ Expands the array along the first axis by half """
     new_length = 2 * array0.shape[0] - 1
     match array0.ndim:
@@ -268,7 +285,10 @@ def expand2x(array0: npt.NDArray):
     array1[1::2] = (array0[:-1] + array0[1:]) * 0.5
     return array1
 
-def custom_interp(array0: npt.NDArray, k=16):
+def custom_interp(
+    array0: npt.NDArray,
+    k: int = 16
+) -> npt.NDArray[np.floating]:
     """
     Returns curve or cube values with twice the resolution. Can be used in a loop.
     Optimal in terms of speed to quality ratio: around 2 times faster than splines in scipy.
@@ -292,7 +312,12 @@ def custom_interp(array0: npt.NDArray, k=16):
     array1[1::2] += (delta_left - delta_right) / k
     return array1
 
-def interpolate(x0: npt.NDArray, y0: npt.NDArray, x1: npt.NDArray, step: int | float) -> npt.NDArray:
+def interpolate(
+    x0: npt.NDArray,
+    y0: npt.NDArray,
+    x1: npt.NDArray,
+    step: int | float
+) -> npt.NDArray[np.floating]:
     """
     Returns interpolated `y0` values on a uniform grid `x0`. Uses enhanced linear interpolation.
     Combination of `custom_interp` (which returns an uneven mesh) and linear interpolation after it.
@@ -304,7 +329,11 @@ def interpolate(x0: npt.NDArray, y0: npt.NDArray, x1: npt.NDArray, step: int | f
     return linear_interp(x0, y0, x1)
 
 
-def stretch(arr: npt.NDArray, times: int | tuple, copy=False):
+def stretch(
+    arr: npt.NDArray,
+    times: int | tuple[int, ...],
+    copy: bool = False
+) -> npt.NDArray[np.floating]:
     """
     Adds dimensions to the array at the end and repeats it there.
     Uses broadcast by default for memory-efficiency. Uses np.tile() for copying.
@@ -318,7 +347,12 @@ def stretch(arr: npt.NDArray, times: int | tuple, copy=False):
         return np.broadcast_to(arr[..., *new_axes], (*arr.shape, *times))
 
 
-def custom_extrap(grid: npt.NDArray, derivative: float | npt.NDArray, corner_x: int | float, corner_y: npt.NDArray) -> npt.NDArray:
+def custom_extrap(
+    grid: npt.NDArray,
+    derivative: float | npt.NDArray,
+    corner_x: int | float,
+    corner_y: npt.NDArray
+) -> npt.NDArray[np.floating]:
     """
     Returns an intuitive continuation of the function on the grid using information about the last point.
     Extrapolation bases on function f(x) = exp( (1-x²)/2 ): f' has extrema of ±1 in (-1, 1) and (1, 1).
@@ -331,7 +365,10 @@ def custom_extrap(grid: npt.NDArray, derivative: float | npt.NDArray, corner_x: 
         sign = np.sign(derivative)
         return np.exp((1 - (np.abs(derivative) * (grid - corner_x) / corner_y - sign)**2) / 2) * corner_y
 
-def extrap_std(corner_y: float | npt.NDArray, x_arr: npt.NDArray):
+def extrap_std(
+    corner_y: float | npt.NDArray,
+    x_arr: npt.NDArray
+) -> npt.NDArray[np.floating]:
     """ The exponential growth of uncertainty is completely arbitrary and needs to be investigated """
     return corner_y * 0.05 * (1.01**x_arr - 1)
 
@@ -339,13 +376,13 @@ def extrap_std(corner_y: float | npt.NDArray, x_arr: npt.NDArray):
 weights_center_of_mass = 1 - 1 / np.sqrt(2)
 
 def extrapolating(
-        x: npt.NDArray,
-        y: npt.NDArray,
-        std: npt.NDArray | None,
-        x_arr: npt.NDArray,
-        step: int,
-        avg_steps=20
-    ):
+    x: npt.NDArray,
+    y: npt.NDArray,
+    std: npt.NDArray | None,
+    x_arr: npt.NDArray,
+    step: int,
+    avg_steps: int = 20
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray[np.floating] | None]:
     """
     Defines a (multi-dimensional) curve an intuitive continuation on the x_arr, if needed.
     `avg_steps` is a number of corner curve points to be averaged if the curve is not smooth.
@@ -418,7 +455,9 @@ def extrapolating(
 
 # ------------ Database Processing Section ------------
 
-def parse_value_std(data: float | Sequence[float]) -> tuple[float, float | None]:
+def parse_value_std(
+    data: float | Sequence[float]
+) -> tuple[float, float | None]:
     """
     Guarantees the output of the value and its standard deviation.
 
@@ -443,7 +482,9 @@ def parse_value_std(data: float | Sequence[float]) -> tuple[float, float | None]
                 return value, std
     raise ValueError(f'Invalid data input: {data}. Must be a numeric value or a [value, std] list.')
 
-def parse_value_std_list(arr: Iterable) -> tuple[npt.NDArray, npt.NDArray | None]:
+def parse_value_std_list(
+    arr: Iterable[float | Sequence[float]]
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """ Splits the values and standard deviations into two arrays """
     try:
         arr = np.array(arr, dtype=np.float64) # ValueError here means inhomogeneous shape
@@ -471,7 +512,10 @@ def parse_value_std_list(arr: Iterable) -> tuple[npt.NDArray, npt.NDArray | None
             stds.append(std)
         return np.array(values, dtype=np.float64), np.array(stds, dtype=np.float64)
 
-def repeat_if_value(data: int | float | npt.ArrayLike, arr_len: int) -> npt.NDArray[np.float64]:
+def repeat_if_value(
+    data: int | float | npt.ArrayLike,
+    arr_len: int
+) -> npt.NDArray[np.floating]:
     """ If the input consists of a single number, stretches to 1D array """
     arr = np.array(data, dtype=np.float64)
     if arr.ndim == 0:
@@ -480,11 +524,17 @@ def repeat_if_value(data: int | float | npt.ArrayLike, arr_len: int) -> npt.NDAr
     else:
         return arr
 
-def mag2irradiance(mag: int | float | npt.NDArray, zero_point: float = 1.):
+def mag2irradiance(
+    mag: int | float | npt.NDArray,
+    zero_point: float = 1.0
+) -> int | float | npt.NDArray:
     """ Converts magnitudes to irradiance (by default in Vega units) """
     return zero_point * 10**(-0.4 * mag)
 
-def std_mag2std_irradiance(std_mag: int | float | npt.NDArray, irradiance: int | float | npt.NDArray):
+def std_mag2std_irradiance(
+    std_mag: int | float | npt.NDArray,
+    irradiance: int | float | npt.NDArray
+) -> int | float | npt.NDArray:
     """
     Converts standard deviation of the magnitude to a irradiance standard deviation.
 
@@ -496,7 +546,9 @@ def std_mag2std_irradiance(std_mag: int | float | npt.NDArray, irradiance: int |
     """
     return 0.4 * np.log(10) * irradiance * std_mag
 
-def color_index_splitter(index: str) -> tuple[str, str]:
+def color_index_splitter(
+    index: str
+) -> tuple[str, str]:
     """
     Dashes in filter names are allowed in the SVO Filter Profile Service.
     This function should fix all or most of the problems caused.
@@ -510,7 +562,9 @@ def color_index_splitter(index: str) -> tuple[str, str]:
         filter2 = f'{dashpart2}.{dotpart3}'
     return filter1, filter2
 
-def color_indices_parser(indices: dict):
+def color_indices_parser(
+    indices: dict[str, float | Sequence[float]]
+) -> tuple[tuple[str, ...], npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """
     Converts color indices to linear brightness, assuming mag=0 in the first filter.
     Each new color index must refer to a previously specified one.
@@ -567,8 +621,9 @@ def color_indices_parser(indices: dict):
             filters |= {redder_filter: filters[bluer_filter] - mag}
         else:
             filters |= {bluer_filter: filters[redder_filter] + mag}
-    irradiance = mag2irradiance(np.array(tuple(filters.values())))
-    filter_names = filters.keys() # name setting before using the variable for std processing
+    magnitudes = np.array(tuple(filters.values()))
+    irradiance = cast(npt.NDArray[np.floating], mag2irradiance(magnitudes))
+    filter_names = tuple(filters.keys()) # name setting before using the variable for std processing
     std = None
     # Uncertainty calculation
     if uncertainty_flag:
@@ -594,7 +649,7 @@ def color_indices_parser(indices: dict):
                     impossible_assumption = True
                     break
             if not impossible_assumption:
-                new_std = std_mag2std_irradiance(np.array(tuple(filters.values())), irradiance)
+                new_std = cast(npt.NDArray[np.floating], std_mag2std_irradiance(np.array(tuple(filters.values())), irradiance))
                 # Finding the minimum deviation between std as solution quality criterion
                 # The standard deviations are scaled by the Poisson noise factor
                 new_std_of_std = np.std(new_std * shot_noise_factor)
@@ -612,22 +667,32 @@ def color_indices_parser(indices: dict):
 
 c_kms = 299792.458 # Speed of light in km/s
 
-def cosmological_redshift(wave, z):
+def cosmological_redshift(
+    wave: int | float | npt.NDArray,
+    z: float
+) -> int | float | npt.NDArray:
     """ Applyes the redshift correction to the wavelength array (1+z = λ_obs/λ_emit) """
     return wave / (1 + z)
 
-def calc_redshift_sqrt(vel):
+def calc_redshift_sqrt(
+    vel: int | float
+) -> float:
     """ Calculates the redshift from the velocity in km/s """
     v = vel / c_kms
     return np.sqrt((1+v)/(1-v)) - 1
 
-def calc_redshift_exp(vel):
+def calc_redshift_exp(
+    vel: int | float
+) -> float:
     """ Calculates the redshift from the velocity in km/s """
     v = vel / c_kms
     return np.exp(v) - 1
 
 
-def repr_generator(arr_1D: npt.NDArray, is_int: bool = False):
+def repr_generator(
+    arr_1D: npt.NDArray,
+    is_int: bool = False
+) -> str:
     format = '' if is_int else '.3f'
     match len(arr_1D):
         case 0:

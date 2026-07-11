@@ -11,8 +11,11 @@ from .errors import InconsistentAxesError, InconsistentUncertaintySizeError
 
 
 class BaseObject:
-    """ Internal class for inheriting spectral data properties """
-    wavelength_nm: npt.NDArray = NotImplemented # the own spectral axis or the wavelength range of the filter set
+    """
+    Internal class for inheriting spectral data properties.
+    Provides common attributes and methods for all (photo)spectral objects.
+    """
+    wavelength_nm: npt.NDArray = NotImplemented  # the own spectral axis or the wavelength range of the filter set
     spectral_dist: npt.NDArray = NotImplemented
     covariance_matrix: npt.NDArray | None = None
     name: Any = None
@@ -21,39 +24,44 @@ class BaseObject:
 
     # For the sake of simplifying work with the spectrum,
     # its discretization step is fixed and frozen.
-    nm_step: Final[int] = 5 # nm
+    nm_step: Final[int] = 5  # nm
 
     # Maximum wavelength, the clipping level
-    nm_red_limit: Final[int] = 65535 # nm
-    # it is possible to set the red limit to 327 675 nm
+    nm_red_limit: Final[int] = 65535  # nm
+    # it is possible to set the red limit to 327 675 nm
     # with compression by 5 nm step, but it was not implemented
 
     # When processing images through spectral cubes, performance is prioritized,
     # and uncertainty is not saved (yet). Therefore it is disabled by default.
-    ignore_uncertainty_forCubes = True
+    ignore_uncertainty_forCubes: bool = True
 
     # Wavelength and brightness axis storage data type
     _wavelength_nm_dtype: Final = np.uint16
     _spectral_dist_dtype: Final = np.float64
 
     @property
-    def spectral_size(self):
-        """ Returns the spectral axis length """
+    def spectral_size(self) -> int:
+        """ Returns the spectral axis length. """
         return self.spectral_dist.shape[0]
 
     @property
-    def spatial_size(self):
-        """ Returns the total number of (photo)spectra stored in the object """
+    def spatial_size(self) -> int:
+        """ Returns the total number of (photo)spectra stored in the object. """
         return prod(self.spatial_shape)
 
     @property
-    def spatial_shape(self):
-        """ Returns the spatial axes shape: length of the set or (width, height) """
+    def spatial_shape(self) -> tuple[int, ...]:
+        """ Returns the spatial axes shape: length of the set or (width, height). """
         return self.spectral_dist.shape[1:]
 
     @property
-    def standard_deviation(self):
-        """ Calculates an array of standard deviations from the covariance matrix """
+    def standard_deviation(self) -> npt.NDArray[np.floating] | None:
+        """
+        Calculates an array of standard deviations from the covariance matrix.
+
+        Returns:
+            Array of standard deviations, or None if no covariance matrix exists.
+        """
         if self.covariance_matrix is None:
             return None
         else:
@@ -62,13 +70,25 @@ class BaseObject:
 
     @classmethod
     def stub(cls, name: Any = None) -> Self:
-        """ Initializes an object in case of the data problems """
+        """
+        Initializes a stub object in case of data problems.
+        Implemented in the inherited classes.
+        """
         raise NotImplementedError('Implemented in the inherited classes.')
 
-    def _get_extremal_grid_endpoints(self, requested_wavelengths: npt.ArrayLike):
+    def _get_extremal_grid_endpoints(
+        self,
+        requested_wavelengths: npt.ArrayLike
+    ) -> tuple[int | float, int | float]:
         """
         Wavelength grid generation pipeline.
         Getting the minimum and maximum values of an untrusted array.
+
+        Args:
+            requested_wavelengths: Array-like object containing wavelength values.
+
+        Returns:
+            Tuple of (nm_min, nm_max) clamped to [0, nm_red_limit].
         """
         if isinstance(requested_wavelengths, np.ndarray):
             nm_min = requested_wavelengths.min()
@@ -80,10 +100,21 @@ class BaseObject:
         nm_max = min(nm_max, self.nm_red_limit)
         return nm_min, nm_max
 
-    def _grid_endpoints_preprocessing(self, start: int | float, end: int | float) -> tuple[int, int]:
+    def _grid_endpoints_preprocessing(
+        self,
+        start: int | float,
+        end: int | float
+    ) -> tuple[int, int]:
         """
         Wavelength grid generation pipeline.
         Maps the endpoints to a standard grid (wavelengths are multiples of the grid step).
+
+        Args:
+            start: Start wavelength value.
+            end: End wavelength value.
+
+        Returns:
+            Tuple of (start, end) as integers after preprocessing.
         """
         if (shift := start % self.nm_step) != 0:
             start += self.nm_step - shift
@@ -91,15 +122,30 @@ class BaseObject:
             end += self.nm_step # to include the last point
         return int(start), int(end)
 
-    def _grid(self, start: int | float, end: int | float):
+    def _grid(
+        self,
+        start: int | float,
+        end: int | float
+    ) -> npt.NDArray[np.uint16]:
         """
         Wavelength grid generation pipeline.
-        Returns a uniform grid array with the points being multiples of the grid step (endpoints included)
+        Returns a uniform grid array with the points being multiples of the grid step (endpoints included).
+
+        Args:
+            start: Start wavelength value.
+            end: End wavelength value.
+
+        Returns:
+            Array of wavelengths as uint16 values on a uniform grid.
         """
         start, end = self._grid_endpoints_preprocessing(start, end)
         return np.arange(start, end, self.nm_step, dtype=self._wavelength_nm_dtype)
 
-    def determine_at_wavelengths(self, requested_wavelengths: npt.ArrayLike, strictly: bool = False):
+    def determine_at_wavelengths(
+        self,
+        requested_wavelengths: npt.ArrayLike,
+        strictly: bool = False
+    ) -> Self:
         """
         Returns a new SpectralObject, guaranteeing that the specified wavelength range
         has been determined or reconstructed for it.
@@ -108,7 +154,15 @@ class BaseObject:
         Only the minimum and maximum wavelengths are extracted from the specified range,
         based on which a uniform grid is constructed.
 
-        Example: `spectrum = photospectrum.determine_at_wavelengths([400, 700])`
+        Args:
+            requested_wavelengths: Wavelength values to determine at.
+            strictly: If True, clip the result to the exact requested range.
+
+        Returns:
+            A new SpectralObject with data determined at the specified wavelengths.
+
+        Example:
+            `spectrum = photospectrum.determine_at_wavelengths([400, 700])`
         """
         nm_min, nm_max = self._get_extremal_grid_endpoints(requested_wavelengths)
         requested_wavelengths = self._grid(nm_min, nm_max)
@@ -125,134 +179,254 @@ class BaseObject:
             raise InconsistentUncertaintySizeError(len_error, len_values, spectral_obj.name)
         return spectral_obj
 
-    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray):
+    def _determine_at_trusted_wavelengths(
+        self,
+        requested_wavelengths: npt.NDArray
+    ) -> Self:
         """
         Directly uses the provided wavelength grid to create a new object.
         See `determine_at_wavelengths()` for the general case.
+        Implemented in the inherited classes.
+
+        Args:
+            requested_wavelengths: The trusted wavelength array to use.
+
+        Returns:
+            A new SpectralObject with data determined at the trusted wavelengths.
         """
         raise NotImplementedError('Implemented in the inherited classes.')
 
-    def convert_from_photon_spectral_density(self):
+    def convert_from_photon_spectral_density(self) -> Self:
         """
         Returns a new BaseObject converted from photon spectral density
         to energy spectral density, using the fact that E = h c / λ.
+        Implemented in the inherited classes.
         """
         raise NotImplementedError('Implemented in the inherited classes.')
 
-    def convert_from_energy_spectral_density_per_frequency(self):
+    def convert_from_energy_spectral_density_per_frequency(self) -> Self:
         """
         Returns a new BaseObject converted from frequency spectral density
         to energy spectral density, using the fact that f_λ = f_ν c / λ².
+        Implemented in the inherited classes.
         """
         raise NotImplementedError('Implemented in the inherited classes.')
 
-    def _apply_element_wise_operation(self, operand: 'BaseObject', value_handling: Callable, error_handling: Callable) -> Self:
-        """ Returns a new object formed from element-wise operation """
+    def _apply_element_wise_operation(
+        self,
+        operand: 'BaseObject',
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.ArrayLike],
+        error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, npt.NDArray | None], npt.NDArray | None]
+    ) -> Self:
+        """
+        Returns a new object formed from element-wise operation.
+        Implemented in the inherited classes.
+
+        Args:
+            operand: Another BaseObject for element-wise operations.
+            value_handling: Function to handle the value transformation.
+            error_handling: Function to handle the uncertainty propagation.
+
+        Returns:
+            A new SpectralObject with the element-wise operation applied.
+        """
         raise NotImplementedError('Implemented in the inherited classes.')
 
-    def _apply_scalar_operation(self, operand: npt.ArrayLike, value_handling: Callable, error_handling: Callable) -> Self:
+    def _apply_scalar_operation(
+        self,
+        operand: npt.ArrayLike,
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.ArrayLike],
+        error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, None], npt.NDArray | None]
+    ) -> Self:
+        """
+        Returns a new object of the same class transformed according to the operator.
+
+        Args:
+            operand: A scalar or array-like value for the operation.
+            value_handling: Function to handle the value transformation.
+            error_handling: Function to handle the uncertainty propagation.
+
+        Returns:
+            A new SpectralObject with the scalar operation applied.
+        """
+        output = deepcopy(self)
+        output.spectral_dist = value_handling(self.spectral_dist, operand)
+        output.covariance_matrix = error_handling(self.spectral_dist, self.covariance_matrix, operand, None)
+        return output
         """ Returns a new object of the same class transformed according to the operator """
         output = deepcopy(self)
         output.spectral_dist = value_handling(self.spectral_dist, operand)
         output.covariance_matrix = error_handling(self.spectral_dist, self.covariance_matrix, operand, None)
         return output
 
-    def __add__(self, other) -> Self:
+    def __add__(self, other: object) -> Self:
+        """
+        Implements the addition operator.
+
+        Returns:
+            A new SpectralObject with element-wise or scalar addition applied.
+        """
         if isinstance(other, BaseObject):
             return self._apply_element_wise_operation(other, add_value, add_error)
         else:
             return self._apply_scalar_operation(other, add_value, add_error)
 
-    def __sub__(self, other) -> Self:
+    def __sub__(self, other: object) -> Self:
+        """
+        Implements the subtraction operator.
+
+        Returns:
+            A new SpectralObject with element-wise or scalar subtraction applied.
+        """
         if isinstance(other, BaseObject):
             return self._apply_element_wise_operation(other, sub_value, sub_error)
         else:
             return self._apply_scalar_operation(other, sub_value, sub_error)
 
-    def __mul__(self, other) -> Self:
+    def __mul__(self, other: object) -> Self:
+        """
+        Implements the multiplication operator.
+
+        Returns:
+            A new SpectralObject with element-wise or scalar multiplication applied.
+        """
         if isinstance(other, BaseObject):
             return self._apply_element_wise_operation(other, mul_value, mul_error)
         else:
             return self._apply_scalar_operation(other, mul_value, mul_error)
 
-    def __truediv__(self, other) -> Self:
+    def __truediv__(self, other: object) -> Self:
+        """
+        Implements the division operator.
+
+        Returns:
+            A new SpectralObject with element-wise or scalar division applied.
+        """
         if isinstance(other, BaseObject):
             return self._apply_element_wise_operation(other, div_value, div_error)
         else:
             return self._apply_scalar_operation(other, div_value, div_error)
 
     def __hash__(self) -> int:
-        """ Returns the hash value based on the object's name """
+        """
+        Returns the hash value based on the object's name.
+
+        Raises:
+            TypeError: If the object has no name (name is None).
+        """
+        if self.name is None:
+            raise TypeError("unhashable type: 'NoneType'")
         return hash(self.name)
 
-    def __eq__(self, other) -> bool:
-        """ Checks equality with another BaseObject instance """
+    def __eq__(self, other: object) -> bool:
+        """
+        Checks equality with another BaseObject instance.
+
+        Returns:
+            True if both wavelength and spectral distribution arrays are equal.
+        """
         if isinstance(other, BaseObject):
             return np.array_equal(self.wavelength_nm, other.wavelength_nm) and np.array_equal(self.spectral_dist, other.spectral_dist)
         return False
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """
+        Returns a string representation of the object.
+
+        Returns:
+            A formatted string showing class name, wavelength array, and spectral distribution.
+        """
         output = f'{self.__class__.__name__}('
         output += f'\n\twavelength_nm = [{repr_generator(self.wavelength_nm, is_int=True)}],'
         if self.ndim == 1:
             output += f'\n\tspectral_dist = [{repr_generator(self.spectral_dist)}], '
         elif self.ndim == 2:
             if self.spatial_shape[0] == 1:
-                f'\tspectral_dist = [[{self.spectral_dist[0]:.3f}, {self.spectral_dist[1]:.3f}, ..., {self.spectral_dist[-1]:.3f}]],'
+                output += f'\n\tspectral_dist = [[{self.spectral_dist[0]:.3f}, {self.spectral_dist[1]:.3f}, ..., {self.spectral_dist[-1]:.3f}]],'
         return output + '\n)'
 
 
 
 class Item(BaseObject):
-    """ Internal class for inheriting spatial data properties (1D) """
+    """
+    Internal class for inheriting spatial data properties (1D).
+    Represents a single spectrum.
+    """
 
     ndim: ClassVar[int] = 1
 
 
 class Set(BaseObject):
-    """ Internal class for inheriting spatial data properties (2D) """
+    """
+    Internal class for inheriting spatial data properties (2D).
+    Represents a set of spectra.
+    """
 
     ndim: ClassVar[int] = 2
 
     def __len__(self) -> int:
-        """ Returns the spatial axis length (alias for .spatial_size) """
+        """ Returns the spatial axis length (alias for .spatial_size). """
         return self.spatial_size
 
-    def __getitem__(self, item: slice):
-        """ Returns the spatial axis slice """
+    def __getitem__(self, item: slice) -> Self:
+        """
+        Returns the spatial axis slice.
+
+        Args:
+            item: A slice object for indexing along the spatial axis.
+        """
         if isinstance(item, slice):
             output = deepcopy(self)
             output.spectral_dist = output.spectral_dist[:,item]
             if output.covariance_matrix is not None:
                 output.covariance_matrix = output.covariance_matrix[:,:,item]
             return output
+        raise TypeError(f'Index must be a slice, not {type(item).__name__}')
 
 
 class Cube(BaseObject):
-    """ Internal class for inheriting spatial data properties (3D) """
+    """
+    Internal class for inheriting spatial data properties (3D).
+    Represents a cube of spectra.
+    """
 
     ndim: ClassVar[int] = 3
 
-    def downscale(self, pixels_limit: int):
-        """ Brings the spatial resolution of the cube to approximately match the number of pixels """
+    def downscale(
+        self,
+        pixels_limit: int
+    ) -> Self:
+        """
+        Brings the spatial resolution of the cube to approximately match the number of pixels.
+
+        Args:
+            pixels_limit: Target maximum number of pixels in the output.
+        """
         output = deepcopy(self)
         output.spectral_dist, output.covariance_matrix = \
             spatial_downscaling(output.spectral_dist, output.covariance_matrix, pixels_limit)
         return output
 
-    def flatten(self):
-        """ Returns a (photo)spectral set with linearized spatial axis """
+    def flatten(self) -> 'Set':
+        """
+        Returns a (photo)spectral set with linearized spatial axis.
+        Implemented in the inherited classes.
+        """
         raise NotImplementedError('Implemented in the inherited classes.')
 
     @property
-    def width(self):
-        """ Returns horizontal spatial axis length """
+    def width(self) -> int:
+        """ Returns horizontal spatial axis length. """
         return self.spatial_shape[0]
 
     @property
-    def height(self):
-        """ Returns vertical spatial axis length """
+    def height(self) -> int:
+        """ Returns vertical spatial axis length. """
         return self.spatial_shape[1]
 
 
 RealObject: TypeAlias = Item | Set | Cube
+"""
+Type alias for any real (photo)spectral object.
+Can be an Item (1D), Set (2D), or Cube (3D).
+"""

@@ -85,10 +85,11 @@ class ColorSystem:
         self.matrix = self.matrix.T
         self.inv_matrix = self.inv_matrix.T
 
-    def xyz_to_rgb(self,
-            value0: npt.NDArray,
-            error0: npt.NDArray | None = None
-        ) -> tuple[npt.NDArray, npt.NDArray | None]:
+    def xyz_to_rgb(
+        self,
+        value0: npt.NDArray,
+        error0: npt.NDArray | None = None
+    ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
         """ Converts XYZ color array into a RGB color space array """
         # 1D implementation: rgb = self.inv_matrix @ xyz
         value1 = np.einsum('ij, j... -> i...', self.inv_matrix, value0)
@@ -99,10 +100,11 @@ class ColorSystem:
             error1 = np.einsum('ij, jk..., kl -> il...', self.inv_matrix, error0, self.inv_matrix)
         return value1, error1
 
-    def rgb_to_xyz(self,
-            value0: npt.NDArray,
-            error0: npt.NDArray | None = None
-        ) -> tuple[npt.NDArray, npt.NDArray | None]:
+    def rgb_to_xyz(
+        self,
+        value0: npt.NDArray,
+        error0: npt.NDArray | None = None
+    ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
         """ Converts RGB color array into the XYZ color space array """
         # 1D implementation: rgb = self.matrix @ xyz
         value1 = np.einsum('ij, j... -> i...', self.matrix, value0)
@@ -173,11 +175,12 @@ class ColorObject:
     maximize_brightness = False
     _scale_factor = 1.
 
-    def __init__(self,
-            spectral_dist: npt.NDArray,
-            covariance_matrix: npt.NDArray | None,
-            color_system: ColorSystem
-        ):
+    def __init__(
+        self,
+        spectral_dist: npt.NDArray,
+        covariance_matrix: npt.NDArray | None,
+        color_system: ColorSystem
+    ) -> None:
         """
         ColorObject requires a brightness array and corresponding color system.
         Default color space is CIE 1931 XYZ. Covariance matrix is optional.
@@ -208,7 +211,7 @@ class ColorObject:
         output._color_system = new_color_system
         return output
 
-    def to_array(self) -> npt.NDArray:
+    def to_array(self) -> npt.NDArray[np.floating]:
         """ Implies post-processing functions: gamma correction and brightness maximizing """
         arr = np.nan_to_num(self.spectral_dist, copy=True)
         if self.maximize_brightness and arr.max() != 0:
@@ -219,7 +222,7 @@ class ColorObject:
             arr = self.apply_gamma_correction(arr)
         return arr
 
-    def grayscale(self) -> npt.NDArray | float:
+    def grayscale(self) -> npt.NDArray[np.floating] | float:
         """ Converts color to grayscale using CIE 1931 luminance (Y in XYZ color space) """
         y = self.to_color_system(xyz_color_system).spectral_dist[1]
         if self.gamma_correction:
@@ -239,7 +242,7 @@ class ColorObject:
         return self._scale_factor
 
     @scale_factor.setter
-    def scale_factor(self, value):
+    def scale_factor(self, value: float) -> None:
         """ Checks the scale factor input """
         try:
             self._scale_factor = max(0, float(value))
@@ -248,7 +251,9 @@ class ColorObject:
             #print('Scale factor of ColorObject object must be a number.')
 
     @staticmethod
-    def apply_gamma_correction(arr0: npt.ArrayLike) -> npt.NDArray:
+    def apply_gamma_correction(
+        arr0: npt.ArrayLike
+    ) -> npt.NDArray[np.floating]:
         """ Applies sRGB gamma correction to the array """
         arr = np.asarray(arr0) # to allow float input use mask
         mask = arr < 0.0031308
@@ -263,7 +268,7 @@ class ColorPoint(ColorObject):
     Stores brightness values in the range 0 to 1 in the `spectral_dist` attribute, numpy array of shape (3).
     """
 
-    def to_bit(self, bit: int, clip: bool = False) -> npt.NDArray:
+    def to_bit(self, bit: int, clip: bool = False) -> npt.NDArray[np.floating]:
         """ Returns color array, scaled to the appropriate power of two (not rounded) """
         factor = 2**bit - 1
         arr = self.to_array()
@@ -302,13 +307,19 @@ class ColorImage(ColorObject):
         super().__init__(*args, **kwargs)
         self.spectral_dist = np.atleast_3d(self.spectral_dist) # interprets color points and lines as images
 
-    def upscale(self, times: int) -> 'ColorImage':
+    def upscale(
+        self,
+        times: int
+    ) -> 'ColorImage':
         """ Creates a new ColorImage with increased size by an integer number of times """
         output = deepcopy(self)
         output.spectral_dist = np.repeat(np.repeat(output.spectral_dist, times, axis=0), times, axis=1)
         return output
 
-    def downscale(self, pixels_limit: int):
+    def downscale(
+        self,
+        pixels_limit: int
+    ) -> 'ColorImage':
         """ Brings the resolution of the image to approximately match the number of pixels """
         output = deepcopy(self)
         output.spectral_dist, output.covariance_matrix = \
@@ -326,6 +337,6 @@ class ColorImage(ColorObject):
         return self.spectral_dist.shape[2]
 
     @property
-    def size(self):
+    def size(self) -> int:
         """ Returns the number of pixels """
         return self.width * self.height

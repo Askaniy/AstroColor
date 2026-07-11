@@ -1,7 +1,7 @@
 import numpy as np
 import numpy.typing as npt
 from collections.abc import Callable
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, Self
 from scipy.linalg import solve
 from scipy.optimize import minimize
 from copy import deepcopy
@@ -20,13 +20,14 @@ PhotospectralType = TypeVar('PhotospectralType', bound='PhotospectralObject')
 
 class ReconstructedSpectralObject(SpectralObject, Generic[PhotospectralType]):
 
-    def __init__(self,
-            wavelength_nm: npt.ArrayLike,
-            spectral_dist: npt.ArrayLike,
-            uncertainty: npt.ArrayLike | None = None,
-            name: Any = None,
-            photospectral_obj: PhotospectralType | None = None
-        ):
+    def __init__(
+        self,
+        wavelength_nm: npt.ArrayLike,
+        spectral_dist: npt.ArrayLike,
+        uncertainty: npt.ArrayLike | None = None,
+        name: Any = None,
+        photospectral_obj: PhotospectralType | None = None
+    ) -> None:
 
         """
         Creates a ReconstructedSpectralObject from arrays of wavelength, brightness and (optionally) uncertainty.
@@ -55,7 +56,12 @@ class ReconstructedSpectralObject(SpectralObject, Generic[PhotospectralType]):
             extrapolated = self.photospectral_obj._determine_at_trusted_wavelengths(requested_wavelengths)
         return extrapolated
 
-    def _apply_scalar_operation(self, operand, value_handling: Callable, error_handling: Callable):
+    def _apply_scalar_operation(
+        self,
+        operand: npt.ArrayLike,
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.ArrayLike],
+        error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, None], npt.NDArray | None]
+    ) -> Self:
         """
         Returns a new object of the same class transformed according to the linear operator.
         Operand is assumed to be a number or an array along the spectral axis.
@@ -109,20 +115,20 @@ class ReconstructedSpectralCube(ReconstructedSpectralObject[PhotospectralCube], 
     - `size` (int): number of pixels
     """
 
-    def flatten(self):
+    def flatten(self) -> 'ReconstructedSpectralSet':
         """ Returns a SpectralSet with linearized spatial axis """
         output = super().flatten()
         if self.photospectral_obj is not None:
-            output.photospectral_obj = self.photospectral_obj.flatten()
+            output.photospectral_obj = self.photospectral_obj.flatten()  # type: ignore[union-attr]
         return output
 
 
 def spectral_reconstruction(
-        photospectral_obj: PhotospectralObject,
-        requested_wavelengths: npt.ArrayLike,
-        spectral_reconstruction_mode: str = '',
-        attach_photospectral_obj: bool = True
-    ) -> SpectralObject | ReconstructedSpectralObject:
+    photospectral_obj: PhotospectralObject,
+    requested_wavelengths: npt.ArrayLike,
+    spectral_reconstruction_mode: str = '',
+    attach_photospectral_obj: bool = True
+) -> SpectralObject | ReconstructedSpectralObject:
     """
     Reconstructs a SpectralObject from photospectral data on the wavelength array.
 

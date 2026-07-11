@@ -13,36 +13,36 @@ from .filters import Filter, FilterSet
 
 @overload
 def observe(
-        target: Item | Set | Cube,
-        bandpass: Filter
-    ) -> Tuple[float, float | None]:
+    target: Item | Set | Cube,
+    bandpass: Filter
+) -> tuple[float, float | None]:
     ...
 
 @overload
 def observe(
-        target: Item,
-        bandpass: FilterSet
-    ) -> Photospectrum:
+    target: Item,
+    bandpass: FilterSet
+) -> Photospectrum:
     ...
 
 @overload
 def observe(
-        target: Set,
-        bandpass: FilterSet
-    ) -> PhotospectralSet:
+    target: Set,
+    bandpass: FilterSet
+) -> PhotospectralSet:
     ...
 
 @overload
 def observe(
-        target: Cube,
-        bandpass: FilterSet
-    ) -> PhotospectralCube:
+    target: Cube,
+    bandpass: FilterSet
+) -> PhotospectralCube:
     ...
 
 def observe(
-        target: RealObject,
-        bandpass: Filter | FilterSet
-    ):
+    target: RealObject,
+    bandpass: Filter | FilterSet
+):
     """
     Implementation of convolution between a (photo)spectral object and a filter or a filter set.
     Ignores the uncertainty of filter profiles.
@@ -76,10 +76,10 @@ def observe(
 
 
 def scale_spectrum(
-        target: Spectrum,
-        bandpass: Filter | FilterSet,
-        requested_value: int | float | tuple[float, float] = 1
-    ) -> Spectrum:
+    target: Spectrum,
+    bandpass: Filter | FilterSet,
+    requested_value: int | float | tuple[float, float] = 1
+) -> Spectrum:
     """
     Returns a new spectrum that matches the query brightness value (1 by default)
     at the specified filter.

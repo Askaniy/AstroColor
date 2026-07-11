@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Optional
 import warnings
 
 
@@ -8,40 +8,40 @@ class AstroColorError(Exception):
     pass
 
 class UnsupportedDimensionError(AstroColorError, ValueError):
-    def __init__(self, ndim_recieved: int, name: Any = None):
+    def __init__(self, ndim_recieved: int, name: Optional[str] = None):
         subject = f'data array of {name}' if name else 'data array'
         super().__init__(f'The {subject} must have a dimension of 1, 2, or 3, not {ndim_recieved}.')
 
 class InconsistentDimensionError(AstroColorError, ValueError):
-    def __init__(self, ndim_recieved: int, ndim_expected: int, name: Any):
+    def __init__(self, ndim_recieved: int, ndim_expected: int, name: Optional[str]):
         msg = f'The received array dimension ({ndim_recieved}) differs from the expected one ({ndim_expected})'
         if name is not None:
             msg += f' for {name}'
         super().__init__(msg + '.')
 
 class InconsistentAxesError(AstroColorError, ValueError):
-    def __init__(self, spectral_axis: int, spatial_axis: int, name: Any):
+    def __init__(self, spectral_axis: int, spatial_axis: int, name: Optional[str]):
         msg = f'Arrays of spectral and spatial axes do not match ({spectral_axis} vs {spatial_axis})'
         if name is not None:
             msg += f' for {name}'
         super().__init__(msg + '.')
 
 class InconsistentUncertaintySizeError(AstroColorError, ValueError):
-    def __init__(self, len_error: int, len_values: int, name: Any):
+    def __init__(self, len_error: int, len_values: int, name: Optional[str]):
         msg = f'Uncertainty array does not match the spectral axis ({len_error} vs {len_values})'
         if name is not None:
             msg += f' for {name}'
         super().__init__(msg + '.')
 
 class InconsistentUncertaintyShapeError(AstroColorError, ValueError):
-    def __init__(self, shape_error: int, shape_values: int, name: Any):
+    def __init__(self, shape_error: int, shape_values: int, name: Optional[str]):
         msg = f'Uncertainty shape {shape_error} does not match the data shape {shape_values}'
         if name is not None:
             msg += f' for {name}'
         super().__init__(msg + '. It cannot be a standard deviation or a covariance matrix.')
 
 class FilterNotFoundError(AstroColorError):
-    def __init__(self, filter_id: Any):
+    def __init__(self, filter_id: str):
         super().__init__(f'Filter "{filter_id}" not found in the "filters" folder.')
 
 
@@ -50,7 +50,7 @@ class FilterNotFoundError(AstroColorError):
 class ErasingCorrelationsWarning(UserWarning):
     pass
 
-def erasing_correlations_warning(name: Any):
+def erasing_correlations_warning(name: Optional[str]):
     msg = 'The full covariance matrix is not supported here. The diagonal is used to estimate errors'
     if name is not None:
         msg += f' for {name}'
@@ -59,7 +59,7 @@ def erasing_correlations_warning(name: Any):
 class NanValuesWarning(UserWarning):
     pass
 
-def nan_values_warning(input: str, name: Any):
+def nan_values_warning(input: str, name: Optional[str]):
     msg = f'NaN values detected in the {input} input been replaced with zeros'
     if name is not None:
         msg += f' for {name}'
@@ -68,7 +68,7 @@ def nan_values_warning(input: str, name: Any):
 class ZeroBrightnessWarning(UserWarning):
     pass
 
-def zero_brightness_warning(name: Any):
+def zero_brightness_warning(name: Optional[str]):
     msg = 'A division-by-zero error occurred in the calculations due to the zero brightness'
     if name is not None:
         msg += f' of object {name}'
@@ -77,13 +77,19 @@ def zero_brightness_warning(name: Any):
 class EmptySpectralIntersectionWarning(UserWarning):
     pass
 
-def empty_spectral_intersection_warning(nm0: int, nm1: int, start: int, end: int, name: Any = None):
+def empty_spectral_intersection_warning(nm0: int, nm1: int, start: int, end: int, name: Optional[str] = None):
     msg = f'The requested wavelength range [{start} ... {end}] lies outside the range [{nm0} ... {nm1}]! An empty result returned'
     if name is not None:
         msg += f' for {name}'
     warnings.warn(msg + '.', EmptySpectralIntersectionWarning, stacklevel=2)
 
-def empty_spectral_intersection_operator_warning(operation_name, name1, name2, start, end):
+def empty_spectral_intersection_operator_warning(
+    operation_name: str,
+    name1: Optional[str],
+    name2: Optional[str],
+    start: int,
+    end: int
+) -> None:
     warnings.warn(
         f'''
         There is no intersection between the spectra for the element-wise operation "{operation_name}":

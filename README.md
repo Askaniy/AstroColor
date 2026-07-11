@@ -89,4 +89,7 @@ It features a graphical user interface and a user-expandable spectral database.
 Over time, the core of the program became self-contained enough to be spun off into a library.
 The refactoring took place in 2026; it opens up a general astronomical application.
 
-Not vibe coded!
+
+## AI policy
+
+Any changes suggested by AI must be thoroughly reviewed by the person who generated them. The responsibility always lies with the person.

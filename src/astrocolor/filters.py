@@ -1,6 +1,6 @@
 import numpy as np
 import numpy.typing as npt
-from typing import Union, Self, cast
+from typing import Iterator, Union, cast
 from uuid import uuid4
 
 from .spectral_objects import Spectrum, SpectralSet
@@ -16,7 +16,7 @@ class Filter(Spectrum):
     """
     _cached_filters = {} # {filter id: filter instance}
 
-    def __new__(cls, filter_id):
+    def __new__(cls, filter_id: str | int | float):
         if isinstance(filter_id, (int, float)):
             wavelength = float(filter_id)
             filter_id = f'Monochromatic {wavelength} nm'
@@ -60,7 +60,7 @@ class Filter(Spectrum):
                 raise FilterNotFoundError(filter_id)
 
     @classmethod
-    def from_spectrum(cls, spectrum: Spectrum) -> Self:
+    def from_spectrum(cls, spectrum: Spectrum) -> 'Filter':
         """
         Converts Spectrum to a Filter object.
         It allows to convolve a spectrum with another spectrum.
@@ -106,11 +106,11 @@ class FilterSet(SpectralSet):
     spectral_dist_cache = None
     wavelength_nm_cache = None
 
-    def __init__(self, *filter_ids):
+    def __init__(self, *filter_ids: str | int | float) -> None:
         self.filters: tuple = filter_ids
 
     @property
-    def wavelength_nm(self):
+    def wavelength_nm(self) -> npt.NDArray[np.uint16]:
         if self.spectral_dist_cache is None:
             nm_min = np.inf
             nm_max = 0
@@ -124,7 +124,7 @@ class FilterSet(SpectralSet):
         return nm
 
     @property
-    def spectral_dist(self):
+    def spectral_dist(self) -> npt.NDArray[np.floating]:
         if self.spectral_dist_cache is None:
             # Matrix packing
             nm = cast(npt.NDArray, self.wavelength_nm)
@@ -137,7 +137,7 @@ class FilterSet(SpectralSet):
         return br
 
     @property
-    def matrix(self):
+    def matrix(self) -> npt.NDArray[np.floating]:
         """
         Transforms filter profiles' transmission spectral distribution
         into a matrix that simplifies the accounting of the grid step:
@@ -148,10 +148,10 @@ class FilterSet(SpectralSet):
     def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray):
         raise NotImplementedError('It is not possible to change the spectral axis for FilterSets.')
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.filters)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator['Filter']:
         """ Creates an iterator over the filters in the system """
         for i in range(len(self)):
             yield self[i]

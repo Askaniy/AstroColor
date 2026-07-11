@@ -26,20 +26,26 @@ const1 = 2 * h * c * c # * np.pi to get exitance (W/m2) in the assumption of Lam
 const2 = h * c / k
 
 
-class BlackBodyModel():
+class BlackBodyModel:
     """ Creates a Spectrum object based on Planck's law and redshift formulas """
 
-    def __init__(self, temperature: int | float, velocity=0., vII=0.) -> None:
+    def __init__(self, temperature: int | float, velocity: float = 0.0, vII: float = 0.0) -> None:
         self.T = temperature
         self.v = velocity
         self.vII = vII
 
-    def planck_radiance(self, nm: int | float | npt.NDArray) -> float | npt.NDArray:
+    def planck_radiance(
+        self,
+        nm: int | float | npt.NDArray
+    ) -> float | npt.NDArray[np.floating]:
         m = nm * 1e-9
         radiance = const1 / (m**5 * (np.exp(const2 / (m * self.T)) - 1))
         return radiance * 1e-9 # per m -> per nm
 
-    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray):
+    def _determine_at_trusted_wavelengths(
+        self,
+        requested_wavelengths: npt.NDArray
+    ) -> Spectrum:
         """
         Directly uses the provided wavelength grid to create a new object.
         See `determine_at_wavelengths()` for the general case.

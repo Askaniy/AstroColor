@@ -22,12 +22,13 @@ class PhotospectralObject(BaseObject):
     - `name` (Any): object identifier
     """
 
-    def __init__(self,
-            filter_set: FilterSet,
-            spectral_dist: npt.ArrayLike,
-            uncertainty: npt.ArrayLike | None = None,
-            name: Any = None
-        ):
+    def __init__(
+        self,
+        filter_set: FilterSet,
+        spectral_dist: npt.ArrayLike,
+        uncertainty: npt.ArrayLike | None = None,
+        name: Any = None
+    ) -> None:
         """
         Args:
         - `filter_set` (FilterSet): instance of the class storing filter profiles
@@ -75,7 +76,7 @@ class PhotospectralObject(BaseObject):
         """ Returns the definition range of the filter system """
         return self.filter_set.wavelength_nm
 
-    def convert_from_photon_spectral_density(self):
+    def convert_from_photon_spectral_density(self) -> Self:
         """
         Returns a new PhotospectralObject converted from photon spectral density
         to energy spectral density, using the fact that E = h c / λ.
@@ -88,7 +89,7 @@ class PhotospectralObject(BaseObject):
         else:
             return deepcopy(self)
 
-    def convert_from_energy_spectral_density_per_frequency(self):
+    def convert_from_energy_spectral_density_per_frequency(self) -> Self:
         """
         Returns a new PhotospectralObject converted from frequency spectral density
         to energy spectral density, using the fact that f_λ = f_ν c / λ².
@@ -114,7 +115,12 @@ class PhotospectralObject(BaseObject):
     # To check:
     # Spectrum * Photospectrum = Spectrum
     # Photospectrum * Spectrum = Spectrum
-    def _apply_element_wise_operation(self, operand: BaseObject, value_handling: Callable, error_handling: Callable) -> Self:
+    def _apply_element_wise_operation(
+        self,
+        operand: 'BaseObject',
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.ArrayLike],
+        error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, npt.NDArray | None], npt.NDArray | None]
+    ) -> Self:
         """
         Returns a new PhotospectralObject formed from element-wise operation with
         a SpectralObject or another PhotospectralObject. Operations between objects
@@ -179,8 +185,8 @@ class PhotospectralCube(PhotospectralObject, Cube):
     - `size` (int): number of pixels
     """
 
-    def flatten(self):
+    def flatten(self) -> 'PhotospectralSet':
         """ Returns a PhotospectralSet with linearized spatial axis """
         value = self.spectral_dist.reshape(self.spectral_size, self.spatial_size)
         error = None if self.covariance_matrix is None else self.covariance_matrix.reshape(self.spectral_size, self.spatial_size)
-        return PhotospectralSet(self.filter_set, value, error, self.name)
+        return PhotospectralSet(self.filter_set, value, cast(npt.NDArray | None, error), self.name)

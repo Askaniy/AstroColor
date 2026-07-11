@@ -1,7 +1,7 @@
 import numpy as np
 import numpy.typing as npt
 from collections.abc import Callable
-from typing import Self, Any
+from typing import cast, Self, Any
 from copy import deepcopy
 
 from .auxiliary import integrate, stretch, interpolate, extrapolating, spectral_binning, spectral_downscaling
@@ -26,13 +26,14 @@ class SpectralObject(BaseObject):
     - `name` (Any): object identifier
     """
 
-    def __init__(self,
-            wavelength_nm: npt.ArrayLike,
-            spectral_dist: npt.ArrayLike,
-            uncertainty: npt.ArrayLike | None = None,
-            name: Any = None,
-            is_emission_spectrum: bool = False
-        ):
+    def __init__(
+        self,
+        wavelength_nm: npt.ArrayLike,
+        spectral_dist: npt.ArrayLike,
+        uncertainty: npt.ArrayLike | None = None,
+        name: Any = None,
+        is_emission_spectrum: bool = False
+    ) -> None:
         """
         Creates a SpectralObject from arrays of wavelength, brightness and (optionally) uncertainty.
         Performs checks for data type and uniformity; interpolates and extrapolates if it is needed.
@@ -159,10 +160,12 @@ class SpectralObject(BaseObject):
         return cls((555,), np.zeros((1,) * cls.ndim), name=name)
 
     @classmethod
-    def monochromatic(cls,
-            wavelength: int | float,
-            intensity: int | float = 1,
-            standard_deviation: int | float | None = None):
+    def monochromatic(
+        cls,
+        wavelength: int | float,
+        intensity: int | float = 1,
+        standard_deviation: int | float | None = None
+    ) -> 'Spectrum':
         """
         Creates a monochromatic SpectralObject on the 1- or 2-point spectral grid.
         It is normaized by default and have zeroed edges.
@@ -203,25 +206,25 @@ class SpectralObject(BaseObject):
                 raise UnsupportedDimensionError(cls.ndim, name)
         return cls(nm, br, cov_matrix, name=name)
 
-    def integrate(self) -> float | npt.NDArray:
+    def integrate(self) -> float | npt.NDArray[np.floating]:
         """
         Integrates the SpectralObject along the spectral axis.
         Uses the rectangle method to match with matrix multiplication used for the spectral reconstruction.
         """
         return integrate(self.spectral_dist, self.nm_step, precisely=False)
 
-    def normalize(self):
+    def normalize(self) -> Self:
         """ Returns a new SpectralObject with each spectrum divided by its area """
         return self / self.integrate()
 
-    def convert_from_photon_spectral_density(self):
+    def convert_from_photon_spectral_density(self) -> Self:
         """
         Returns a new SpectralObject converted from photon spectral density
         to energy spectral density, using the fact that E = h c / λ.
         """
         return (self / self.wavelength_nm).normalize()
 
-    def convert_from_energy_spectral_density_per_frequency(self):
+    def convert_from_energy_spectral_density_per_frequency(self) -> Self:
         """
         Returns a new SpectralObject converted from energy spectral density per frequency
         to energy spectral density per wavelength, using the fact that f_λ = f_ν c / λ².
@@ -229,7 +232,7 @@ class SpectralObject(BaseObject):
         scale_factors = 1 / self.wavelength_nm / self.wavelength_nm # squaring nm will overflow uint16
         return (self / scale_factors).normalize()
 
-    def mean_spectrum(self):
+    def mean_spectrum(self) -> Self:
         """ Returns the mean spectrum along the spatial axes """
         # TODO: add cov matrix
         match self.ndim:
@@ -243,7 +246,7 @@ class SpectralObject(BaseObject):
                 raise UnsupportedDimensionError(self.name)
         return Spectrum(self.wavelength_nm, br, name=self.name)
 
-    def median_spectrum(self):
+    def median_spectrum(self) -> Self:
         """ Returns the median spectrum along the spatial axes """
         match self.ndim:
             case 1:
@@ -267,11 +270,15 @@ class SpectralObject(BaseObject):
             zero_brightness_warning(self.name)
             return None
 
-    def std_of_nm(self) -> npt.NDArray:
+    def std_of_nm(self) -> npt.NDArray[np.floating] | None:
         """ Returns uncorrected standard deviation or an array of uncorrected standard deviations """
         return np.sqrt(np.average((stretch(self.wavelength_nm, self.spatial_shape) - self.mean_nm())**2, weights=self.spectral_dist, axis=0))
 
-    def get_spectral_dist_at_wavelengths(self, start: int | float, end: int | float) -> npt.NDArray:
+    def get_spectral_dist_at_wavelengths(
+        self,
+        start: int | float,
+        end: int | float
+    ) -> npt.NDArray[np.floating]:
         """ Returns standard deviation values over a range of wavelengths (endpoints included) """
         start, end = self._grid_endpoints_preprocessing(start, end)
         mask = (self.wavelength_nm >= start) & (self.wavelength_nm < end)
@@ -280,7 +287,11 @@ class SpectralObject(BaseObject):
             empty_spectral_intersection_warning(self.wavelength_nm[0], self.wavelength_nm[-1], start, end)
         return intersection
 
-    def get_covariance_matrix_at_wavelengths(self, start: int | float, end: int | float) -> npt.NDArray | None:
+    def get_covariance_matrix_at_wavelengths(
+        self,
+        start: int | float,
+        end: int | float
+    ) -> npt.NDArray[np.floating] | None:
         """ Returns standard deviation values over a range of wavelengths (endpoints included) """
         if self.covariance_matrix is None:
             return None
@@ -311,7 +322,12 @@ class SpectralObject(BaseObject):
         """ Checks that the first and last brightness entries on the spectral axis are zero """
         return bool(np.all(self.spectral_dist[0] == 0) and np.all(self.spectral_dist[-1] == 0))
 
-    def _apply_element_wise_operation(self, other: BaseObject, value_handling: Callable, error_handling: Callable) -> 'SpectralObject':
+    def _apply_element_wise_operation(
+        self,
+        other: 'BaseObject',
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.ArrayLike],
+        error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, npt.NDArray | None], npt.NDArray | None]
+    ) -> 'SpectralObject':
         """
         Returns a new SpectralObject formed from element-wise operation between SpectralObjects
         of the same nature or with a Spectrum.
@@ -351,7 +367,7 @@ class Spectrum(SpectralObject, Item):
     - `name` (Any): object identifier
     """
 
-    def edges_zeroed(self):
+    def edges_zeroed(self) -> 'Spectrum':
         """
         Returns a new Spectrum object with zero brightness to the edges added.
         This is necessary to mitigate the consequences of abruptly cutting off filter profiles.
@@ -415,8 +431,8 @@ class SpectralCube(SpectralObject, Cube):
     - `size` (int): number of pixels
     """
 
-    def flatten(self):
+    def flatten(self) -> 'SpectralSet':
         """ Returns a SpectralSet with linearized spatial axis """
         value = self.spectral_dist.reshape(self.spectral_size, self.spatial_size)
         error = None if self.covariance_matrix is None else self.covariance_matrix.reshape(self.spectral_size, self.spatial_size)
-        return SpectralSet(self.wavelength_nm, value, error, self.name)
+        return SpectralSet(self.wavelength_nm, value, cast(npt.NDArray | None, error), self.name)
