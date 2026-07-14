@@ -14,7 +14,7 @@ from .convolution import observe
 # CIE 1931 XYZ color matching functions, 2-deg
 # https://cie.co.at/datatable/cie-1931-colour-matching-functions-2-degree-observer
 # http://www.cvrl.org/cie.htm
-xyz_cmf = FilterSet('CIE_1931_2deg.x', 'CIE_1931_2deg.y', 'CIE_1931_2deg.z')
+xyz_cmf = FilterSet.get('CIE_1931_2deg.x', 'CIE_1931_2deg.y', 'CIE_1931_2deg.z')
 visible_range = xyz_cmf.wavelength_nm # original CMF definition range is 360-830 nm
 
 # There are CMFs transformed from the CIE (2006) LMS functions, 2-deg

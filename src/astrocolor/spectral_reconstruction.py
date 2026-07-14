@@ -37,7 +37,7 @@ class ReconstructedSpectralObject(SpectralObject, Generic[PhotospectralType]):
         - `wavelength_nm` (ArrayLike): list of wavelengths in nanometers on an arbitrary grid
         - `spectral_dist` (ArrayLike): array of "brightness" in energy density units (not a photon counter)
         - `uncertainty`: (ArrayLike): optional array of standard deviations or covariance matrix
-        - `name` (Any): object identifier
+        - `name` (Any): human-readable identifier
         - `is_emission_spectrum` (bool): if `True`, creates an emission spectral object from the spectral lines
         - `photospectral_obj` (PhotospectralObject): optional, a way to store the pre-reconstructed data
         """
@@ -81,7 +81,7 @@ class ReconstructedSpectrum(ReconstructedSpectralObject[Photospectrum], Item):
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): object identifier
+    - `name` (Any): human-readable identifier
     - `photospectral_obj` (PhotospectralObject): optional, a way to store the pre-reconstructed data
     """
 
@@ -94,7 +94,7 @@ class ReconstructedSpectralSet(ReconstructedSpectralObject[PhotospectralSet], Se
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): object identifier
+    - `name` (Any): human-readable identifier
     - `photospectral_obj` (PhotospectralObject): optional, a way to store the pre-reconstructed data
     - `size` (int): spatial axis length
     """
@@ -108,7 +108,7 @@ class ReconstructedSpectralCube(ReconstructedSpectralObject[PhotospectralCube], 
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): object identifier
+    - `name` (Any): human-readable identifier
     - `photospectral_obj` (PhotospectralObject): optional, a way to store the pre-reconstructed data
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length

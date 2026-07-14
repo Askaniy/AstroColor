@@ -31,13 +31,13 @@ spectrum = ac.Spectrum(
     wavelength_nm=[400, 500, 600, 700],
     spectral_dist=[1, 2, 2, 1]
 )
-v_band = ac.Filter('Generic_Bessell.V')
+v_band = ac.Filter.get('Generic_Bessell.V')
 flux_value, flux_error = ac.observe(spectrum, v_band)
 ```
 
 - Create a filter system for optimizations
 ```py
-johnson_system = ac.FilterSet(
+johnson_system = ac.FilterSet.get(
     'Generic_Bessell.B',
     'Generic_Bessell.V',
     'Generic_Bessell.R'
@@ -52,7 +52,7 @@ reconstructed = ac.spectral_reconstruction(photospectrum_BVR, requested_waveleng
 
 - Convert measurements directly between photometric systems
 ```py
-sloan_system = ac.FilterSet('SLOAN_SDSS.g', 'SLOAN_SDSS.r')
+sloan_system = ac.FilterSet.get('SLOAN_SDSS.g', 'SLOAN_SDSS.r')
 photospectrum_gr = ac.observe(photospectrum_BVR, sloan_system)
 ```
 

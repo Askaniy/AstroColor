@@ -2,7 +2,7 @@ import numpy as np
 import numpy.typing as npt
 from math import prod
 from collections.abc import Callable
-from typing import Self, Any, Final, ClassVar, TypeAlias
+from typing import Self, Any, Final, ClassVar, TypeAlias, Iterator
 from copy import deepcopy
 
 from .auxiliary import repr_generator, spatial_downscaling
@@ -366,20 +366,20 @@ class Set(BaseObject):
         """ Returns the spatial axis length (alias for .spatial_size). """
         return self.spatial_size
 
-    def __getitem__(self, item: slice) -> Self:
-        """
-        Returns the spatial axis slice.
+    def __iter__(self) -> Iterator[Self]:
+        """ Creates an iterator over the elements in the set. """
+        for i in range(len(self)):
+            yield self[i]
 
-        Args:
-            item: A slice object for indexing along the spatial axis.
-        """
-        if isinstance(item, slice):
-            output = deepcopy(self)
-            output.spectral_dist = output.spectral_dist[:,item]
-            if output.covariance_matrix is not None:
-                output.covariance_matrix = output.covariance_matrix[:,:,item]
-            return output
-        raise TypeError(f'Index must be a slice, not {type(item).__name__}')
+    def __getitem__(self, item: int | slice) -> Self:
+        """ Returns the spatial axis element or slice. """
+        if not isinstance(item, int | slice):
+            raise TypeError(f'Index must be int or slice, not {type(item).__name__}')
+        output = deepcopy(self)
+        output.spectral_dist = output.spectral_dist[:,item]
+        if output.covariance_matrix is not None:
+            output.covariance_matrix = output.covariance_matrix[:,:,item]
+        return output
 
 
 class Cube(BaseObject):

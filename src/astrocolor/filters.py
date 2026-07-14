@@ -1,140 +1,134 @@
+from copy import deepcopy
 import numpy as np
 import numpy.typing as npt
-from typing import Iterator, Union, cast
-from uuid import uuid4
+from typing import Any, Final
+from functools import lru_cache
 
 from .spectral_objects import Spectrum, SpectralSet
 from .data_manager import script_folder
 from .errors import FilterNotFoundError
 
+
+@lru_cache(maxsize=128)
+def _cached_get(filter_id: str) -> 'Filter':
+    """
+    Returns a cached filter object.
+    This has been separated out to create copies of the results and avoid mutations.
+    """
+    if not isinstance(filter_id, str):
+        raise ValueError('Spanish Virtual Observatory filter ID must be a string')
+    try:
+        file_path = next((script_folder / 'filters').glob(f'{filter_id}.*'))
+        nm, sd = np.loadtxt(file_path).T[:2]
+    except (StopIteration, FileNotFoundError):
+        raise FilterNotFoundError(filter_id)
+    # TODO: remove the block below after SVO FPS support is ready!
+    if str(file_path)[-1] == 'A':
+        # temporal workaround: convert angstrom to nm
+        nm /= 10
+    return Filter(nm, sd, name=filter_id)
+
+
 class Filter(Spectrum):
     """
-    Stores filter profile as a Spectrum object.
-    Initialization by filter name in SVO Filter Profile Service ID
-    or by wavelength in nanometers.
-    The created object is cached (multiton pattern).
+    Stores a filter profile as a normalized, edge-zeroed :class:`Spectrum`.
+
+    A `Filter` is created through the classmethod `get()` which supports an optional cache.
+    Direct construction via `__init__()` always creates a new object (no caching).
+
+    Attributes:
+        wavelength_nm     – spectral axis in nanometers
+        spectral_dist     – normalized transmission profile
+        covariance_matrix – always `None`
+        name              – human-readable identifier
     """
-    _cached_filters = {} # {filter id: filter instance}
 
-    def __new__(cls, filter_id: str | int | float):
-        if isinstance(filter_id, (int, float)):
-            wavelength = float(filter_id)
-            filter_id = f'Monochromatic {wavelength} nm'
-        if not isinstance(filter_id, str):
-            raise TypeError('Filter ID must be of type str')
-        # Return cached object if it exists
-        if filter_id in cls._cached_filters:
-            return cls._cached_filters[filter_id]
+    # Class-level sentinel
+    covariance_matrix: Final[None] = None
 
-        # Or, create new instance
-        instance = super().__new__(cls)
-        cls._cached_filters[filter_id] = instance
-        return instance
-
-    def __init__(self, filter_id: str | int | float):
-        # Prevent re-initialization when retrieving from cache
-        if getattr(self, '_initialized', False):
-            return
-        # Mark as initialized so subsequent calls for the same ID (via __new__) don't reload
-        self._initialized = True
-        # 1. Try monochromatic (if ID is a wavelength)
-        try:
-            wavelength = float(filter_id)
-            self.name = f'Monochromatic {wavelength} nm'
-            spectrum = self.monochromatic(wavelength)
-            self.wavelength_nm = spectrum.wavelength_nm
-            self.spectral_dist = spectrum.spectral_dist
-        except ValueError:
-            # 2. Try loading from file
-            try:
-                file_path = next((script_folder/'filters').glob(f'{filter_id}.*'))
-                data = np.loadtxt(file_path).T
-                if str(file_path)[-1] == 'A':
-                    data[0] /= 10 # temporal workaround to convert angstrom to nm
-                    # TODO: delete after SVO Filter Profile Service support is ready!
-                spectrum = Spectrum(*data, name=filter_id).edges_zeroed().normalize()
-                self.name = filter_id
-                self.wavelength_nm = spectrum.wavelength_nm
-                self.spectral_dist = spectrum.spectral_dist
-            except (StopIteration, FileNotFoundError):
-                raise FilterNotFoundError(filter_id)
-
-    @classmethod
-    def from_spectrum(cls, spectrum: Spectrum) -> 'Filter':
+    def __init__(
+        self,
+        wavelength_nm: npt.ArrayLike,
+        spectral_dist: npt.ArrayLike,
+        name: Any = None,
+    ) -> None:
         """
-        Converts Spectrum to a Filter object.
-        It allows to convolve a spectrum with another spectrum.
-        It is needed, for example, to calculate Bond albedo using Solar spectrum as filter.
+        Creates a :class:`Filter` from arrays of wavelength and transmission profile.
+        Performs checks for data type and uniformity; interpolates and extrapolates if it is needed.
+
+        Args:
+        - `wavelength_nm` (ArrayLike): list of wavelengths in nanometers on an arbitrary grid
+        - `spectral_dist` (ArrayLike): normalized transmission profile
+        - `name` (Any): human-readable identifier
         """
-        # Hash generator for filter_id is better spectrum.name because
-        # there is no guarantee that spectra with the same names are identical
-        profile = cls.__new__(cls, filter_id=uuid4())
-        profile._initialized = True
-        profile.__dict__.update(spectrum.__dict__)
-        return profile.edges_zeroed().normalize()
+        spectrum = Spectrum(wavelength_nm, spectral_dist, name=name)
+        self.from_spectrum(spectrum)
 
-    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray):
-        raise NotImplementedError('It is not possible to change the spectral axis for Filters.')
+    def from_spectrum(self, spectrum: Spectrum) -> 'Filter':
+        """ Create a :class:`Filter` from an arbitrary :class:`Spectrum`. """
+        spectrum = spectrum.edges_zeroed().normalize()
+        self.wavelength_nm = spectrum.wavelength_nm
+        self.spectral_dist = spectrum.spectral_dist
+        self.name = spectrum.name
+        return self
 
-    def __repr__(self):
-        return f'{self.__class__.__name__}({self.name!r})'
+    @staticmethod
+    def get(filter_id: str) -> 'Filter':
+        """ Use Spanish Virtual Observatory filter ID to create a :class:`Filter` object. """
+        return deepcopy(_cached_get(filter_id))
 
-    # Convolution (moved to convolution.py)
-    # def __rmatmul__(self, other: BaseObject) -> tuple[float, float | None]:
-    #     operand1 = other.determine_at_wavelengths(self.wavelength_nm, strictly=True)
-    #     operand2 = self
-    #     br = integrate(self._mul_value(operand1.spectral_dist, operand2.spectral_dist), self.nm_step)
-    #     std = self._mul_error(operand1.spectral_dist, operand1.std, operand2.spectral_dist, operand2.std)
-    #     if std is not None:
-    #         std = integrate(std, self.nm_step)
-    #     return br, std
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
 
 
 class FilterSet(SpectralSet):
     """
-    Class to work with a set of filters profiles.
-    It supports len() to get the number of filters and getitem() to get a profile.
-
-    Example:
-    `bvr = FilterSet('Generic_Bessell.B', 'Generic_Bessell.V', 'Generic_Bessell.R')`
+    Class to work with a set of filter profiles.
 
     Attributes:
-    - `wavelength_nm` (npt.NDArray): total wavelength range of the filter profiles
-    - `spectral_dist` (npt.NDArray): matrix of the profiles with shape [len(nm), len(filters)]
-    - `size` (int): spatial axis length
+        wavelength_nm     – combined spectral axis covering all filter ranges
+        spectral_dist     – packed transmissions [len(nm), n_filters]
+        covariance_matrix – always `None` for FilterSet
+        name              – tuple of human-readable filter identifiers
+
+    Example:
+        >>> bvr = FilterSet.get('Generic_Bessell.B', 'Generic_Bessell.V', 'Generic_Bessell.R')
     """
-    spectral_dist_cache = None
-    wavelength_nm_cache = None
 
-    def __init__(self, *filter_ids: str | int | float) -> None:
-        self.filters: tuple = filter_ids
+    # Class-level sentinel
+    covariance_matrix: Final[None] = None
 
-    @property
-    def wavelength_nm(self) -> npt.NDArray[SpectralSet._wavelength_nm_dtype]:
-        if self.spectral_dist_cache is None:
-            nm_min = np.inf
-            nm_max = 0
-            for profile in self:
-                nm_min = min(nm_min, profile.wavelength_nm[0])
-                nm_max = max(nm_max, profile.wavelength_nm[-1])
-            nm = self._grid(nm_min, nm_max)
-            self.wavelength_nm_cache = nm
-        else:
-            nm = self.wavelength_nm_cache
-        return nm
+    def __init__(self, *filters: Filter) -> None:
+        """
+        Creates a :class:`FilterSet` from set of :class:`Filter` objects.
+        Combines spectral axes into a single interval and combines transmission data into a single array.
+        """
+        # Getting the wavelength info and filter names
+        names = []
+        nm_min = np.inf
+        nm_max = 0.
+        for profile in filters:
+            names.append(profile.name)
+            nm_min = min(nm_min, profile.wavelength_nm[0])
+            nm_max = max(nm_max, profile.wavelength_nm[-1])
+        # Naming
+        self.name: tuple[Any, ...] = tuple(names)
+        # Matrix packing
+        self.wavelength_nm = self._grid(nm_min, nm_max)
+        self.spectral_dist = np.zeros((len(self.wavelength_nm), len(filters)), dtype=self._spectral_dist_dtype)
+        for i, profile in enumerate(filters):
+            mask = (self.wavelength_nm >= profile.wavelength_nm[0]) & (self.wavelength_nm <= profile.wavelength_nm[-1])
+            self.spectral_dist[mask, i] = profile.spectral_dist
 
-    @property
-    def spectral_dist(self) -> npt.NDArray[np.floating]:
-        if self.spectral_dist_cache is None:
-            # Matrix packing
-            nm = cast(npt.NDArray, self.wavelength_nm)
-            br = np.zeros((len(nm), len(self)))
-            for i, profile in enumerate(self):
-                br[np.where((nm >= profile.wavelength_nm[0]) & (nm <= profile.wavelength_nm[-1])), i] = profile.spectral_dist
-            self.spectral_dist_cache = br
-        else:
-            br = self.spectral_dist_cache
-        return br
+    @staticmethod
+    def get(*filter_ids: str) -> 'FilterSet':
+        """
+        Use Spanish Virtual Observatory filter IDs to create a :class:`FilterSet` object.
+        """
+        filters = []
+        for filter_id in filter_ids:
+            filters.append(Filter.get(filter_id))
+        return FilterSet(*filters)
 
     @property
     def matrix(self) -> npt.NDArray[np.floating]:
@@ -145,62 +139,22 @@ class FilterSet(SpectralSet):
         """
         return self.spectral_dist.T * self.nm_step
 
-    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray):
-        raise NotImplementedError('It is not possible to change the spectral axis for FilterSets.')
-
-    def __len__(self) -> int:
-        return len(self.filters)
-
-    def __iter__(self) -> Iterator['Filter']:
-        """ Creates an iterator over the filters in the system """
-        for i in range(len(self)):
-            yield self[i]
-
-    def __getitem__(self, index: int | slice) -> Union[Filter, 'FilterSet']:
-        """ Returns the Filter or a subset of filters """
-        if isinstance(index, int):
-            return Filter(self.filters[index])
-        elif isinstance(index, slice):
-            new_filters = self.filters[index]
-            return FilterSet(*new_filters)
+    def __getitem__(self, index: int) -> Filter:
+        """ Returns the filter profile with extra zeros trimmed off """
+        # TODO: add support for a `slice` input and `FilterSet` output
+        if not isinstance(index, int):
+            raise TypeError(f'Index must be int, not {type(index).__name__}')
+        # Trimming off the zeros and creating a new Filter object
+        profile = self.spectral_dist[:,index]
+        non_zero_indices = np.nonzero(profile)[0]
+        start = non_zero_indices[0] - 1
+        end = non_zero_indices[-1] + 2
+        # Looking for the Filter name
+        if isinstance(self.name, tuple) and len(self.name) == len(self):
+            name = self.name[index]
         else:
-            raise TypeError(f"Index must be int or slice, not {type(index).__name__}")
+            name = None
+        return Filter(self.wavelength_nm[start:end], profile[start:end], name=name)
 
-
-    # Convolution (moved to convolution.py)
-
-    # @singledispatchmethod
-    # def __rmatmul__(self, other):
-    #     raise NotImplementedError
-
-    # @__rmatmul__.register
-    # def _(self, other: Item) -> Photospectrum:
-    #     operand1 = other.determine_at_wavelengths(self.wavelength_nm, strictly=True)
-    #     operand2 = self
-    #     br = integrate(self._mul_value(operand1.spectral_dist, operand2.spectral_dist), self.nm_step)
-    #     std = self._mul_error(operand1.spectral_dist, operand1.std, operand2.spectral_dist, operand2.std)
-    #     if std is not None:
-    #         std = integrate(std, self.nm_step)
-    #     return Photospectrum(operand2, br, std, name=operand1.name)
-
-    # @__rmatmul__.register
-    # def _(self, other: Set) -> PhotospectralSet:
-    #     operand1 = other.determine_at_wavelengths(self.wavelength_nm, strictly=True)
-    #     operand2 = self
-    #     br = integrate(operand1.spectral_dist[:, :, np.newaxis] * operand2.spectral_dist[:, np.newaxis, :], self.nm_step).T
-    #     # TODO: uncertainty processing
-    #     return PhotospectralSet(operand2, br, name=operand1.name)
-
-    # @__rmatmul__.register
-    # def _(self, other: Cube) -> PhotospectralCube:
-    #     operand1 = other.determine_at_wavelengths(self.wavelength_nm, strictly=True)
-    #     operand2 = self
-    #     # A loop-less implementation would require a 4D array,
-    #     # which most computers do not have enough memory for.
-    #     br = np.empty((len(operand2), *operand1.spatial_shape))
-    #     #for i, profile in enumerate(operand2):
-    #     for i in range(len(operand2)):
-    #         profile = operand2.spectral_dist[:,i]
-    #         br[i] = integrate((operand1.spectral_dist.T * profile).T, self.nm_step)
-    #     # TODO: uncertainty processing
-    #     return PhotospectralCube(operand2, br, name=operand1.name)
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)

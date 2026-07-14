@@ -40,8 +40,8 @@ class TestFilterStatistics(unittest.TestCase):
     """ Tests for mean_nm() and std_of_nm() on filters, spectra, and their sets. """
 
     def setUp(self):
-        self.v = Filter('Generic_Bessell.V')
-        self.ubv = FilterSet('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
+        self.v = Filter.get('Generic_Bessell.V')
+        self.ubv = FilterSet.get('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
 
     # - mean_nm() tests
 
@@ -79,8 +79,8 @@ class TestObservation(unittest.TestCase):
     """ Tests for observe() and spectral convolution. """
 
     def setUp(self):
-        self.v = Filter('Generic_Bessell.V')
-        self.ubv = FilterSet('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
+        self.v = Filter.get('Generic_Bessell.V')
+        self.ubv = FilterSet.get('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
 
     # - stub / return-type tests
 
@@ -128,8 +128,8 @@ class TestArithmetic(unittest.TestCase):
     """ Tests for +, *, / operations between spectra and filters. """
 
     def setUp(self):
-        self.v = Filter('Generic_Bessell.V')
-        self.ubv = FilterSet('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
+        self.v = Filter.get('Generic_Bessell.V')
+        self.ubv = FilterSet.get('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
 
     # - addition
 
@@ -216,19 +216,19 @@ class TestSpectrumCreation(unittest.TestCase):
         np.testing.assert_allclose(spectrum.mean_nm(), 555, rtol=1e-10)
 
     def test_filter_edges(self):
-        v = Filter('Generic_Bessell.V')
+        v = Filter.get('Generic_Bessell.V')
         self.assertEqual(v.spectral_dist[0], 0.)
         self.assertEqual(v.spectral_dist[-1], 0.)
 
     def test_filter_edges_extrapolated(self):
-        v = Filter('Generic_Bessell.V')
+        v = Filter.get('Generic_Bessell.V')
         extrapolated_v = v.determine_at_wavelengths(visible_range)
         self.assertEqual(extrapolated_v.spectral_dist[0], 0.)
         self.assertEqual(extrapolated_v.spectral_dist[-1], 0.)
 
     def test_filter_system_getitem(self):
-        ubv = FilterSet('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
-        v = Filter('Generic_Bessell.V')
+        ubv = FilterSet.get('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
+        v = Filter.get('Generic_Bessell.V')
         np.testing.assert_equal(ubv[2].mean_nm(), v.mean_nm())
 
 
@@ -247,7 +247,7 @@ class TestExtrapolation(unittest.TestCase):
 
     def test_extrapolation_flat_photospectrum(self):
         """ A photospectrum with uniform magnitudes should remain flat after extrapolation. """
-        ubv = FilterSet('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
+        ubv = FilterSet.get('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
         photospectrum = Photospectrum(ubv, (1, 1, 1), name='test photospectrum')
         np.testing.assert_allclose(
             photospectrum.determine_at_wavelengths(visible_range, strictly=True).spectral_dist,

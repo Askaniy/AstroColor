@@ -23,7 +23,7 @@ class SpectralObject(BaseObject):
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `standard_deviation` (npt.NDArray): optional array of standard deviations
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): object identifier
+    - `name` (Any): human-readable identifier
     """
 
     def __init__(
@@ -42,7 +42,7 @@ class SpectralObject(BaseObject):
         - `wavelength_nm` (ArrayLike): list of wavelengths in nanometers on an arbitrary grid
         - `spectral_dist` (ArrayLike): array of "brightness" in energy density units (not a photon counter)
         - `uncertainty`: (ArrayLike): optional array of standard deviations or a covariance matrix
-        - `name` (Any): object identifier
+        - `name` (Any): human-readable identifier
         - `is_emission_spectrum` (bool): if `True`, creates an emission spectral object from the spectral lines
         """
         self.name = name
@@ -165,7 +165,7 @@ class SpectralObject(BaseObject):
         wavelength: int | float,
         intensity: int | float = 1,
         standard_deviation: int | float | None = None
-    ) -> 'Spectrum':
+    ):
         """
         Creates a monochromatic SpectralObject on the 1- or 2-point spectral grid.
         It is normaized by default and have zeroed edges.
@@ -364,7 +364,7 @@ class Spectrum(SpectralObject, Item):
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): object identifier
+    - `name` (Any): human-readable identifier
     """
 
     def edges_zeroed(self) -> 'Spectrum':
@@ -411,7 +411,7 @@ class SpectralSet(SpectralObject, Set):
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): object identifier
+    - `name` (Any): human-readable identifier
     - `size` (int): spatial axis length
     """
     pass
@@ -425,7 +425,7 @@ class SpectralCube(SpectralObject, Cube):
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): object identifier
+    - `name` (Any): human-readable identifier
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length
     - `size` (int): number of pixels
