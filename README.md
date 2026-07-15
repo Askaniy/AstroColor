@@ -90,6 +90,11 @@ Over time, the core of the program became self-contained enough to be spun off i
 The refactoring took place in 2026; it opens up a general astronomical application.
 
 
+## Testing
+
+Use `uv run pytest`.
+
+
 ## AI policy
 
 Any changes suggested by AI must be thoroughly reviewed by the person who generated them. The responsibility always lies with the person.
