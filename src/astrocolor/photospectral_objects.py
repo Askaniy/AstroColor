@@ -3,7 +3,7 @@ import numpy.typing as npt
 from copy import deepcopy
 from typing import Self, Any, Callable, cast
 
-from .core import BaseObject, Item, Set, Cube
+from .core import BaseObject, Item, Set, Cube, spectral_dist_dtype
 # No dependency on .spectral_objects to avoid a cycle!
 from .filters import FilterSet
 from .errors import nan_values_warning, InconsistentDimensionError, \
@@ -38,7 +38,7 @@ class PhotospectralObject(BaseObject):
         """
         self.name = name
         # Spatial axis check
-        self.spectral_dist = np.array(spectral_dist, dtype=self._spectral_dist_dtype)
+        self.spectral_dist = np.array(spectral_dist, dtype=spectral_dist_dtype)
         if self.ndim != self.spectral_dist.ndim:
             raise InconsistentDimensionError(self.ndim, self.spectral_dist.ndim, self.name)
         if np.any(np.isnan(self.spectral_dist)):
@@ -54,7 +54,7 @@ class PhotospectralObject(BaseObject):
         if self.ignore_uncertainty_forCubes and self.ndim == 3:
             uncertainty = None
         if uncertainty is not None:
-            uncertainty = np.array(uncertainty, dtype=self._spectral_dist_dtype)
+            uncertainty = np.array(uncertainty, dtype=spectral_dist_dtype)
         if self.covariance_matrix is not None and (len_error := len(self.covariance_matrix)) != len_values:
             raise InconsistentUncertaintySizeError(len_error, len_values, name)
         if uncertainty is not None:

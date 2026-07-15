@@ -4,6 +4,8 @@ import numpy.typing as npt
 from typing import Any, Final, Sequence
 from functools import lru_cache
 
+from .auxiliary import uniform_grid
+from .core import nm_step, wavelength_nm_dtype
 from .spectral_objects import Spectrum, SpectralSet
 from .data_manager import script_folder
 from .errors import FilterNotFoundError
@@ -37,15 +39,17 @@ class Filter(Spectrum):
     Direct construction via `__init__()` always creates a new object (no caching).
 
     Attributes:
-        wavelength_nm     – spectral axis in nanometers
-        spectral_dist     – normalized transmission profile
-        covariance_matrix – always `None`
-        name              – human-readable identifier
+    - wavelength_nm     – spectral axis in nanometers
+    - spectral_dist     – normalized transmission profile
+    - covariance_matrix – always `None`
+    - name              – human-readable identifier
 
     Example:
-        >>> b = Filter.get('Generic_Bessell.B')
-        >>> v = Filter.get('Generic_Bessell.V')
-        >>> bv = b | v  # -> FilterSet containing B and V filters
+    ```
+    >>> b = Filter.get('Generic_Bessell.B')
+    >>> v = Filter.get('Generic_Bessell.V')
+    >>> bv = b | v  # -> FilterSet containing B and V filters
+    ```
     """
 
     # Class-level sentinel
@@ -89,8 +93,8 @@ class Filter(Spectrum):
         Combine this `Filter` with another `Filter` or `FilterSet` into a new `FilterSet`.
 
         Supports:
-            - `Filter | Filter` → `FilterSet`
-            - `Filter | FilterSet` → `FilterSet`
+        - `Filter | Filter` → `FilterSet`
+        - `Filter | FilterSet` → `FilterSet`
         """
         if isinstance(other, Filter | FilterSet):
             return _combine_filters(self, other)
@@ -113,15 +117,17 @@ class FilterSet(SpectralSet):
     Class to work with a set of filter profiles.
 
     Attributes:
-        wavelength_nm     – combined spectral axis covering all filter ranges
-        spectral_dist     – packed transmissions [len(nm), n_filters]
-        covariance_matrix – always `None` for FilterSet
-        name              – tuple of human-readable filter identifiers
+    - wavelength_nm     – combined spectral axis covering all filter ranges
+    - spectral_dist     – packed transmissions [len(nm), n_filters]
+    - covariance_matrix – always `None` for FilterSet
+    - name              – tuple of human-readable filter identifiers
 
     Example:
-        >>> bvr = FilterSet.get('Generic_Bessell.B', 'Generic_Bessell.V', 'Generic_Bessell.R')
-        >>> bv = Filter.get('Generic_Bessell.B') | Filter.get('Generic_Bessell.V')  # -> FilterSet
-        >>> bvr = bv | Filter.get('Generic_Bessell.R')  # -> FilterSet
+    ```
+    >>> bvr = FilterSet.get('Generic_Bessell.B', 'Generic_Bessell.V', 'Generic_Bessell.R')
+    >>> bv = Filter.get('Generic_Bessell.B') | Filter.get('Generic_Bessell.V')  # -> FilterSet
+    >>> bvr = bv | Filter.get('Generic_Bessell.R')  # -> FilterSet
+    ```
     """
 
     # Class-level sentinel
@@ -182,7 +188,7 @@ class FilterSet(SpectralSet):
         # Naming
         name: tuple[Any, ...] = tuple(names)
         # Matrix packing
-        wavelength_nm = self._grid(nm_min, nm_max)
+        wavelength_nm = uniform_grid(nm_min, nm_max, nm_step, dtype=wavelength_nm_dtype)
         spectral_dist = np.zeros((len(wavelength_nm), len(filters)), dtype=np.float64)
         for i, profile in enumerate(filters):
             mask = (wavelength_nm >= int(profile.wavelength_nm[0])) & (wavelength_nm <= int(profile.wavelength_nm[-1]))
@@ -194,8 +200,8 @@ class FilterSet(SpectralSet):
         Combine this `FilterSet` with another `Filter` or `FilterSet` into a new `FilterSet`.
 
         Supports:
-            - `FilterSet | Filter` → `FilterSet`
-            - `FilterSet | FilterSet` → `FilterSet`
+        - `FilterSet | Filter` → `FilterSet`
+        - `FilterSet | FilterSet` → `FilterSet`
         """
         if isinstance(other, Filter | FilterSet):
             return _combine_filters(self, other)
@@ -216,7 +222,7 @@ class FilterSet(SpectralSet):
         into a matrix that simplifies the accounting of the grid step:
         A = T^T * Δλ  ->  y = A x, where x is a spectrum and y is a photospectrum
         """
-        return self.spectral_dist.T * self.nm_step
+        return self.spectral_dist.T * nm_step
 
     def __getitem__(self, index: int) -> Filter:
         """ Returns the filter profile with extra zeros trimmed off """

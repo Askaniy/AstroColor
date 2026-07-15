@@ -147,7 +147,7 @@ def spectral_reconstruction(
     if len(photospectral_obj.filter_set) == 1:
         # single-point PhotospectralObject support
         nm_min, nm_max = photospectral_obj._get_extremal_grid_endpoints(requested_wavelengths)
-        nm1 = photospectral_obj._grid(nm_min, nm_max)
+        nm1 = photospectral_obj._uniform_grid(nm_min, nm_max)
         br1 = np.full((nm1.size, 1, 1)[:photospectral_obj.ndim], br0) # not tested
     else:
         filter_set = photospectral_obj.filter_set

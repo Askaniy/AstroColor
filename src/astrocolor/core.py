@@ -5,9 +5,38 @@ from collections.abc import Callable
 from typing import Self, Any, Final, ClassVar, TypeAlias, Iterator
 from copy import deepcopy
 
-from .auxiliary import repr_generator, spatial_downscaling
-from .algebra import add_value, add_error, sub_value, sub_error, mul_value, mul_error, div_value, div_error
+from .auxiliary import (
+    get_extremal_grid_endpoints,
+    grid_endpoints_preprocessing,
+    uniform_grid,
+    repr_generator,
+    spatial_downscaling
+)
+from .algebra import (
+    add_value,
+    add_error,
+    sub_value,
+    sub_error,
+    mul_value,
+    mul_error,
+    div_value,
+    div_error
+)
 from .errors import InconsistentAxesError, InconsistentUncertaintySizeError
+
+
+# For the sake of simplifying work with the spectrum,
+# its discretization step is fixed and frozen.
+nm_step: Final[int] = 5  # nm
+
+# Wavelength and brightness axis storage data type
+wavelength_nm_dtype: Final = np.int32
+spectral_dist_dtype: Final = np.float64
+
+# Maximum wavelength, the clipping level
+# It is important that there be no overflow when raising a number to the second power
+# See convert_from_energy_spectral_density_per_frequency()
+nm_red_limit: Final[int] = int(np.sqrt(np.iinfo(wavelength_nm_dtype).max)) # 46340 nm
 
 
 class BaseObject:
@@ -22,25 +51,15 @@ class BaseObject:
 
     ndim: ClassVar[int] = NotImplemented
 
-    # For the sake of simplifying work with the spectrum,
-    # its discretization step is fixed and frozen.
-    nm_step: Final[int] = 5  # nm
-
-    # it is possible to set the red limit to 327 675 nm
-    # with compression by 5 nm step, but it was not implemented
+    # Storing important class properties within the class
+    nm_step: Final[int] = nm_step
+    wavelength_nm_dtype: Final[npt.DTypeLike] = wavelength_nm_dtype
+    spectral_dist_dtype: Final[npt.DTypeLike] = spectral_dist_dtype
+    nm_red_limit: Final[int] = nm_red_limit
 
     # When processing images through spectral cubes, performance is prioritized,
     # and uncertainty is not saved (yet). Therefore it is disabled by default.
     ignore_uncertainty_forCubes: bool = True
-
-    # Wavelength and brightness axis storage data type
-    _wavelength_nm_dtype: Final = np.int32
-    _spectral_dist_dtype: Final = np.float64
-
-    # Maximum wavelength, the clipping level
-    # It is important that there be no overflow when raising a number to the second power
-    # See convert_from_energy_spectral_density_per_frequency()
-    nm_red_limit: Final[int] = int(np.sqrt(np.iinfo(_wavelength_nm_dtype).max)) # 46340 nm
 
     @property
     def spectral_size(self) -> int:
@@ -88,20 +107,12 @@ class BaseObject:
         Getting the minimum and maximum values of an untrusted array.
 
         Args:
-            requested_wavelengths: Array-like object containing wavelength values.
+        - requested_wavelengths: Array-like object containing wavelength values.
 
         Returns:
-            Tuple of (nm_min, nm_max) clamped to [0, nm_red_limit].
+        - Tuple of (nm_min, nm_max) clamped to [0, nm_red_limit].
         """
-        if isinstance(requested_wavelengths, np.ndarray):
-            nm_min = requested_wavelengths.min()
-            nm_max = requested_wavelengths.max()
-        else:
-            nm_min = np.min(requested_wavelengths)
-            nm_max = np.max(requested_wavelengths)
-        nm_min = max(nm_min, 0)
-        nm_max = min(nm_max, self.nm_red_limit)
-        return nm_min, nm_max
+        return get_extremal_grid_endpoints(requested_wavelengths, nm_red_limit)
 
     def _grid_endpoints_preprocessing(
         self,
@@ -113,36 +124,35 @@ class BaseObject:
         Maps the endpoints to a standard grid (wavelengths are multiples of the grid step).
 
         Args:
-            start: Start wavelength value.
-            end: End wavelength value.
+        - start: Start wavelength value.
+        - end: End wavelength value.
 
         Returns:
-            Tuple of (start, end) as integers after preprocessing.
+        - Tuple of (start, end) as integers after preprocessing.
         """
         if (shift := start % self.nm_step) != 0:
             start += self.nm_step - shift
         if end % self.nm_step == 0:
             end += self.nm_step # to include the last point
-        return int(start), int(end)
+        return grid_endpoints_preprocessing(start, end, nm_step)
 
-    def _grid(
+    def _uniform_grid(
         self,
         start: int | float,
         end: int | float
-    ) -> npt.NDArray[_wavelength_nm_dtype]:
+    ) -> npt.NDArray[wavelength_nm_dtype]:
         """
         Wavelength grid generation pipeline.
         Returns a uniform grid array with the points being multiples of the grid step (endpoints included).
 
         Args:
-            start: Start wavelength value.
-            end: End wavelength value.
+        - start: Start wavelength value.
+        - end: End wavelength value.
 
         Returns:
-            Array of wavelengths as int values on a uniform grid.
+        - Array of wavelengths as int values on a uniform grid.
         """
-        start, end = self._grid_endpoints_preprocessing(start, end)
-        return np.arange(start, end, self.nm_step, dtype=self._wavelength_nm_dtype)
+        return uniform_grid(start, end, nm_step, dtype=wavelength_nm_dtype)
 
     def determine_at_wavelengths(
         self,
@@ -158,17 +168,19 @@ class BaseObject:
         based on which a uniform grid is constructed.
 
         Args:
-            requested_wavelengths: Wavelength values to determine at.
-            strictly: If True, clip the result to the exact requested range.
+        - requested_wavelengths: Wavelength values to determine at.
+        - strictly: If True, clip the result to the exact requested range.
 
         Returns:
-            A new SpectralObject with data determined at the specified wavelengths.
+        - A new SpectralObject with data determined at the specified wavelengths.
 
         Example:
-            `spectrum = photospectrum.determine_at_wavelengths([400, 700])`
+        ```
+        >>> spectrum = photospectrum.determine_at_wavelengths([400, 700])
+        ```
         """
         nm_min, nm_max = self._get_extremal_grid_endpoints(requested_wavelengths)
-        requested_wavelengths = self._grid(nm_min, nm_max)
+        requested_wavelengths = self._uniform_grid(nm_min, nm_max)
         spectral_obj = self._determine_at_trusted_wavelengths(requested_wavelengths)
         # Spectral range clipping
         if strictly and spectral_obj.wavelength_nm is not requested_wavelengths:
@@ -192,10 +204,10 @@ class BaseObject:
         Implemented in the inherited classes.
 
         Args:
-            requested_wavelengths: The trusted wavelength array to use.
+        - requested_wavelengths: The trusted wavelength array to use.
 
         Returns:
-            A new SpectralObject with data determined at the trusted wavelengths.
+        - A new SpectralObject with data determined at the trusted wavelengths.
         """
         raise NotImplementedError('Implemented in the inherited classes.')
 
@@ -226,12 +238,12 @@ class BaseObject:
         Implemented in the inherited classes.
 
         Args:
-            operand: Another BaseObject for element-wise operations.
-            value_handling: Function to handle the value transformation.
-            error_handling: Function to handle the uncertainty propagation.
+        - operand: Another BaseObject for element-wise operations.
+        - value_handling: Function to handle the value transformation.
+        - error_handling: Function to handle the uncertainty propagation.
 
         Returns:
-            A new SpectralObject with the element-wise operation applied.
+        - A new SpectralObject with the element-wise operation applied.
         """
         raise NotImplementedError('Implemented in the inherited classes.')
 
@@ -245,9 +257,9 @@ class BaseObject:
         Returns a new object of the same class transformed according to the operator.
 
         Args:
-            operand: A scalar or array-like value for the operation.
-            value_handling: Function to handle the value transformation.
-            error_handling: Function to handle the uncertainty propagation.
+        - operand: A scalar or array-like value for the operation.
+        - value_handling: Function to handle the value transformation.
+        - error_handling: Function to handle the uncertainty propagation.
 
         Returns:
             A new SpectralObject with the scalar operation applied.
@@ -262,7 +274,7 @@ class BaseObject:
         Implements the addition operator.
 
         Returns:
-            A new SpectralObject with element-wise or scalar addition applied.
+        - A new SpectralObject with element-wise or scalar addition applied.
         """
         if isinstance(other, BaseObject):
             return self._apply_element_wise_operation(other, add_value, add_error)
@@ -274,7 +286,7 @@ class BaseObject:
         Implements the subtraction operator.
 
         Returns:
-            A new SpectralObject with element-wise or scalar subtraction applied.
+        - A new SpectralObject with element-wise or scalar subtraction applied.
         """
         if isinstance(other, BaseObject):
             return self._apply_element_wise_operation(other, sub_value, sub_error)
@@ -286,7 +298,7 @@ class BaseObject:
         Implements the multiplication operator.
 
         Returns:
-            A new SpectralObject with element-wise or scalar multiplication applied.
+        - A new SpectralObject with element-wise or scalar multiplication applied.
         """
         if isinstance(other, BaseObject):
             return self._apply_element_wise_operation(other, mul_value, mul_error)
@@ -298,7 +310,7 @@ class BaseObject:
         Implements the division operator.
 
         Returns:
-            A new SpectralObject with element-wise or scalar division applied.
+        - A new SpectralObject with element-wise or scalar division applied.
         """
         if isinstance(other, BaseObject):
             return self._apply_element_wise_operation(other, div_value, div_error)
@@ -310,10 +322,10 @@ class BaseObject:
         Returns the hash value based on the object's name.
 
         Raises:
-            TypeError: If the object has no name (name is None).
+        - TypeError: If the object has no name (name is None).
         """
         if self.name is None:
-            raise TypeError("unhashable type: 'NoneType'")
+            raise TypeError('Unhashable type: "NoneType"')
         return hash(self.name)
 
     def __eq__(self, other: object) -> bool:
@@ -321,7 +333,7 @@ class BaseObject:
         Checks equality with another BaseObject instance.
 
         Returns:
-            True if both wavelength and spectral distribution arrays are equal.
+        - True if both wavelength and spectral distribution arrays are equal.
         """
         if isinstance(other, BaseObject):
             return np.array_equal(self.wavelength_nm, other.wavelength_nm) and np.array_equal(self.spectral_dist, other.spectral_dist)
@@ -332,7 +344,7 @@ class BaseObject:
         Returns a string representation of the object.
 
         Returns:
-            A formatted string showing class name, wavelength array, and spectral distribution.
+        - A formatted string showing class name, wavelength array, and spectral distribution.
         """
         output = f'{self.__class__.__name__}('
         output += f'\n\twavelength_nm = [{repr_generator(self.wavelength_nm, is_int=True)}],'
@@ -398,7 +410,7 @@ class Cube(BaseObject):
         Brings the spatial resolution of the cube to approximately match the number of pixels.
 
         Args:
-            pixels_limit: Target maximum number of pixels in the output.
+        - pixels_limit: Target maximum number of pixels in the output.
         """
         output = deepcopy(self)
         output.spectral_dist, output.covariance_matrix = \

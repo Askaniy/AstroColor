@@ -8,6 +8,70 @@ from .errors import UnsupportedDimensionError
 
 # ------------ Core Section ------------
 
+def get_extremal_grid_endpoints(
+    requested_grid: npt.ArrayLike,
+    upper_limit: int
+) -> tuple[int | float, int | float]:
+    """
+    Grid generation pipeline.
+    Getting the minimum and maximum values of an untrusted array.
+
+    Args:
+    - requested_wavelengths: Array-like object containing wavelength values.
+
+    Returns:
+    - Tuple of (v_min, v_max) clamped to [0, upper_limit].
+    """
+    if isinstance(requested_grid, np.ndarray):
+        v_min = requested_grid.min()
+        v_max = requested_grid.max()
+    else:
+        v_min = np.min(requested_grid)
+        v_max = np.max(requested_grid)
+    v_min = max(v_min, 0)
+    v_max = min(v_max, upper_limit)
+    return v_min, v_max
+
+def grid_endpoints_preprocessing(
+    start: int | float,
+    end: int | float,
+    step: int
+) -> tuple[int, int]:
+    """
+    Maps the endpoints to a standard grid.
+
+    Args:
+    - start: Start value.
+    - end: End value.
+
+    Returns:
+    - Tuple of (start, end) as integers after preprocessing.
+    """
+    if (shift := start % step) != 0:
+        start += step - shift
+    if end % step == 0:
+        end += step # to include the last point
+    return int(start), int(end)
+
+def uniform_grid(
+    start: int | float,
+    end: int | float,
+    step: int,
+    dtype: npt.DTypeLike
+) -> npt.NDArray:
+    """
+    Creates a uniform grid array with the points being multiples of the grid step (endpoints included).
+
+    Args:
+    - start: Start value.
+    - end: End value.
+
+    Returns:
+    - Array of int values on a uniform grid.
+    """
+    start, end = grid_endpoints_preprocessing(start, end, step)
+    return np.arange(start, end, step, dtype=dtype)
+
 def integrate(
     array: npt.NDArray,
     step: int | float,

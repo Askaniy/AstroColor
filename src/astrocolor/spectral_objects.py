@@ -4,8 +4,8 @@ from collections.abc import Callable
 from typing import cast, Self, Any
 from copy import deepcopy
 
-from .auxiliary import integrate, stretch, interpolate, extrapolating, spectral_binning, spectral_downscaling
-from .core import BaseObject, Item, Set, Cube
+from .auxiliary import wavelength_grid, grid_endpoints_preprocessing, integrate, stretch, interpolate, extrapolating, spectral_binning, spectral_downscaling
+from .core import BaseObject, Item, Set, Cube, spectral_dist_dtype, nm_red_limit, nm_step
 # No dependency on .photospectral_objects to avoid cycle!
 from .errors import UnsupportedDimensionError, InconsistentDimensionError, \
     InconsistentAxesError, InconsistentUncertaintySizeError, InconsistentUncertaintyShapeError, \
@@ -47,7 +47,7 @@ class SpectralObject(BaseObject):
         """
         self.name = name
         # Spatial axis check
-        spectral_dist = np.array(spectral_dist, dtype=self._spectral_dist_dtype)
+        spectral_dist = np.array(spectral_dist, dtype=spectral_dist_dtype)
         if self.ndim != spectral_dist.ndim:
             raise InconsistentDimensionError(self.ndim, spectral_dist.ndim, name)
         if np.any(np.isnan(spectral_dist)):
@@ -61,7 +61,7 @@ class SpectralObject(BaseObject):
         if self.ignore_uncertainty_forCubes and self.ndim == 3:
             uncertainty = None
         if uncertainty is not None:
-            uncertainty = np.array(uncertainty, dtype=self._spectral_dist_dtype)
+            uncertainty = np.array(uncertainty, dtype=spectral_dist_dtype)
         if uncertainty is not None and (len_error := len(uncertainty)) != len_values:
             raise InconsistentUncertaintySizeError(len_error, len_values, name)
         is_cov_matrix = None # flag to switch between standard deviation and covariance matrix
@@ -80,8 +80,8 @@ class SpectralObject(BaseObject):
             if uncertainty is not None:
                 uncertainty = uncertainty[order]
         # Red limit check
-        if wavelength_nm[-1] > self.nm_red_limit:
-            mask = np.where(wavelength_nm < self.nm_red_limit + self.nm_step) # with reserve to be averaged
+        if wavelength_nm[-1] > nm_red_limit:
+            mask = np.where(wavelength_nm < nm_red_limit + nm_step) # with reserve to be averaged
             wavelength_nm = wavelength_nm[mask]
             spectral_dist = spectral_dist[mask]
             if uncertainty is not None:
@@ -112,18 +112,18 @@ class SpectralObject(BaseObject):
             self.covariance_matrix = spectral_lines_sum.covariance_matrix
         else:
             # Spectral grid check to be a uniform 5 nm grid
-            if np.any((diff := np.diff(wavelength_nm)) != self.nm_step) or wavelength_nm[0] % self.nm_step != 0:
+            if np.any((diff := np.diff(wavelength_nm)) != nm_step) or wavelength_nm[0] % nm_step != 0:
                 if uncertainty is not None and is_cov_matrix:
                     erasing_correlations_warning(name)
                     uncertainty = np.sqrt(np.diag(uncertainty, axis=0))
                     is_cov_matrix = False
-                nm_uniform = self._grid(wavelength_nm[0], wavelength_nm[-1])
+                nm_uniform = self._uniform_grid(wavelength_nm[0], wavelength_nm[-1])
                 if diff.mean() >= self.nm_step:
                     # Option 1: loose spectral grid, increasing resolution
-                    spectral_dist = interpolate(wavelength_nm, spectral_dist, nm_uniform, self.nm_step)
+                    spectral_dist = interpolate(wavelength_nm, spectral_dist, nm_uniform, nm_step)
                     if uncertainty is not None:
-                        uncertainty = interpolate(wavelength_nm, uncertainty, nm_uniform, self.nm_step)
-                elif wavelength_nm[-1] - wavelength_nm[0] < 2 * self.nm_step:
+                        uncertainty = interpolate(wavelength_nm, uncertainty, nm_uniform, nm_step)
+                elif wavelength_nm[-1] - wavelength_nm[0] < 2 * nm_step:
                     # Option 2: a very narrow spectrum
                     template = self.monochromatic(np.average(wavelength_nm, weights=spectral_dist))
                     nm_uniform = template.wavelength_nm
@@ -132,12 +132,12 @@ class SpectralObject(BaseObject):
                     if uncertainty is not None:
                         # Problem 4
                         template.covariance_matrix *= np.sum(0.5 * (uncertainty[:-1] + uncertainty[1:]) * diff, axis=0)**2
-                elif diff.max() < self.nm_step:
+                elif diff.max() < nm_step:
                     # Option 3: dense spectral grid -> flux-conserving binning cumulative-integral (CDF) method
-                    spectral_dist, uncertainty = spectral_binning(wavelength_nm, spectral_dist, uncertainty, nm_uniform, self.nm_step, diff)
+                    spectral_dist, uncertainty = spectral_binning(wavelength_nm, spectral_dist, uncertainty, nm_uniform, nm_step, diff)
                 else:
                     # Option 4: dense spectral grid with gaps -> convolution with variable core
-                    spectral_dist, uncertainty = spectral_downscaling(wavelength_nm, spectral_dist, uncertainty, nm_uniform, self.nm_step)
+                    spectral_dist, uncertainty = spectral_downscaling(wavelength_nm, spectral_dist, uncertainty, nm_uniform, nm_step)
                 wavelength_nm = nm_uniform
             self.wavelength_nm = wavelength_nm
             self.spectral_dist = spectral_dist
@@ -191,7 +191,7 @@ class SpectralObject(BaseObject):
                 # Problem 1
                 cov_matrix[1,1] = standard_deviation * standard_deviation
         # Normalization
-        br = np.array(br, dtype=cls._spectral_dist_dtype) / cls.nm_step
+        br = np.array(br, dtype=spectral_dist_dtype) / nm_step
         # Expending spatial dimension if needed (not tested!)
         match cls.ndim:
             case 1:  # Single spectrum — no spatial expansion
@@ -213,7 +213,7 @@ class SpectralObject(BaseObject):
         Integrates the SpectralObject along the spectral axis.
         Uses the rectangle method to match with matrix multiplication used for the spectral reconstruction.
         """
-        return integrate(self.spectral_dist, self.nm_step, precisely=False)
+        return integrate(self.spectral_dist, nm_step, precisely=False)
 
     def normalize(self) -> Self:
         """ Returns a new SpectralObject with each spectrum divided by its area """
@@ -282,7 +282,7 @@ class SpectralObject(BaseObject):
         end: int | float
     ) -> npt.NDArray[np.floating]:
         """ Returns standard deviation values over a range of wavelengths (endpoints included) """
-        start, end = self._grid_endpoints_preprocessing(start, end)
+        start, end = grid_endpoints_preprocessing(start, end, nm_step)
         mask = (self.wavelength_nm >= start) & (self.wavelength_nm < end)
         intersection = self.spectral_dist[mask]
         if len(intersection) == 0:
@@ -298,7 +298,7 @@ class SpectralObject(BaseObject):
         if self.covariance_matrix is None:
             return None
         else:
-            start, end = self._grid_endpoints_preprocessing(start, end)
+            start, end = grid_endpoints_preprocessing(start, end, nm_step)
             slice_indices = np.where((self.wavelength_nm >= start) & (self.wavelength_nm < end))[0]
             if len(slice_indices) == 0:
                 empty_spectral_intersection_warning(self.wavelength_nm[0], self.wavelength_nm[-1], start, end)
@@ -313,7 +313,7 @@ class SpectralObject(BaseObject):
         if self.covariance_matrix is not None:
             erasing_correlations_warning(self.name)
             std = np.sqrt(np.diag(self.covariance_matrix, axis=0))
-        nm, br, std = extrapolating(self.wavelength_nm, self.spectral_dist, std, requested_wavelengths, self.nm_step)
+        nm, br, std = extrapolating(self.wavelength_nm, self.spectral_dist, std, requested_wavelengths, nm_step)
         extrapolated = deepcopy(self)
         extrapolated.wavelength_nm = nm
         extrapolated.spectral_dist = br
@@ -353,7 +353,7 @@ class SpectralObject(BaseObject):
                 value2 = other.get_spectral_dist_at_wavelengths(start, end)
                 value = value_handling(value1, value2)
                 error = error_handling(value1, self.get_covariance_matrix_at_wavelengths(start, end), value2, other.get_covariance_matrix_at_wavelengths(start, end))
-                return higher_dim.__class__(self._grid(start, end), value, error, name=higher_dim.name)
+                return higher_dim.__class__(self._uniform_grid(start, end), value, error, name=higher_dim.name)
         else:
             return NotImplemented
 
@@ -379,7 +379,7 @@ class Spectrum(SpectralObject, Item):
         is_single_point = spectrum.spectral_size == 1 # Handle stub objects
         if spectrum.spectral_dist[0] != 0:
             # Case of no zero on the left edge, adding
-            spectrum.wavelength_nm = np.append(spectrum.wavelength_nm[0]-self.nm_step, spectrum.wavelength_nm)
+            spectrum.wavelength_nm = np.append(spectrum.wavelength_nm[0]-nm_step, spectrum.wavelength_nm)
             spectrum.spectral_dist = np.append(0., spectrum.spectral_dist)
         elif not is_single_point and spectrum.spectral_dist[1] == 0:
             # Case two or more zeroes on the left edge, clipping
@@ -392,7 +392,7 @@ class Spectrum(SpectralObject, Item):
             spectrum.spectral_dist = spectrum.spectral_dist[index:]
         if spectrum.spectral_dist[-1] != 0:
             # Case of no zero on the right edge, adding
-            spectrum.wavelength_nm = np.append(spectrum.wavelength_nm, spectrum.wavelength_nm[-1]+self.nm_step)
+            spectrum.wavelength_nm = np.append(spectrum.wavelength_nm, spectrum.wavelength_nm[-1]+nm_step)
             spectrum.spectral_dist = np.append(spectrum.spectral_dist, 0.)
         elif not is_single_point and spectrum.spectral_dist[-2] == 0:
             # Case two or more zeroes on the right edge, clipping
