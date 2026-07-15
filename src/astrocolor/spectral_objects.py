@@ -189,11 +189,13 @@ class SpectralObject(BaseObject):
             if standard_deviation is not None:
                 cov_matrix = np.zeros((4, 4))
                 # Problem 1
-                cov_matrix[1:2,1:2] = standard_deviation * standard_deviation
+                cov_matrix[1,1] = standard_deviation * standard_deviation
         # Normalization
         br = np.array(br, dtype=cls._spectral_dist_dtype) / cls.nm_step
         # Expending spatial dimension if needed (not tested!)
         match cls.ndim:
+            case 1:  # Single spectrum — no spatial expansion
+                pass
             case 2:
                 br = np.expand_dims(br, axis=1)
                 if cov_matrix is not None:
@@ -374,11 +376,12 @@ class Spectrum(SpectralObject, Item):
         The function also removes extra zeros on the edges, if there are any.
         """
         spectrum = deepcopy(self)
+        is_single_point = spectrum.spectral_size == 1 # Handle stub objects
         if spectrum.spectral_dist[0] != 0:
             # Case of no zero on the left edge, adding
             spectrum.wavelength_nm = np.append(spectrum.wavelength_nm[0]-self.nm_step, spectrum.wavelength_nm)
             spectrum.spectral_dist = np.append(0., spectrum.spectral_dist)
-        elif spectrum.spectral_dist[1] == 0:
+        elif not is_single_point and spectrum.spectral_dist[1] == 0:
             # Case two or more zeroes on the left edge, clipping
             index = 2
             for i in range(2, spectrum.spectral_size):
@@ -391,7 +394,7 @@ class Spectrum(SpectralObject, Item):
             # Case of no zero on the right edge, adding
             spectrum.wavelength_nm = np.append(spectrum.wavelength_nm, spectrum.wavelength_nm[-1]+self.nm_step)
             spectrum.spectral_dist = np.append(spectrum.spectral_dist, 0.)
-        elif spectrum.spectral_dist[-2] == 0:
+        elif not is_single_point and spectrum.spectral_dist[-2] == 0:
             # Case two or more zeroes on the right edge, clipping
             index = -3
             for i in range(-3, -spectrum.spectral_size, -1):
