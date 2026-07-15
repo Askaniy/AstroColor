@@ -1,7 +1,7 @@
 from copy import deepcopy
 import numpy as np
 import numpy.typing as npt
-from typing import Any, Final
+from typing import Any, Final, Sequence
 from functools import lru_cache
 
 from .spectral_objects import Spectrum, SpectralSet
@@ -41,6 +41,11 @@ class Filter(Spectrum):
         spectral_dist     – normalized transmission profile
         covariance_matrix – always `None`
         name              – human-readable identifier
+
+    Example:
+        >>> b = Filter.get('Generic_Bessell.B')
+        >>> v = Filter.get('Generic_Bessell.V')
+        >>> bv = b | v  # -> FilterSet containing B and V filters
     """
 
     # Class-level sentinel
@@ -50,11 +55,13 @@ class Filter(Spectrum):
         self,
         wavelength_nm: npt.ArrayLike,
         spectral_dist: npt.ArrayLike,
+        uncertainty: None = None,
         name: Any = None,
     ) -> None:
         """
         Creates a :class:`Filter` from arrays of wavelength and transmission profile.
         Performs checks for data type and uniformity; interpolates and extrapolates if it is needed.
+        An uncertainty cannot be assigned.
 
         Args:
         - `wavelength_nm` (ArrayLike): list of wavelengths in nanometers on an arbitrary grid
@@ -62,9 +69,9 @@ class Filter(Spectrum):
         - `name` (Any): human-readable identifier
         """
         spectrum = Spectrum(wavelength_nm, spectral_dist, name=name)
-        self.from_spectrum(spectrum)
+        self.from_spectral_data(spectrum)
 
-    def from_spectrum(self, spectrum: Spectrum) -> 'Filter':
+    def from_spectral_data(self, spectrum: Spectrum) -> 'Filter':
         """ Create a :class:`Filter` from an arbitrary :class:`Spectrum`. """
         spectrum = spectrum.edges_zeroed().normalize()
         self.wavelength_nm = spectrum.wavelength_nm
@@ -76,6 +83,26 @@ class Filter(Spectrum):
     def get(filter_id: str) -> 'Filter':
         """ Use Spanish Virtual Observatory filter ID to create a :class:`Filter` object. """
         return deepcopy(_cached_get(filter_id))
+
+    def __or__(self, other: Any) -> 'FilterSet':
+        """
+        Combine this `Filter` with another `Filter` or `FilterSet` into a new `FilterSet`.
+
+        Supports:
+            - `Filter | Filter` → `FilterSet`
+            - `Filter | FilterSet` → `FilterSet`
+        """
+        if isinstance(other, Filter | FilterSet):
+            return _combine_filters(self, other)
+        else:
+            return NotImplemented
+
+    def __ror__(self, other: Any) -> 'FilterSet':
+        """ Support `FilterSet | Filter` by delegating to `__or__`. """
+        if isinstance(other, (Filter, FilterSet)):
+            return other.__or__(self)
+        else:
+            return NotImplemented
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -93,32 +120,40 @@ class FilterSet(SpectralSet):
 
     Example:
         >>> bvr = FilterSet.get('Generic_Bessell.B', 'Generic_Bessell.V', 'Generic_Bessell.R')
+        >>> bv = Filter.get('Generic_Bessell.B') | Filter.get('Generic_Bessell.V')  # -> FilterSet
+        >>> bvr = bv | Filter.get('Generic_Bessell.R')  # -> FilterSet
     """
 
     # Class-level sentinel
     covariance_matrix: Final[None] = None
 
-    def __init__(self, *filters: Filter) -> None:
+    def __init__(
+        self,
+        wavelength_nm: npt.ArrayLike,
+        spectral_dist: npt.ArrayLike,
+        uncertainty: None = None,
+        name: Any = None,
+    ) -> None:
         """
-        Creates a :class:`FilterSet` from set of :class:`Filter` objects.
-        Combines spectral axes into a single interval and combines transmission data into a single array.
+        Creates a :class:`FilterSet` from arrays of wavelength and transmission profile.
+        Performs checks for data type and uniformity; interpolates and extrapolates if it is needed.
+        An uncertainty cannot be assigned.
+
+        Args:
+        - `wavelength_nm` (ArrayLike): combined spectral axis in nanometers on an arbitrary grid
+        - `spectral_dist` (ArrayLike): transmission profile
+        - `name` (Any): list of filter names or a human-readable identifier
         """
-        # Getting the wavelength info and filter names
-        names = []
-        nm_min = np.inf
-        nm_max = 0.
-        for profile in filters:
-            names.append(profile.name)
-            nm_min = min(nm_min, profile.wavelength_nm[0])
-            nm_max = max(nm_max, profile.wavelength_nm[-1])
-        # Naming
-        self.name: tuple[Any, ...] = tuple(names)
-        # Matrix packing
-        self.wavelength_nm = self._grid(nm_min, nm_max)
-        self.spectral_dist = np.zeros((len(self.wavelength_nm), len(filters)), dtype=self._spectral_dist_dtype)
-        for i, profile in enumerate(filters):
-            mask = (self.wavelength_nm >= profile.wavelength_nm[0]) & (self.wavelength_nm <= profile.wavelength_nm[-1])
-            self.spectral_dist[mask, i] = profile.spectral_dist
+        spectral_set = SpectralSet(wavelength_nm, spectral_dist, name=name)
+        self.from_spectral_data(spectral_set)
+
+    def from_spectral_data(self, spectral_set: SpectralSet) -> 'FilterSet':
+        """ Create a :class:`FilterSet` from an arbitrary :class:`SpectralSet`. """
+        spectral_set = spectral_set.edges_zeroed().normalize()
+        self.wavelength_nm = spectral_set.wavelength_nm
+        self.spectral_dist = spectral_set.spectral_dist
+        self.name = spectral_set.name
+        return self
 
     @staticmethod
     def get(*filter_ids: str) -> 'FilterSet':
@@ -128,7 +163,51 @@ class FilterSet(SpectralSet):
         filters = []
         for filter_id in filter_ids:
             filters.append(Filter.get(filter_id))
-        return FilterSet(*filters)
+        return FilterSet.from_filters(filters)
+
+    @staticmethod
+    def from_filters(filters: Sequence[Filter]) -> 'FilterSet':
+        """
+        Helper to build a `FilterSet` from a list of filters.
+        Combines spectral axes into a single interval and packs transmissions.
+        """
+        # Getting the wavelength info and filter names
+        names = []
+        nm_min = np.inf
+        nm_max = 0.
+        for profile in filters:
+            names.append(profile.name)
+            nm_min = min(nm_min, float(profile.wavelength_nm[0]))
+            nm_max = max(nm_max, float(profile.wavelength_nm[-1]))
+        # Naming
+        name: tuple[Any, ...] = tuple(names)
+        # Matrix packing
+        wavelength_nm = self._grid(nm_min, nm_max)
+        spectral_dist = np.zeros((len(wavelength_nm), len(filters)), dtype=np.float64)
+        for i, profile in enumerate(filters):
+            mask = (wavelength_nm >= int(profile.wavelength_nm[0])) & (wavelength_nm <= int(profile.wavelength_nm[-1]))
+            spectral_dist[mask, i] = profile.spectral_dist
+        return FilterSet(wavelength_nm, spectral_dist, name=name)
+
+    def __or__(self, other: Any) -> 'FilterSet':
+        """
+        Combine this `FilterSet` with another `Filter` or `FilterSet` into a new `FilterSet`.
+
+        Supports:
+            - `FilterSet | Filter` → `FilterSet`
+            - `FilterSet | FilterSet` → `FilterSet`
+        """
+        if isinstance(other, Filter | FilterSet):
+            return _combine_filters(self, other)
+        else:
+            return NotImplemented
+
+    def __ror__(self, other: Any) -> 'FilterSet':
+        """ Support `Filter | FilterSet` by delegating to `__or__`. """
+        if isinstance(other, (Filter, FilterSet)):
+            return other.__or__(self)
+        else:
+            return NotImplemented
 
     @property
     def matrix(self) -> npt.NDArray[np.floating]:
@@ -158,3 +237,31 @@ class FilterSet(SpectralSet):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
+
+
+def _combine_filters(
+    base: Filter | FilterSet,
+    other: Filter | FilterSet,
+) -> 'FilterSet':
+    """
+    Combine a :class:`Filter` or :class:`FilterSet` with another :class:`Filter` or :class:`FilterSet`.
+    Used by both Filter and FilterSet in union operator `__or__`.
+    """
+    filters = []
+    # Populating combined filter list using the base other
+    if isinstance(base, Filter):
+        filters.append(base)
+    elif isinstance(base, FilterSet):
+        for i in range(len(base)):
+            filters.append(base[i])
+    else:
+        raise TypeError(f'Cannot combine {type(base).__name__} with a filter object')
+    # Populating combined filter list using the other object
+    if isinstance(other, Filter):
+        filters.append(other)
+    elif isinstance(other, FilterSet):
+        for i in range(len(other)):
+            filters.append(other[i])
+    else:
+        raise TypeError(f'Cannot combine a filter object with {type(other).__name__}')
+    return FilterSet.from_filters(filters)
