@@ -1,6 +1,10 @@
 import numpy as np
+import pytest
 import astrocolor as ac
 from astrocolor.auxiliary import (
+    repr_generator,
+    repr_generator_1D,
+    repr_generator_2D,
     linear_interp,
     spectral_binning,
     parse_value_std
@@ -207,3 +211,113 @@ class TestExtrapolation():
             photospectrum.determine_at_wavelengths(ac.visible_range, strictly=True).spectral_dist,
             np.ones(ac.visible_range.size),
         )
+
+
+class TestReprGenerator1D():
+    """ Tests for the repr_generator_1D function. """
+
+    def test_int(self):
+        arr = np.array([42])
+        result = repr_generator_1D(arr)
+        assert result == '[42]'
+
+    def test_float(self):
+        arr = np.array([42.])
+        assert repr_generator_1D(arr) == '[42.000]'
+
+    def test_two_elements(self):
+        arr = np.array([0.5, 3.7])
+        result = repr_generator_1D(arr)
+        expected = '[0.500, 3.700]'
+        assert result == expected
+
+    def test_three_elements(self):
+        arr = np.array([1.23456, -0.98765, 0.0])
+        result = repr_generator_1D(arr)
+        assert len(result.split(', ')) == 3
+        assert result.startswith('[') and result.endswith(']')
+
+    def test_four_elements(self):
+        arr = np.array([42.7, -99.3, 55.1, 8])
+        result = repr_generator_1D(arr)
+        expected = '[42.700, -99.300, ..., 8.000]'
+        assert result == expected
+
+    def test_int_many_elements(self):
+        arr = np.array([1, -2, 3, 4, -5])
+        result = repr_generator_1D(arr)
+        expected = '[1, -2, ..., -5]'
+        assert result == expected
+
+    def test_dimensional_error(self):
+        arr_2d = np.array([[1, 2], [3, 4]])
+        with pytest.raises(ValueError, match='must be 1D'):
+            repr_generator_1D(arr_2d)
+
+
+class TestReprGenerator2D():
+    """ Tests for the repr_generator_2D function. """
+
+    def test_single_row(self):
+        arr = np.array([[1, 2, 3]])
+        result = repr_generator_2D(arr)
+        assert result.replace('\n', '') == '[[1, 2, 3]]'
+
+    def test_two_rows(self):
+        arr = np.array([[1.0, 2.0], [3.0, 4.0]])
+        result = repr_generator_2D(arr)
+        lines = result.strip('[]\n').split('\n')
+        assert len(lines) == 2
+        # Each line should be a valid 1D representation
+        for i in range(2):
+            np.testing.assert_allclose(
+                [float(x) for x in lines[i].strip().replace('[', '').replace(']', '').split(',')],
+                arr[i, :]
+            )
+
+    def test_three_rows(self):
+        arr = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+        result = repr_generator_2D(arr)
+        lines = result.strip('[]\n').split('\n')
+        assert len(lines) == 3
+
+    def test_four_rows(self):
+        arr = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
+        result = repr_generator_2D(arr)
+        expected = '[\n\t[1.000, 2.000]\n\t[3.000, 4.000]\n\t...\n\t[7.000, 8.000]\n]'
+        assert result == expected
+
+    def test_dimensional_error(self):
+        arr_1d = np.array([1, 2, 3])
+        with pytest.raises(ValueError, match='must be 2D'):
+            repr_generator_2D(arr_1d)
+
+
+class TestReprGenerator():
+    """ Tests for the main repr_generator dispatching function. """
+
+    def test_dispatches_to_1d(self):
+        arr = np.array([0.5, 1.5])
+        result = repr_generator(arr)
+        assert '0' in result and '.' not in result.split('[')[-1].split(',')[0] or '.500' in result
+
+    def test_dispatches_to_2d(self):
+        arr = np.array([[0.5, 1.5], [2.5, 3.5]])
+        result = repr_generator(arr)
+        assert '\n' in result
+
+    def test_other_dimensions_returns_generic(self):
+        arr_3d = np.ones((2, 3, 4))
+        result = repr_generator(arr_3d)
+        assert '[3-dimensional array]' == result
+
+    def test_empty_1d_array(self):
+        arr = np.array([])
+        result = repr_generator(arr)
+        assert result == '[]'
+
+    def test_single_element_2d(self):
+        arr = np.array([[42]])
+        result = repr_generator(arr)
+        expected = '[\n[42]\n]'
+        assert result == expected

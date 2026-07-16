@@ -339,22 +339,42 @@ class BaseObject:
             return np.array_equal(self.wavelength_nm, other.wavelength_nm) and np.array_equal(self.spectral_dist, other.spectral_dist)
         return False
 
+    def _generate_repr_config(self) -> dict[str, str]:
+        """ Generates default configuration for string representation in __repr__() """
+        # Name preparation
+        if isinstance(self.name, str):
+            name_str = f"'{self.name}'"
+        else:
+            name_str = str(self.name)
+        shape_str = f'{self.spectral_size} spectral'
+        # Shape preparation
+        if len(self.spatial_shape) != 0:
+            if len(self.spatial_shape) == 1:
+                spatial_info = self.spatial_shape[0]
+            else:
+                spatial_info = str(self.spatial_shape).replace(', ', ' × ')
+            shape_str += f' × {spatial_info} spatial'
+        # Create configuration
+        repr_config = {
+            'name': name_str,
+            'shape': shape_str,
+            'wavelength_nm': repr_generator(self.wavelength_nm),
+            'spectral_dist': repr_generator(self.spectral_dist),
+        }
+        return repr_config
+
     def __repr__(self) -> str:
         """
         Returns a string representation of the object.
-
-        Returns:
-        - A formatted string showing class name, wavelength array, and spectral distribution.
+        The string is formatted based on the `_generate_repr_config`, unique for different classes.
         """
+        repr_config = self._generate_repr_config()
         output = f'{self.__class__.__name__}('
-        output += f'\n\twavelength_nm = [{repr_generator(self.wavelength_nm, is_int=True)}],'
-        if self.ndim == 1:
-            output += f'\n\tspectral_dist = [{repr_generator(self.spectral_dist)}], '
-        elif self.ndim == 2:
-            if self.spatial_shape[0] == 1:
-                output += f'\n\tspectral_dist = [[{self.spectral_dist[0]:.3f}, {self.spectral_dist[1]:.3f}, ..., {self.spectral_dist[-1]:.3f}]],'
-        return output + '\n)'
-
+        for key, value in repr_config.items():
+            output += f'\n\t{key} = {value.replace("\n", "\n\t")},'
+        output = output[:-1] # removing the last comma
+        output += '\n)'
+        return output
 
 
 class Item(BaseObject):

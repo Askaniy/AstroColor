@@ -752,19 +752,49 @@ def calc_redshift_exp(
     return np.exp(v) - 1
 
 
-def repr_generator(
-    arr_1D: npt.NDArray,
-    is_int: bool = False
-) -> str:
-    format = '' if is_int else '.3f'
-    match len(arr_1D):
-        case 0:
-            return ''
+# === String representation functions ===
+
+def repr_value(value: int | float, is_int: bool):
+    """ Helper function to format numpy elements for string representation """
+    return str(int(value)) if is_int else f'{value:.3f}'
+
+def repr_generator_1D(arr: npt.NDArray) -> str:
+    """ Generates a string representation for a 1-dimensional array. """
+    if arr.ndim != 1:
+        raise ValueError(f'The input array must be 1D, not {arr.ndim}D')
+    output = ''
+    shape = len(arr)
+    is_int = np.issubdtype(arr.dtype, np.integer)
+    if 1 <= shape <= 3:
+        output = ', '.join([repr_value(v, is_int) for v in arr])
+    elif shape >= 4:
+        first_val = repr_value(arr[0], is_int)
+        second_val = repr_value(arr[1], is_int)
+        last_val = repr_value(arr[-1], is_int)
+        output = f'{first_val}, {second_val}, ..., {last_val}'
+    return '[' + output + ']'
+
+def repr_generator_2D(arr: npt.NDArray) -> str:
+    """ Generates a string representation for a 2-dimensional array. """
+    if arr.ndim != 2:
+        raise ValueError(f'The input array must be 2D, not {arr.ndim}D')
+    shape = arr.shape[0]
+    output = ''
+    if 1 <= shape <= 3:
+        output = '\n\t'.join([repr_generator_1D(arr[i,:]) for i in range(shape)])
+    elif shape >= 4:
+        first_row = repr_generator_1D(arr[0,:])
+        second_row = repr_generator_1D(arr[1,:])
+        last_row = repr_generator_1D(arr[-1,:])
+        output = f'\t{first_row}\n\t{second_row}\n\t...\n\t{last_row}'
+    return '[\n' + output + '\n]'
+
+def repr_generator(arr: npt.NDArray) -> str:
+    """ Generates string representations of arrays for display purposes. """
+    match arr.ndim:
         case 1:
-            return f'{arr_1D[0]:{format}}'
+            return repr_generator_1D(arr)
         case 2:
-            return f'{arr_1D[0]:{format}}, {arr_1D[1]:{format}}'
-        case 3:
-            return f'{arr_1D[0]:{format}}, {arr_1D[1]:{format}}, {arr_1D[2]:{format}}'
+            return repr_generator_2D(arr)
         case _:
-            return f'{arr_1D[0]:{format}}, {arr_1D[1]:{format}}, ..., {arr_1D[-1]:{format}}'
+            return f'[{arr.ndim}-dimensional array]'

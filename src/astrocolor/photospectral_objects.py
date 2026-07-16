@@ -111,9 +111,6 @@ class PhotospectralObject(BaseObject):
         res = spectral_reconstruction(self, requested_wavelengths)
         return res
 
-    # To check:
-    # Spectrum * Photospectrum = Spectrum
-    # Photospectrum * Spectrum = Spectrum
     def _apply_element_wise_operation(
         self,
         operand: 'BaseObject',
@@ -137,6 +134,20 @@ class PhotospectralObject(BaseObject):
         error = error_handling(self.spectral_dist, self.covariance_matrix, operand.spectral_dist, operand.covariance_matrix)
         higher_dim = (self, operand)[self.ndim < operand.ndim]
         return higher_dim.__class__(filter_set, value, error, name=higher_dim.name)
+
+    def _generate_repr_config(self) -> dict[str, str]:
+        """
+        Generates configuration for string representation in __repr__().
+        Replaces `wavelength_nm` with information about `FilterSet`.
+        """
+        old_repr_config = super()._generate_repr_config()
+        new_repr_config = {}
+        for key in old_repr_config:
+            if key == 'wavelength_nm':
+                new_repr_config['filter_set'] = self.filter_set.__repr__().replace('\n', '\n\t')
+            else:
+                new_repr_config[key] = old_repr_config[key]
+        return new_repr_config
 
 
 
