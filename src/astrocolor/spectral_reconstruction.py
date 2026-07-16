@@ -169,7 +169,7 @@ def spectral_reconstruction(
         br1 = solve(right_matrix, left_vector) # x1.5 faster than np.linalg.inv(A) @ b
         if photospectral_obj.ndim == 3:
             # Reshape spectral cube back from square
-            br1 = br1.reshape(-1, *photospectral_obj.spectral_dist.shape[1:])
+            br1 = br1.reshape(-1, *photospectral_obj.spatial_shape)
         if photospectral_obj.ndim == 1 and br1.min() < 0:
             # To avoid negative spectra, a lower bound is set and iterative
             # optimization is performed using quadratic programming methods.

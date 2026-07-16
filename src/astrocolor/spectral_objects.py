@@ -4,8 +4,8 @@ from collections.abc import Callable
 from typing import cast, Self, Any
 from copy import deepcopy
 
-from .auxiliary import wavelength_grid, grid_endpoints_preprocessing, integrate, stretch, interpolate, extrapolating, spectral_binning, spectral_downscaling
-from .core import BaseObject, Item, Set, Cube, spectral_dist_dtype, nm_red_limit, nm_step
+from .auxiliary import grid_endpoints_preprocessing, integrate, stretch, interpolate, extrapolating, spectral_binning, spectral_downscaling
+from .core import BaseObject, Item, Set, Cube, nm_step, wavelength_nm_dtype, spectral_dist_dtype, nm_red_limit
 # No dependency on .photospectral_objects to avoid cycle!
 from .errors import UnsupportedDimensionError, InconsistentDimensionError, \
     InconsistentAxesError, InconsistentUncertaintySizeError, InconsistentUncertaintyShapeError, \
@@ -234,7 +234,7 @@ class SpectralObject(BaseObject):
         scale_factors = 1 / self.wavelength_nm**2
         return (self / scale_factors).normalize()
 
-    def mean_spectrum(self) -> Self:
+    def mean_spectrum(self) -> 'Spectrum':
         """ Returns the mean spectrum along the spatial axes """
         # TODO: add cov matrix
         match self.ndim:
@@ -248,7 +248,7 @@ class SpectralObject(BaseObject):
                 raise UnsupportedDimensionError(self.name)
         return Spectrum(self.wavelength_nm, br, name=self.name)
 
-    def median_spectrum(self) -> Self:
+    def median_spectrum(self) -> 'Spectrum':
         """ Returns the median spectrum along the spatial axes """
         match self.ndim:
             case 1:
@@ -320,7 +320,57 @@ class SpectralObject(BaseObject):
         extrapolated.covariance_matrix = np.diag(std**2) if std is not None else None
         return extrapolated
 
-    def is_edges_zeroed(self) -> bool:
+    def edges_to_zero(self) -> Self:
+        """
+        Returns a new SpectralObject with zero brightness at the spectral edges.
+        Recommended for use with filters: improves the integral and the profile graph.
+
+        Works for 1D (Spectrum/Filter), 2D (SpectralSet/FilterSet) and 3D (SpectralCube) objects:
+        - If an edge has non-zero values at *any* spatial pixel, a zero point is added.
+        - If the first/last two spectral points are all zeros across every spatial pixel,
+          those extra leading/trailing zeros are trimmed back to one.
+        """
+        obj = deepcopy(self)
+        is_stub = obj.spectral_size == 1  # stub objects have a single spectral point
+        # - Left edge (index 0 along spectral axis)
+        if not np.all(obj.spectral_dist[0] == 0):
+            # No zero on the left edge at some spatial pixel -> prepend a zero point
+            new_wl = np.array([obj.wavelength_nm[0] - nm_step], dtype=wavelength_nm_dtype)
+            obj.wavelength_nm = np.concatenate((new_wl, obj.wavelength_nm))
+            zeros_left = np.zeros(obj.spatial_shape, dtype=wavelength_nm_dtype)
+            obj.spectral_dist = np.concatenate((zeros_left[np.newaxis], obj.spectral_dist), axis=0)
+        elif not is_stub and np.all(obj.spectral_dist[1] == 0):
+            # Consecutive zeros on the left -> trim back to exactly one
+            idx = None
+            for i in range(2, obj.spectral_size):
+                if not np.all(obj.spectral_dist[i] == 0):
+                    idx = i - 1
+                    break
+            if idx is not None:
+                obj.wavelength_nm = obj.wavelength_nm[idx:]
+                obj.spectral_dist = obj.spectral_dist[idx:]
+        # else: exactly one zero on the left — nothing to do
+        # - Right edge (index -1 along spectral axis)
+        if not np.all(obj.spectral_dist[-1] == 0):
+            # No zero on the right edge at some spatial pixel -> append a zero point
+            new_wl = np.array([obj.wavelength_nm[-1] + nm_step], dtype=wavelength_nm_dtype)
+            obj.wavelength_nm = np.concatenate((obj.wavelength_nm, new_wl))
+            zeros_right = np.zeros(obj.spatial_shape, dtype=wavelength_nm_dtype)
+            obj.spectral_dist = np.concatenate((obj.spectral_dist, zeros_right[np.newaxis]), axis=0)
+        elif not is_stub and np.all(obj.spectral_dist[-2] == 0):
+            # Consecutive zeros on the right -> trim back to exactly one
+            idx = None
+            for i in range(-3, -obj.spectral_size - 1, -1):
+                if not np.all(obj.spectral_dist[i] == 0):
+                    idx = i + 2
+                    break
+            if idx is not None:
+                obj.wavelength_nm = obj.wavelength_nm[:idx]
+                obj.spectral_dist = obj.spectral_dist[:idx]
+        # else: exactly one zero on the right -> nothing to do
+        return obj
+
+    def is_zero_edged(self) -> bool:
         """ Checks that the first and last brightness entries on the spectral axis are zero """
         return bool(np.all(self.spectral_dist[0] == 0) and np.all(self.spectral_dist[-1] == 0))
 
@@ -368,42 +418,6 @@ class Spectrum(SpectralObject, Item):
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (Any): human-readable identifier
     """
-
-    def edges_zeroed(self) -> 'Spectrum':
-        """
-        Returns a new Spectrum object with zero brightness to the edges added.
-        This is necessary to mitigate the consequences of abruptly cutting off filter profiles.
-        The function also removes extra zeros on the edges, if there are any.
-        """
-        spectrum = deepcopy(self)
-        is_single_point = spectrum.spectral_size == 1 # Handle stub objects
-        if spectrum.spectral_dist[0] != 0:
-            # Case of no zero on the left edge, adding
-            spectrum.wavelength_nm = np.append(spectrum.wavelength_nm[0]-nm_step, spectrum.wavelength_nm)
-            spectrum.spectral_dist = np.append(0., spectrum.spectral_dist)
-        elif not is_single_point and spectrum.spectral_dist[1] == 0:
-            # Case two or more zeroes on the left edge, clipping
-            index = 2
-            for i in range(2, spectrum.spectral_size):
-                if spectrum.spectral_dist[i] != 0:
-                    index = i - 1
-                    break
-            spectrum.wavelength_nm = spectrum.wavelength_nm[index:]
-            spectrum.spectral_dist = spectrum.spectral_dist[index:]
-        if spectrum.spectral_dist[-1] != 0:
-            # Case of no zero on the right edge, adding
-            spectrum.wavelength_nm = np.append(spectrum.wavelength_nm, spectrum.wavelength_nm[-1]+nm_step)
-            spectrum.spectral_dist = np.append(spectrum.spectral_dist, 0.)
-        elif not is_single_point and spectrum.spectral_dist[-2] == 0:
-            # Case two or more zeroes on the right edge, clipping
-            index = -3
-            for i in range(-3, -spectrum.spectral_size, -1):
-                if spectrum.spectral_dist[i] != 0:
-                    index = i + 2
-                    break
-            spectrum.wavelength_nm = spectrum.wavelength_nm[:index]
-            spectrum.spectral_dist = spectrum.spectral_dist[:index]
-        return spectrum
 
 
 class SpectralSet(SpectralObject, Set):

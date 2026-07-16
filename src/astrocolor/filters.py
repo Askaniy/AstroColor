@@ -77,7 +77,7 @@ class Filter(Spectrum):
 
     def from_spectral_data(self, spectrum: Spectrum) -> 'Filter':
         """ Create a :class:`Filter` from an arbitrary :class:`Spectrum`. """
-        spectrum = spectrum.edges_zeroed().normalize()
+        spectrum = spectrum.edges_to_zero().normalize()
         self.wavelength_nm = spectrum.wavelength_nm
         self.spectral_dist = spectrum.spectral_dist
         self.name = spectrum.name
@@ -155,7 +155,7 @@ class FilterSet(SpectralSet):
 
     def from_spectral_data(self, spectral_set: SpectralSet) -> 'FilterSet':
         """ Create a :class:`FilterSet` from an arbitrary :class:`SpectralSet`. """
-        spectral_set = spectral_set.edges_zeroed().normalize()
+        spectral_set = spectral_set.edges_to_zero().normalize()
         self.wavelength_nm = spectral_set.wavelength_nm
         self.spectral_dist = spectral_set.spectral_dist
         self.name = spectral_set.name

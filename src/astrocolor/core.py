@@ -30,8 +30,8 @@ from .errors import InconsistentAxesError, InconsistentUncertaintySizeError
 nm_step: Final[int] = 5  # nm
 
 # Wavelength and brightness axis storage data type
-wavelength_nm_dtype: Final = np.int32
-spectral_dist_dtype: Final = np.float64
+wavelength_nm_dtype: Final[npt.DTypeLike] = np.int32
+spectral_dist_dtype: Final[npt.DTypeLike] = np.float64
 
 # Maximum wavelength, the clipping level
 # It is important that there be no overflow when raising a number to the second power
