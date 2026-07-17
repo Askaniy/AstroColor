@@ -313,7 +313,7 @@ def smoothness_matrix(
         # Hight restriction
         return np.eye(n, dtype=np.uint8)
     else:
-        m = n - order
+        m = max(0, n - order)
         L = np.zeros((m, n), dtype=np.int8)
         # Note: int8 makes it ~2 times faster
         match order:

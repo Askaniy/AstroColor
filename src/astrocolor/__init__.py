@@ -6,7 +6,7 @@ from .spectral_reconstruction import (
     ReconstructedSpectralCube,
     spectral_reconstruction,
 )
-from .filters import Filter, FilterSet
+from .filter_objects import Filter, FilterSet
 from .convolution import observe, scale_spectrum
 from .color import ColorSystem, ColorPoint, ColorLine, ColorImage, visible_range
 from .physical_models import sun_CALSPEC, vega_CALSPEC, BlackBodyModel

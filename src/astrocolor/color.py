@@ -6,7 +6,7 @@ from typing import Self
 from .auxiliary import spatial_downscaling
 from .core import RealObject
 from .spectral_objects import Spectrum
-from .filters import FilterSet
+from .filter_objects import FilterSet
 from .physical_models import sun_CALSPEC, vega_CALSPEC
 from .convolution import observe
 

@@ -8,7 +8,7 @@ from .algebra import mul_error, mul_value
 from .core import Item, Set, Cube, RealObject
 from .spectral_objects import Spectrum
 from .photospectral_objects import Photospectrum, PhotospectralSet, PhotospectralCube
-from .filters import Filter, FilterSet
+from .filter_objects import Filter, FilterSet
 
 
 @overload

@@ -5,7 +5,7 @@ from typing import Self, Any, Callable, cast
 
 from .core import BaseObject, Item, Set, Cube, spectral_dist_dtype
 # No dependency on .spectral_objects to avoid a cycle!
-from .filters import FilterSet
+from .filter_objects import FilterSet
 from .errors import nan_values_warning, InconsistentDimensionError, \
     InconsistentAxesError, InconsistentUncertaintySizeError, InconsistentUncertaintyShapeError
 
