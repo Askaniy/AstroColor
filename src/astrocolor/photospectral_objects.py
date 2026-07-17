@@ -144,7 +144,7 @@ class PhotospectralObject(BaseObject):
         new_repr_config = {}
         for key in old_repr_config:
             if key == 'wavelength_nm':
-                new_repr_config['filter_set'] = self.filter_set.__repr__().replace('\n', '\n\t')
+                new_repr_config['filter_set'] = self.filter_set.__repr__()
             else:
                 new_repr_config[key] = old_repr_config[key]
         return new_repr_config

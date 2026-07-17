@@ -342,25 +342,34 @@ class BaseObject:
     def _generate_repr_config(self) -> dict[str, str]:
         """ Generates default configuration for string representation in __repr__() """
         # Name preparation
-        if isinstance(self.name, str):
-            name_str = f"'{self.name}'"
+        if self.name is None:
+            repr_config = {}
         else:
-            name_str = str(self.name)
-        shape_str = f'{self.spectral_size} spectral'
-        # Shape preparation
+            if isinstance(self.name, str):
+                name_str = f"'{self.name}'"
+            else:
+                name_str = str(self.name)
+            repr_config = {
+                'name': name_str,
+            }
+        size_str = f'{self.spectral_size} spectral'
+        # Size preparation
         if len(self.spatial_shape) != 0:
             if len(self.spatial_shape) == 1:
                 spatial_info = self.spatial_shape[0]
             else:
                 spatial_info = str(self.spatial_shape).replace(', ', ' × ')
-            shape_str += f' × {spatial_info} spatial'
+            size_str += f' × {spatial_info} spatial'
         # Create configuration
-        repr_config = {
-            'name': name_str,
-            'shape': shape_str,
+        repr_config |= {
+            'size': size_str,
             'wavelength_nm': repr_generator(self.wavelength_nm),
             'spectral_dist': repr_generator(self.spectral_dist),
         }
+        if self.covariance_matrix is not None:
+            repr_config |= {
+                'covariance_matrix': repr_generator(self.covariance_matrix)
+            }
         return repr_config
 
     def __repr__(self) -> str:
