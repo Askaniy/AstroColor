@@ -58,7 +58,7 @@ photospectrum_gr = ac.observe(photospectrum_BVR, sloan_system)
 
 - Work on your wavelengths
 ```py
-custom_filter_set = Filter.monochromatic(656.279) | Filter.monochromatic(486.135)
+custom_filter_set = ac.Filter.monochromatic(656.279) | ac.Filter.monochromatic(486.135)
 ```
 
 - Calculate true colors
