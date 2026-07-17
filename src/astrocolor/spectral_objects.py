@@ -261,7 +261,7 @@ class SpectralObject(BaseObject):
                 raise UnsupportedDimensionError(self.name)
         return Spectrum(self.wavelength_nm, br, name=self.name)
 
-    def mean_nm(self) -> float | npt.NDArray | None:
+    def mean_nm(self) -> float | npt.NDArray[np.floating]:
         """
         Returns the weighted average wavelength for each element of spatial axis:
         float value for a Spectrum, arrays for SpectralSet and SpectralCube.
@@ -270,9 +270,9 @@ class SpectralObject(BaseObject):
             return np.average(stretch(self.wavelength_nm, self.spatial_shape), weights=self.spectral_dist, axis=0)
         except ZeroDivisionError:
             zero_brightness_warning(self.name)
-            return None
+            return np.nan
 
-    def std_of_nm(self) -> npt.NDArray[np.floating] | None:
+    def std_of_nm(self) -> float | npt.NDArray[np.floating]:
         """ Returns uncorrected standard deviation or an array of uncorrected standard deviations """
         return np.sqrt(np.average((stretch(self.wavelength_nm, self.spatial_shape) - self.mean_nm())**2, weights=self.spectral_dist, axis=0))
 

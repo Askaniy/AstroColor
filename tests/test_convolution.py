@@ -25,13 +25,18 @@ class TestConvolution():
 
     # - convolution correctness
 
-    def test_convolution(self, v_filter, ubv_filterset):
+    def test_convolution_filter_integral(self, v_filter):
         np.testing.assert_allclose(
             ac.observe(ac.vega_CALSPEC, v_filter)[0], (ac.vega_CALSPEC * v_filter).integrate(), rtol=0.01
         )
+
+    def test_convolution_filter_set_integral(self, ubv_filterset):
+        # FilterSet is normalized by 1 by design, you can't scale it to Vegan spectrum
+        # SpectralSet could be normalized instead
+        ubv_spectral_set = ac.SpectralSet(ubv_filterset.wavelength_nm, ubv_filterset.spectral_dist)
         np.testing.assert_allclose(
             ac.observe(ac.vega_CALSPEC, ubv_filterset).spectral_dist,
-            (ac.vega_CALSPEC * ubv_filterset).integrate(),
+            (ac.vega_CALSPEC * ubv_spectral_set).integrate(),
             rtol=0.01,
         )
 

@@ -44,6 +44,13 @@ class FilterObject(SpectralObject):
         self.spectral_dist = data.spectral_dist
         self.name = data.name
 
+    def convert_for_photon_counter(self) -> Self:
+        """
+        Modifies the filter profile to account for photon-counting observation.
+        See "Standard Photometric Systems" by Bessell, Michael S. (2005).
+        """
+        return (self * self.wavelength_nm).normalize()
+
     def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray) -> Self:
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!
