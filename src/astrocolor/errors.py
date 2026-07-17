@@ -13,28 +13,28 @@ class UnsupportedDimensionError(AstroColorError, ValueError):
         super().__init__(f'The {subject} must have a dimension of 1, 2, or 3, not {ndim_recieved}.')
 
 class InconsistentDimensionError(AstroColorError, ValueError):
-    def __init__(self, ndim_recieved: int, ndim_expected: int, name: Optional[str]):
+    def __init__(self, ndim_recieved: int, ndim_expected: int, name: Optional[str] = None):
         msg = f'The received array dimension ({ndim_recieved}) differs from the expected one ({ndim_expected})'
         if name is not None:
             msg += f' for {name}'
         super().__init__(msg + '.')
 
 class InconsistentAxesError(AstroColorError, ValueError):
-    def __init__(self, spectral_axis: int, spatial_axis: int, name: Optional[str]):
-        msg = f'Arrays of spectral and spatial axes do not match ({spectral_axis} vs {spatial_axis})'
+    def __init__(self, len_nm: int, len_values: int, name: Optional[str] = None):
+        msg = f'The spectral axis size does not match the spectral distribution size ({len_nm} vs {len_values})'
         if name is not None:
             msg += f' for {name}'
         super().__init__(msg + '.')
 
 class InconsistentUncertaintySizeError(AstroColorError, ValueError):
-    def __init__(self, len_error: int, len_values: int, name: Optional[str]):
-        msg = f'Uncertainty array does not match the spectral axis ({len_error} vs {len_values})'
+    def __init__(self, len_error: int, len_values: int, name: Optional[str] = None):
+        msg = f'The uncertainty array size does not match the spectral distribution size ({len_error} vs {len_values})'
         if name is not None:
             msg += f' for {name}'
         super().__init__(msg + '.')
 
 class InconsistentUncertaintyShapeError(AstroColorError, ValueError):
-    def __init__(self, shape_error: int, shape_values: int, name: Optional[str]):
+    def __init__(self, shape_error: int, shape_values: int, name: Optional[str] = None):
         msg = f'Uncertainty shape {shape_error} does not match the data shape {shape_values}'
         if name is not None:
             msg += f' for {name}'
@@ -50,7 +50,7 @@ class FilterNotFoundError(AstroColorError):
 class ErasingCorrelationsWarning(UserWarning):
     pass
 
-def erasing_correlations_warning(name: Optional[str]):
+def erasing_correlations_warning(name: Optional[str] = None):
     msg = 'The full covariance matrix is not supported here. The diagonal is used to estimate errors'
     if name is not None:
         msg += f' for {name}'
@@ -59,7 +59,7 @@ def erasing_correlations_warning(name: Optional[str]):
 class NanValuesWarning(UserWarning):
     pass
 
-def nan_values_warning(input: str, name: Optional[str]):
+def nan_values_warning(input: str, name: Optional[str] = None):
     msg = f'NaN values detected in the {input} input been replaced with zeros'
     if name is not None:
         msg += f' for {name}'
@@ -68,7 +68,7 @@ def nan_values_warning(input: str, name: Optional[str]):
 class ZeroBrightnessWarning(UserWarning):
     pass
 
-def zero_brightness_warning(name: Optional[str]):
+def zero_brightness_warning(name: Optional[str] = None):
     msg = 'A division-by-zero error occurred in the calculations due to the zero brightness'
     if name is not None:
         msg += f' of object {name}'
@@ -85,15 +85,19 @@ def empty_spectral_intersection_warning(nm0: int, nm1: int, start: int, end: int
 
 def empty_spectral_intersection_operator_warning(
     operation_name: str,
-    name1: Optional[str],
-    name2: Optional[str],
     start: int,
-    end: int
+    end: int,
+    name1: Optional[str] = None,
+    name2: Optional[str] = None
 ) -> None:
+    if name1 is None:
+        name1 = 'the first one'
+    if name2 is None:
+        name2 = 'the second one'
     warnings.warn(
         f'''
         There is no intersection between the spectra for the element-wise operation "{operation_name}":
-        "{name1}" ends on {end} nm and "{name2}" starts on {start} nm. Stub object was created.
+        {name1} ends on {end} nm and {name2} starts on {start} nm. Stub object was created.
         ''',
         EmptySpectralIntersectionWarning,
         stacklevel=2

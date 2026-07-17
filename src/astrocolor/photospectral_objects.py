@@ -113,7 +113,7 @@ class PhotospectralObject(BaseObject):
 
     def _apply_element_wise_operation(
         self,
-        operand: 'BaseObject',
+        other: 'BaseObject',
         value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.ArrayLike],
         error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, npt.NDArray | None], npt.NDArray | None]
     ) -> Self:
@@ -126,13 +126,13 @@ class PhotospectralObject(BaseObject):
         to the filter system of the first object!
         """
         filter_set = self.filter_set
-        if isinstance(operand, 'SpectralObject') or (isinstance(operand, PhotospectralObject) and operand.filter_set != filter_set):
+        if isinstance(other, 'SpectralObject') or (isinstance(other, PhotospectralObject) and other.filter_set != filter_set):
             # Converting to a PhotospectralObject of the same filter system
             from .convolution import observe
-            operand = observe(operand, filter_set)
-        value = value_handling(self.spectral_dist, operand.spectral_dist)
-        error = error_handling(self.spectral_dist, self.covariance_matrix, operand.spectral_dist, operand.covariance_matrix)
-        higher_dim = (self, operand)[self.ndim < operand.ndim]
+            other = observe(other, filter_set)
+        value = value_handling(self.spectral_dist, other.spectral_dist)
+        error = error_handling(self.spectral_dist, self.covariance_matrix, other.spectral_dist, other.covariance_matrix)
+        higher_dim = (self, other)[self.ndim < other.ndim]
         return higher_dim.__class__(filter_set, value, error, name=higher_dim.name)
 
     def _generate_repr_config(self) -> dict[str, str]:

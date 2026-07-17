@@ -396,7 +396,7 @@ class SpectralObject(BaseObject):
                 the_second = other.name
                 if self.wavelength_nm[0] > other.wavelength_nm[0]:
                     the_first, the_second = the_second, the_first
-                empty_spectral_intersection_operator_warning(value_handling.__name__, the_first, the_second, start, end)
+                empty_spectral_intersection_operator_warning(value_handling.__name__, start, end, the_first, the_second)
                 return higher_dim.__class__.stub(self.name)
             else:
                 value1 = self.get_spectral_dist_at_wavelengths(start, end)

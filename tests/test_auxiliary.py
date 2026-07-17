@@ -203,10 +203,13 @@ class TestExtrapolation():
             np.ones(ac.visible_range.size),
         )
 
-    def test_extrapolation_flat_photospectrum(self):
+    def test_extrapolation_filter_set(self, ubv_filterset):
+        extrapolated = ubv_filterset._determine_at_trusted_wavelengths(ac.visible_range)
+        assert extrapolated.wavelength_nm.size == ac.visible_range.size
+
+    def test_extrapolation_flat_photospectrum(self, ubv_filterset):
         """ A photospectrum with uniform magnitudes should remain flat after extrapolation. """
-        ubv = ac.FilterSet.get('Generic_Bessell.U', 'Generic_Bessell.B', 'Generic_Bessell.V')
-        photospectrum = ac.Photospectrum(ubv, (1, 1, 1), name='test photospectrum')
+        photospectrum = ac.Photospectrum(ubv_filterset, (1, 1, 1), name='test photospectrum')
         np.testing.assert_allclose(
             photospectrum.determine_at_wavelengths(ac.visible_range, strictly=True).spectral_dist,
             np.ones(ac.visible_range.size),

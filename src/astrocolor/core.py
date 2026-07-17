@@ -2,7 +2,7 @@ import numpy as np
 import numpy.typing as npt
 from math import prod
 from collections.abc import Callable
-from typing import Self, Any, Final, ClassVar, TypeAlias, Iterator
+from typing import cast, Self, Any, Final, ClassVar, TypeAlias, Iterator
 from copy import deepcopy
 
 from .auxiliary import (
@@ -140,7 +140,7 @@ class BaseObject:
         self,
         start: int | float,
         end: int | float
-    ) -> npt.NDArray[wavelength_nm_dtype]:
+    ) -> npt.NDArray:
         """
         Wavelength grid generation pipeline.
         Returns a uniform grid array with the points being multiples of the grid step (endpoints included).
@@ -158,7 +158,7 @@ class BaseObject:
         self,
         requested_wavelengths: npt.ArrayLike,
         strictly: bool = False
-    ) -> Self:
+    ):
         """
         Returns a new SpectralObject, guaranteeing that the specified wavelength range
         has been determined or reconstructed for it.
@@ -181,9 +181,10 @@ class BaseObject:
         """
         nm_min, nm_max = self._get_extremal_grid_endpoints(requested_wavelengths)
         requested_wavelengths = self._uniform_grid(nm_min, nm_max)
-        spectral_obj = self._determine_at_trusted_wavelengths(requested_wavelengths)
+        from.spectral_objects import SpectralObject
+        spectral_obj = cast(SpectralObject, self._determine_at_trusted_wavelengths(requested_wavelengths))
         # Spectral range clipping
-        if strictly and spectral_obj.wavelength_nm is not requested_wavelengths:
+        if strictly and not np.array_equal(spectral_obj.wavelength_nm, requested_wavelengths):
             spectral_obj.spectral_dist = spectral_obj.get_spectral_dist_at_wavelengths(nm_min, nm_max)
             spectral_obj.covariance_matrix = spectral_obj.get_covariance_matrix_at_wavelengths(nm_min, nm_max)
             spectral_obj.wavelength_nm = requested_wavelengths
@@ -197,7 +198,7 @@ class BaseObject:
     def _determine_at_trusted_wavelengths(
         self,
         requested_wavelengths: npt.NDArray
-    ) -> Self:
+    ):
         """
         Directly uses the provided wavelength grid to create a new object.
         See `determine_at_wavelengths()` for the general case.
@@ -229,7 +230,7 @@ class BaseObject:
 
     def _apply_element_wise_operation(
         self,
-        operand: 'BaseObject',
+        other: 'BaseObject',
         value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.ArrayLike],
         error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, npt.NDArray | None], npt.NDArray | None]
     ) -> Self:
@@ -269,7 +270,7 @@ class BaseObject:
         output.covariance_matrix = error_handling(self.spectral_dist, self.covariance_matrix, operand, None)
         return output
 
-    def __add__(self, other: object) -> Self:
+    def __add__(self, other) -> Self:
         """
         Implements the addition operator.
 
@@ -281,7 +282,7 @@ class BaseObject:
         else:
             return self._apply_scalar_operation(other, add_value, add_error)
 
-    def __sub__(self, other: object) -> Self:
+    def __sub__(self, other) -> Self:
         """
         Implements the subtraction operator.
 
@@ -293,7 +294,7 @@ class BaseObject:
         else:
             return self._apply_scalar_operation(other, sub_value, sub_error)
 
-    def __mul__(self, other: object) -> Self:
+    def __mul__(self, other) -> Self:
         """
         Implements the multiplication operator.
 
@@ -305,7 +306,7 @@ class BaseObject:
         else:
             return self._apply_scalar_operation(other, mul_value, mul_error)
 
-    def __truediv__(self, other: object) -> Self:
+    def __truediv__(self, other) -> Self:
         """
         Implements the division operator.
 
