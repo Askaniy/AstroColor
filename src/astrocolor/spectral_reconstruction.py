@@ -141,17 +141,17 @@ def spectral_reconstruction(
 
     Confidence bands for spectral sets and cubes are not computed by default.
     """
+    nm_min, nm_max = photospectral_obj._get_extremal_grid_endpoints(requested_wavelengths)
+    nm1 = photospectral_obj._uniform_grid(nm_min, nm_max)
     br0 = photospectral_obj.spectral_dist
     cov0 = None if photospectral_obj.ignore_uncertainty_forCubes and photospectral_obj.ndim == 3 else photospectral_obj.covariance_matrix
     cov1 = None
-    if len(photospectral_obj.filter_set) == 1:
+    filter_set = photospectral_obj.filter_set
+    if len(filter_set) == 1:
         # single-point PhotospectralObject support
-        nm_min, nm_max = photospectral_obj._get_extremal_grid_endpoints(requested_wavelengths)
-        nm1 = photospectral_obj._uniform_grid(nm_min, nm_max)
         br1 = np.full((nm1.size, 1, 1)[:photospectral_obj.ndim], br0) # not tested
     else:
-        filter_set = photospectral_obj.filter_set
-        nm1 = filter_set.wavelength_nm
+        filter_set = filter_set._determine_at_trusted_wavelengths(nm1)
         filter_matrix = filter_set.matrix
         #L = smoothness_matrix(T.shape[1], order=2)
         #A = filter_matrix.T @ filter_matrix + 0.05 * L.T @ L

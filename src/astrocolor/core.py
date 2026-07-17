@@ -112,7 +112,7 @@ class BaseObject:
         Returns:
         - Tuple of (nm_min, nm_max) clamped to [0, nm_red_limit].
         """
-        return get_extremal_grid_endpoints(requested_wavelengths, nm_red_limit)
+        return get_extremal_grid_endpoints(requested_wavelengths, upper_limit=nm_red_limit)
 
     def _grid_endpoints_preprocessing(
         self,

@@ -1,7 +1,10 @@
 import numpy as np
 import pytest
 import astrocolor as ac
+from astrocolor.core import nm_step, wavelength_nm_dtype
 from astrocolor.auxiliary import (
+    get_extremal_grid_endpoints,
+    uniform_grid,
     repr_generator,
     repr_generator_1D,
     repr_generator_2D,
@@ -14,6 +17,15 @@ np.random.seed(42)
 
 
 # === Auxiliary Utilities Tests ===
+
+
+class TestWavelengthGrids():
+
+    def test_grid_reversibility(self):
+        old_grid = uniform_grid(400, 600, nm_step, wavelength_nm_dtype)
+        nm_min, nm_max = get_extremal_grid_endpoints(old_grid)
+        new_grid = uniform_grid(nm_min, nm_max, nm_step, wavelength_nm_dtype)
+        np.testing.assert_equal(old_grid, new_grid)
 
 
 class TestParsing():

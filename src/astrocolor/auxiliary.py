@@ -1,7 +1,7 @@
 import numpy as np
 import numpy.typing as npt
 from math import sqrt, ceil
-from typing import cast, Iterable, SupportsFloat, Sequence, Literal
+from typing import cast, Iterable, SupportsFloat, Sequence, Literal, Optional
 
 from .errors import UnsupportedDimensionError
 
@@ -10,14 +10,17 @@ from .errors import UnsupportedDimensionError
 
 def get_extremal_grid_endpoints(
     requested_grid: npt.ArrayLike,
-    upper_limit: int
+    lower_limit: Optional[int | float] = 0,
+    upper_limit: Optional[int | float] = np.inf
 ) -> tuple[int | float, int | float]:
     """
     Grid generation pipeline.
     Getting the minimum and maximum values of an untrusted array.
 
     Args:
-    - requested_wavelengths: Array-like object containing wavelength values.
+    - requested_grid: Array-like object.
+    - lower_limit: Minimum clipping threshold.
+    - upper_limit: Maximum clipping threshold.
 
     Returns:
     - Tuple of (v_min, v_max) clamped to [0, upper_limit].
@@ -28,7 +31,7 @@ def get_extremal_grid_endpoints(
     else:
         v_min = np.min(requested_grid)
         v_max = np.max(requested_grid)
-    v_min = max(v_min, 0)
+    v_min = max(v_min, lower_limit)
     v_max = min(v_max, upper_limit)
     return v_min, v_max
 
@@ -448,7 +451,7 @@ def extrapolating(
     avg_steps: int = 20
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray[np.floating] | None]:
     """
-    Defines a (multi-dimensional) curve an intuitive continuation on the x_arr, if needed.
+    Defines a (multi-dimensional) curve an intuitive continuation on the `x_arr`, if needed.
     `avg_steps` is a number of corner curve points to be averaged if the curve is not smooth.
     Averaging weights on this range grow linearly closer to the edge (from 0 to 1).
     The exponential growth of uncertainty is completely arbitrary and needs to be investigated.

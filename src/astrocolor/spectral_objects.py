@@ -304,15 +304,17 @@ class SpectralObject(BaseObject):
                 empty_spectral_intersection_warning(self.wavelength_nm[0], self.wavelength_nm[-1], start, end)
             return self.covariance_matrix[np.ix_(slice_indices, slice_indices)]
 
-    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray):
+    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray) -> Self:
         """
         Directly uses the provided wavelength grid to create a new object.
         See `determine_at_wavelengths()` for the general case.
         """
+        # Preparing standard deviation
         std = None
         if self.covariance_matrix is not None:
             erasing_correlations_warning(self.name)
             std = np.sqrt(np.diag(self.covariance_matrix, axis=0))
+        # Extrapolating
         nm, br, std = extrapolating(self.wavelength_nm, self.spectral_dist, std, requested_wavelengths, nm_step)
         extrapolated = deepcopy(self)
         extrapolated.wavelength_nm = nm
