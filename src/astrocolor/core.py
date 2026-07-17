@@ -200,7 +200,7 @@ class BaseObject:
         requested_wavelengths: npt.NDArray
     ):
         """
-        Directly uses the provided wavelength grid to create a new object.
+        Directly uses the provided wavelength grid to create a new object. Non-strict!
         See `determine_at_wavelengths()` for the general case.
         Implemented in the inherited classes.
 
@@ -239,7 +239,7 @@ class BaseObject:
         Implemented in the inherited classes.
 
         Args:
-        - operand: Another BaseObject for element-wise operations.
+        - other: Another BaseObject for element-wise operations.
         - value_handling: Function to handle the value transformation.
         - error_handling: Function to handle the uncertainty propagation.
 

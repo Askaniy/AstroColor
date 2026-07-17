@@ -50,7 +50,6 @@ class TestParsing():
 
 
 class TestSpectralBinning():
-    """ Tests for the spectral binning function """
 
     def test_spectral_binning(self):
         nm0_len = 100
@@ -66,7 +65,6 @@ class TestSpectralBinning():
 
 
 class TestLinearInterp():
-    """ Tests for the linear interpolation function. """
 
     # Basic 1D interpolation (no extrapolation)
     def test_basic_1d_interpolation(self):
@@ -206,6 +204,27 @@ class TestLinearInterp():
 
 class TestExtrapolation():
 
+    def test_extrapolation_filter(self, v_filter):
+        extrapolated = v_filter._determine_at_trusted_wavelengths(ac.visible_range)
+        assert extrapolated.wavelength_nm.size == ac.visible_range.size
+        zeroed = extrapolated.edges_to_zero()
+        assert v_filter == zeroed
+
+    def test_extrapolation_filter_set(self, ubv_filterset):
+        extrapolated = ubv_filterset._determine_at_trusted_wavelengths(ac.visible_range)
+        assert extrapolated.wavelength_nm.size == ac.visible_range.size
+
+    def test_extrapolation_spectrum(self):
+        filt = ac.Filter.get('Generic_Bessell.U')
+        spectrum = ac.Spectrum(filt.wavelength_nm, filt.spectral_dist)
+        extrapolated = spectrum.determine_at_wavelengths(ac.visible_range, strictly=True)
+        assert extrapolated.wavelength_nm.size == ac.visible_range.size
+
+    def test_extrapolation_spectral_set(self, ubv_filterset):
+        spectral_set = ac.SpectralSet(ubv_filterset.wavelength_nm, ubv_filterset.spectral_dist)
+        extrapolated = spectral_set.determine_at_wavelengths(ac.visible_range, strictly=True)
+        assert extrapolated.wavelength_nm.size == ac.visible_range.size
+
     def test_extrapolation_flat_spectrum(self):
         """ A flat spectrum should remain flat after extrapolation. """
         nm = np.arange(500, 701, 5)
@@ -214,10 +233,6 @@ class TestExtrapolation():
             spectrum.determine_at_wavelengths(ac.visible_range, strictly=True).spectral_dist,
             np.ones(ac.visible_range.size),
         )
-
-    def test_extrapolation_filter_set(self, ubv_filterset):
-        extrapolated = ubv_filterset._determine_at_trusted_wavelengths(ac.visible_range)
-        assert extrapolated.wavelength_nm.size == ac.visible_range.size
 
     def test_extrapolation_flat_photospectrum(self, ubv_filterset):
         """ A photospectrum with uniform magnitudes should remain flat after extrapolation. """

@@ -316,11 +316,12 @@ class SpectralObject(BaseObject):
             std = np.sqrt(np.diag(self.covariance_matrix, axis=0))
         # Extrapolating
         nm, br, std = extrapolating(self.wavelength_nm, self.spectral_dist, std, requested_wavelengths, nm_step)
-        extrapolated = deepcopy(self)
-        extrapolated.wavelength_nm = nm
-        extrapolated.spectral_dist = br
-        extrapolated.covariance_matrix = np.diag(std**2) if std is not None else None
-        return extrapolated
+        # Creating new object
+        obj = deepcopy(self)
+        obj.wavelength_nm = nm
+        obj.spectral_dist = br
+        obj.covariance_matrix = np.diag(std**2) if std is not None else None
+        return obj
 
     def edges_to_zero(self) -> Self:
         """

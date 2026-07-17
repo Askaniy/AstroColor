@@ -35,7 +35,7 @@ v_band = ac.Filter.get('Generic_Bessell.V')
 flux_value, flux_error = ac.observe(spectrum, v_band)
 ```
 
-- Create a filter system for optimizations
+- Create a filter system
 ```py
 johnson_system = ac.FilterSet.get(
     'Generic_Bessell.B',
@@ -54,6 +54,11 @@ reconstructed = ac.spectral_reconstruction(photospectrum_BVR, requested_waveleng
 ```py
 sloan_system = ac.FilterSet.get('SLOAN_SDSS.g', 'SLOAN_SDSS.r')
 photospectrum_gr = ac.observe(photospectrum_BVR, sloan_system)
+```
+
+- Work on your wavelengths
+```py
+custom_filter_set = Filter.monochromatic(656.279) | Filter.monochromatic(486.135)
 ```
 
 - Calculate true colors

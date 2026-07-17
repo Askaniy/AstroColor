@@ -104,12 +104,12 @@ class PhotospectralObject(BaseObject):
 
     def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray):
         """
-        Directly uses the provided wavelength grid to create a new object.
+        Directly uses the provided wavelength grid to create a new object. Non-strict!
         See `determine_at_wavelengths()` for the general case.
         """
         from .spectral_reconstruction import spectral_reconstruction
-        res = spectral_reconstruction(self, requested_wavelengths)
-        return res
+        obj = spectral_reconstruction(self, requested_wavelengths)
+        return obj
 
     def _apply_element_wise_operation(
         self,

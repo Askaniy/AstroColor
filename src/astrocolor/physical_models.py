@@ -47,7 +47,7 @@ class BlackBodyModel:
         requested_wavelengths: npt.NDArray
     ) -> Spectrum:
         """
-        Directly uses the provided wavelength grid to create a new object.
+        Directly uses the provided wavelength grid to create a new object. Non-strict!
         See `determine_at_wavelengths()` for the general case.
         """
         doppler = 1
