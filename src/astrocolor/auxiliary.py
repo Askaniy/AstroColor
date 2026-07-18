@@ -784,12 +784,12 @@ def repr_generator_2D(arr: npt.NDArray) -> str:
     shape = arr.shape[0]
     output = ''
     if 1 <= shape <= 3:
-        output = '\n\t'.join([repr_generator_1D(arr[i,:]) for i in range(shape)])
+        output = '\t' + ',\n\t'.join([repr_generator_1D(arr[i,:]) for i in range(shape)])
     elif shape >= 4:
         first_row = repr_generator_1D(arr[0,:])
         second_row = repr_generator_1D(arr[1,:])
         last_row = repr_generator_1D(arr[-1,:])
-        output = f'\t{first_row}\n\t{second_row}\n\t...\n\t{last_row}'
+        output = f'\t{first_row},\n\t{second_row},\n\t...\n\t{last_row}'
     return '[\n' + output + '\n]'
 
 def repr_generator(arr: npt.NDArray) -> str:

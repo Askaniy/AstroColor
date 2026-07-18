@@ -291,30 +291,24 @@ class TestReprGenerator2D():
     def test_single_row(self):
         arr = np.array([[1, 2, 3]])
         result = repr_generator_2D(arr)
-        assert result.replace('\n', '') == '[[1, 2, 3]]'
+        assert result == '[\n\t[1, 2, 3]\n]'
 
     def test_two_rows(self):
         arr = np.array([[1.0, 2.0], [3.0, 4.0]])
         result = repr_generator_2D(arr)
-        lines = result.strip('[]\n').split('\n')
-        assert len(lines) == 2
-        # Each line should be a valid 1D representation
-        for i in range(2):
-            np.testing.assert_allclose(
-                [float(x) for x in lines[i].strip().replace('[', '').replace(']', '').split(',')],
-                arr[i, :]
-            )
+        expected = '[\n\t[1.000, 2.000],\n\t[3.000, 4.000]\n]'
+        assert result == expected
 
     def test_three_rows(self):
         arr = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
         result = repr_generator_2D(arr)
-        lines = result.strip('[]\n').split('\n')
-        assert len(lines) == 3
+        expected = '[\n\t[1.000, 2.000],\n\t[3.000, 4.000],\n\t[5.000, 6.000]\n]'
+        assert result == expected
 
     def test_four_rows(self):
         arr = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]])
         result = repr_generator_2D(arr)
-        expected = '[\n\t[1.000, 2.000]\n\t[3.000, 4.000]\n\t...\n\t[7.000, 8.000]\n]'
+        expected = '[\n\t[1.000, 2.000],\n\t[3.000, 4.000],\n\t...\n\t[7.000, 8.000]\n]'
         assert result == expected
 
     def test_dimensional_error(self):
@@ -349,5 +343,5 @@ class TestReprGenerator():
     def test_single_element_2d(self):
         arr = np.array([[42]])
         result = repr_generator(arr)
-        expected = '[\n[42]\n]'
+        expected = '[\n\t[42]\n]'
         assert result == expected
