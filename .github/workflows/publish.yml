@@ -1,4 +1,4 @@
-name: Publish to TestPyPI
+name: Publish to PyPI
 
 on:
   release:
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v8.1.0
       - run: uv build
-      - run: uv publish --publish-url https://test.pypi.org/legacy/
+      - run: uv publish
