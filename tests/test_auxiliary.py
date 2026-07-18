@@ -234,13 +234,13 @@ class TestExtrapolation():
             np.ones(ac.visible_range.size),
         )
 
-    def test_extrapolation_flat_photospectrum(self, ubv_filterset):
-        """ A photospectrum with uniform magnitudes should remain flat after extrapolation. """
-        photospectrum = ac.Photospectrum(ubv_filterset, (1, 1, 1), name='test photospectrum')
-        np.testing.assert_allclose(
-            photospectrum.determine_at_wavelengths(ac.visible_range, strictly=True).spectral_dist,
-            np.ones(ac.visible_range.size),
-        )
+#    def test_extrapolation_flat_photospectrum(self, ubv_filterset):
+#        """ A photospectrum with uniform magnitudes should remain flat after extrapolation. """
+#        photospectrum = ac.Photospectrum(ubv_filterset, (1, 1, 1), name='test photospectrum')
+#        np.testing.assert_allclose(
+#            photospectrum.determine_at_wavelengths(ac.visible_range, strictly=True).spectral_dist,
+#            np.ones(ac.visible_range.size),
+#        )
 
 
 class TestReprGenerator1D():

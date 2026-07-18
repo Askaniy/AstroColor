@@ -1,17 +1,40 @@
+[build-system]
+requires = ["uv_build>=0.11.20,<0.12.0"]
+build-backend = "uv_build"
+
 [project]
 name = "astrocolor"
 version = "0.1.0"
 description = "Library to perform spectral reconstruction, calculate synthetic photometry and colors."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE.txt"]
 authors = [
-    { name = "Askaniy", email = "aaskaniy@gmail.com" }
+    { name = "Askaniy Anpilogov", email = "aaskaniy@gmail.com" },
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.12"
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+
 dependencies = [
     "numpy>=2.4.4",
-    "pytest>=9.1.1",
     "scipy>=1.17.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/Askaniy/AstroColor"
+Repository = "https://github.com/Askaniy/AstroColor"
+Issues = "https://github.com/Askaniy/AstroColor/issues"
+Changelog = "https://github.com/Askaniy/AstroColor/releases"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
 ]
 
 [tool.pytest.ini_options]

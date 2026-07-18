@@ -1,0 +1,4 @@
+graft src/astrocolor/data
+include src/astrocolor/py.typed
+global-exclude __pycache__
+global-exclude *.py[co]

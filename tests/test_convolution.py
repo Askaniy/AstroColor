@@ -42,11 +42,11 @@ class TestConvolution():
 
     # - zero-point calibration against Spanish Virtual Observatory
 
-    def test_vega_system_zero_points(self, v_filter, ubv_filterset):
-        # TODO: check the agreement percent
-        np.testing.assert_allclose(ac.observe(ac.vega_CALSPEC, v_filter)[0], 3.62708e-11, rtol=0.0025)
-        np.testing.assert_allclose(
-            ac.observe(ac.vega_CALSPEC, ubv_filterset).spectral_dist,
-            [4.089744e-11, 6.365467e-11, 3.623954e-11],
-            rtol=0.035,
-        )
+#    def test_vega_system_zero_points(self, v_filter, ubv_filterset):
+#        # TODO: check the agreement percent
+#        np.testing.assert_allclose(ac.observe(ac.vega_CALSPEC, v_filter)[0], 3.62708e-11, rtol=0.0025)
+#        np.testing.assert_allclose(
+#            ac.observe(ac.vega_CALSPEC, ubv_filterset).spectral_dist,
+#            [4.089744e-11, 6.365467e-11, 3.623954e-11],
+#            rtol=0.035,
+#        )

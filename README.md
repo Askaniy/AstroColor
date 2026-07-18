@@ -95,11 +95,10 @@ Over time, the core of the program became self-contained enough to be spun off i
 The refactoring took place in 2026; it opens up a general astronomical application.
 
 
-## Testing
+## For developers
 
-Use `uv run pytest`.
-
-
-## AI policy
+Use `uv sync --group dev` to set the environment and build the library.
+Use `uv run pytest` for testing.
+Use `\dev` folder for local experiments.
 
 Any changes suggested by AI must be thoroughly reviewed by the person who generated them. The responsibility always lies with the person.
