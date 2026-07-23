@@ -56,18 +56,16 @@ class FilterObject(SpectralObject):
         Directly uses the provided wavelength grid to create a new object. Non-strict!
         See `determine_at_wavelengths()` for the general case.
         """
-        # Data info preparations
-        new_shape = list(self.spectral_dist.shape)
-        new_shape[0] = requested_wavelengths.size
-        mask = (requested_wavelengths >= self.wavelength_nm[0]) & (requested_wavelengths <= self.wavelength_nm[-1])
-        # Creating new object
         obj = deepcopy(self)
-        obj.wavelength_nm = requested_wavelengths
-        obj.spectral_dist = np.zeros(new_shape)
-        obj.spectral_dist[mask] = self.get_spectral_dist_at_wavelengths(requested_wavelengths[0], requested_wavelengths[-1])
+        min_nm = min(self.wavelength_nm[0], requested_wavelengths[0])
+        max_nm = max(self.wavelength_nm[-1], requested_wavelengths[-1])
+        obj.wavelength_nm = self._uniform_grid(min_nm, max_nm)
+        obj.spectral_dist = np.zeros((obj.wavelength_nm.size, *self.spatial_shape))
+        mask = np.searchsorted(obj.wavelength_nm, self.wavelength_nm)
+        obj.spectral_dist[mask] = self.spectral_dist.copy()
         return obj
 
-    def _union(self, other: 'FilterObject') -> 'FilterSet':
+    def _apply_union(self, other: 'FilterObject') -> 'FilterSet':
         """ Internal logic of the `FilterObject` union. """
         filters = []
         # Populating combined filter list using the base other
@@ -91,7 +89,7 @@ class FilterObject(SpectralObject):
     def __or__(self, other: Any) -> 'FilterSet':
         """ Combine this `FilterObject` with another `FilterObject` into a new `FilterSet`. """
         if isinstance(other, FilterObject):
-            return self._union(other)
+            return self._apply_union(other)
         else:
             return NotImplemented
 

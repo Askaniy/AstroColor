@@ -64,7 +64,11 @@ class BaseObject:
     @property
     def spectral_size(self) -> int:
         """ Returns the spectral axis length. """
-        return self.spectral_dist.shape[0]
+        len_nm = self.wavelength_nm.size
+        len_values = self.spectral_dist.shape[0]
+        if len_nm != len_values:
+            raise InconsistentAxesError(len_nm, len_values, self.name)
+        return len_values
 
     @property
     def spatial_size(self) -> int:
@@ -158,7 +162,7 @@ class BaseObject:
         self,
         requested_wavelengths: npt.ArrayLike,
         strictly: bool = False
-    ):
+    ) -> Self | Any:
         """
         Returns a new SpectralObject, guaranteeing that the specified wavelength range
         has been determined or reconstructed for it.

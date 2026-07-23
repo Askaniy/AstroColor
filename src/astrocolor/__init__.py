@@ -8,7 +8,10 @@ from .spectral_reconstruction import (
 )
 from .filter_objects import Filter, FilterSet
 from .convolution import observe, scale_spectrum
-from .color import ColorSystem, ColorPoint, ColorLine, ColorImage, visible_range
+from .color import (
+    ColorSystem, ColorPoint, ColorLine, ColorImage,
+    visible_range, xyz_cmf, xyz_color_system
+)
 from .physical_models import sun_CALSPEC, vega_CALSPEC, BlackBodyModel
 
 
@@ -33,6 +36,8 @@ __all__ = (
     'ColorLine',
     'ColorImage',
     'visible_range',
+    'xyz_cmf',
+    'xyz_color_system',
     'sun_CALSPEC',
     'vega_CALSPEC',
     'BlackBodyModel'

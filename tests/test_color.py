@@ -6,6 +6,16 @@ import astrocolor as ac
 
 class TestColorSystem():
 
+    def test_color_of_flat_spectrum(self):
+        nm = np.arange(200, 800, 5)
+        spectrum = ac.Spectrum(nm, np.ones(nm.size), name='Flat spectrum test')
+        color = ac.ColorPoint.from_spectral_data(spectrum)
+        target_rgb = np.ones(3)
+        np.testing.assert_allclose(color.to_array(), target_rgb)
+        color_system = ac.ColorSystem('sRGB', 'Illuminant E')
+        color = color.to_color_system(color_system)
+        np.testing.assert_allclose(color.to_array(), target_rgb)
+
     def test_color_system_reversibility(self):
         """ Converting a color point between systems should be reversible to machine precision. """
         srgb = ac.ColorSystem('sRGB')

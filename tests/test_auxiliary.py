@@ -205,13 +205,13 @@ class TestLinearInterp():
 class TestExtrapolation():
 
     def test_extrapolation_filter(self, v_filter):
-        extrapolated = v_filter._determine_at_trusted_wavelengths(ac.visible_range)
+        extrapolated = v_filter.determine_at_wavelengths(ac.visible_range, strictly=True)
         assert extrapolated.wavelength_nm.size == ac.visible_range.size
         zeroed = extrapolated.edges_to_zero()
         assert v_filter == zeroed
 
     def test_extrapolation_filter_set(self, ubv_filterset):
-        extrapolated = ubv_filterset._determine_at_trusted_wavelengths(ac.visible_range)
+        extrapolated = ubv_filterset.determine_at_wavelengths(ac.visible_range, strictly=True)
         assert extrapolated.wavelength_nm.size == ac.visible_range.size
 
     def test_extrapolation_spectrum(self):
@@ -233,14 +233,6 @@ class TestExtrapolation():
             spectrum.determine_at_wavelengths(ac.visible_range, strictly=True).spectral_dist,
             np.ones(ac.visible_range.size),
         )
-
-#    def test_extrapolation_flat_photospectrum(self, ubv_filterset):
-#        """ A photospectrum with uniform magnitudes should remain flat after extrapolation. """
-#        photospectrum = ac.Photospectrum(ubv_filterset, (1, 1, 1), name='test photospectrum')
-#        np.testing.assert_allclose(
-#            photospectrum.determine_at_wavelengths(ac.visible_range, strictly=True).spectral_dist,
-#            np.ones(ac.visible_range.size),
-#        )
 
 
 class TestReprGenerator1D():

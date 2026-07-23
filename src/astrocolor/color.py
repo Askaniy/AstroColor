@@ -82,8 +82,8 @@ class ColorSystem:
             self.matrix = (matrix_B / vector_A[np.newaxis, :]) @ matrix_B_inv @ self.matrix
             self.inv_matrix = self.inv_matrix @ matrix_B_inv @ (matrix_B * vector_A[:, np.newaxis])
         # The matrices are used transposed
-        self.matrix = self.matrix.T
-        self.inv_matrix = self.inv_matrix.T
+        #self.matrix = self.matrix.T
+        #self.inv_matrix = self.inv_matrix.T
 
     def xyz_to_rgb(
         self,
@@ -158,7 +158,8 @@ xyz_color_system = ColorSystem('CIE 1931 XYZ', 'Illuminant E')
 
 class ColorObject:
     """
-    This class stores a color brightness array (`self.br`) with values in the 0-1 range,
+    This class stores a color brightness array (`self.spectral_dist`) with values
+    in the 0-1 range, its uncertainty (`covariance_matrix`),
     postprocessing attributes, color system, and provides conversion methods.
 
     The brightness array is required to be of length 3 along the first axis.

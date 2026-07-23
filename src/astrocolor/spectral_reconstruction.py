@@ -141,17 +141,15 @@ def spectral_reconstruction(
 
     Confidence bands for spectral sets and cubes are not computed by default.
     """
-    nm_min, nm_max = photospectral_obj._get_extremal_grid_endpoints(requested_wavelengths)
-    nm1 = photospectral_obj._uniform_grid(nm_min, nm_max)
     br0 = photospectral_obj.spectral_dist
+    filter_set = photospectral_obj.filter_set.determine_at_wavelengths(requested_wavelengths, strictly=False)
+    nm1 = filter_set.wavelength_nm
     cov0 = None if photospectral_obj.ignore_uncertainty_forCubes and photospectral_obj.ndim == 3 else photospectral_obj.covariance_matrix
     cov1 = None
-    filter_set = photospectral_obj.filter_set
     if len(filter_set) == 1:
         # single-point PhotospectralObject support
         br1 = np.full((nm1.size, 1, 1)[:photospectral_obj.ndim], br0) # not tested
     else:
-        filter_set = filter_set._determine_at_trusted_wavelengths(nm1)
         filter_matrix = filter_set.matrix
         #L = smoothness_matrix(T.shape[1], order=2)
         #A = filter_matrix.T @ filter_matrix + 0.05 * L.T @ L
@@ -160,8 +158,8 @@ def spectral_reconstruction(
         # TODO: research on some known spectra to find which ratios (0.005, 1) fit best
         alpha = 0.005
         beta = 1
-        tikhonov_matrix_covar = alpha * order1_matrix.T @ order1_matrix + beta * order2_matrix.T @ order2_matrix
-        right_matrix = filter_matrix.T @ filter_matrix + tikhonov_matrix_covar
+        tikhonov_matrix = alpha * order1_matrix.T @ order1_matrix + beta * order2_matrix.T @ order2_matrix
+        right_matrix = filter_matrix.T @ filter_matrix + tikhonov_matrix
         if photospectral_obj.ndim == 3:
             # scipy supports batch mode for 2d arrays, but not for 3D arrays
             br0 = br0.reshape(filter_matrix.shape[0], -1)
