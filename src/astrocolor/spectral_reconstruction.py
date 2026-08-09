@@ -153,12 +153,12 @@ def spectral_reconstruction(
         filter_matrix = filter_set.matrix
         #L = smoothness_matrix(T.shape[1], order=2)
         #A = filter_matrix.T @ filter_matrix + 0.05 * L.T @ L
-        order1_matrix = smoothness_matrix(filter_matrix.shape[1], order=1)
-        order2_matrix = smoothness_matrix(filter_matrix.shape[1], order=2)
+        order1_matrix = smoothness_matrix(filter_matrix.shape[1], order=1, step=filter_set.nm_step)
+        order2_matrix = smoothness_matrix(filter_matrix.shape[1], order=2, step=filter_set.nm_step)
         # TODO: research on some known spectra to find which ratios (0.005, 1) fit best
-        alpha = 0.005
-        beta = 1
-        tikhonov_matrix = alpha * order1_matrix.T @ order1_matrix + beta * order2_matrix.T @ order2_matrix
+        alpha = 1/8
+        beta = 5000
+        tikhonov_matrix = alpha * (order1_matrix.T @ order1_matrix + beta * order2_matrix.T @ order2_matrix)
         right_matrix = filter_matrix.T @ filter_matrix + tikhonov_matrix
         if photospectral_obj.ndim == 3:
             # scipy supports batch mode for 2d arrays, but not for 3D arrays
@@ -197,15 +197,7 @@ def spectral_reconstruction(
             # Confidence bands for spectral squares and cubes are not computed to save computational resources
             right_matrix_inv = np.linalg.inv(right_matrix)
             cov1 = right_matrix_inv @ filter_matrix.T @ cov0 @ filter_matrix @ right_matrix_inv
-            # TODO: write the result covariance matrix to the class instance! Uncertainty of spectrum is self-correlated
-            # I mean, it's obvious that e.g. 555 nm and 560 nm data points depend on each other:
-            # if a spectrum is smooth, their values can't be too different, even if their std allows one to go up and the other to go down
-            # that means uncertainty of a spectrum of N data points should be described by NxN covariance matrix
-            # instead of N length std array (which is just a root of diagonal of that matrix)
-            #std1 = np.sqrt(np.diag(cov1))
-            # An attempt to account for the sensitivity confidence band of the method
-            #std1 = np.sqrt(std1**2 + (0.01 * np.median(br1))**2 * np.diag(right_matrix_inv))
-            # TODO: needs research, the reconstructed std scale `0.01` is arbitrary!
+            #cov1 = filter_matrix.T @ cov0 @ filter_matrix + tikhonov_matrix # doesn't work
     if attach_photospectral_obj:
         match photospectral_obj:
             # An implementation suitable for type checking

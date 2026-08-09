@@ -11,3 +11,4 @@ wheels/
 
 # Development local folder
 dev/
+temp/

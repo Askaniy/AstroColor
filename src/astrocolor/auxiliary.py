@@ -300,7 +300,8 @@ def spatial_downscaling(
 
 def smoothness_matrix(
     n: int,
-    order: int = 1
+    order: int = 1,
+    step: int = 1
 ) -> np.ndarray:
     """
     Generates a smoothness operator matrix of the specified size n.
@@ -314,8 +315,7 @@ def smoothness_matrix(
         return np.eye(n, dtype=np.uint8)
     else:
         m = max(0, n - order)
-        L = np.zeros((m, n), dtype=np.int8)
-        # Note: int8 makes it ~2 times faster
+        L = np.zeros((m, n), dtype='float64')
         match order:
             # Note: numpy doesn't make it faster
             # tested: diag = np.eye(m, dtype='int8'); L[:,:-1] = diag; L[:,1:] -= diag
@@ -324,12 +324,14 @@ def smoothness_matrix(
                 for i in range(m):
                     L[i, i] = 1
                     L[i, i+1] = -1
+                L /= step
             case 2:
                 # Curvature restriction
                 for i in range(m):
                     L[i, i] = 1
                     L[i, i+1] = -2
                     L[i, i+2] = 1
+                L /= step**2
             case _:
                 raise ValueError(f'Order {order} of smoothness matrix is not supported.')
     return L
