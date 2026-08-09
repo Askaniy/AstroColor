@@ -3,8 +3,10 @@ import pytest
 
 import astrocolor as ac
 from astrocolor.auxiliary import (
+    color_indices_parser,
     get_extremal_grid_endpoints,
     linear_interp,
+    mag2irradiance,
     parse_value_std,
     repr_generator,
     repr_generator_1D,
@@ -48,6 +50,62 @@ class TestParsing:
         np.testing.assert_equal(
             parse_value_std([0.202, +0.084, -0.049]), (0.202, 0.0665)
         )
+
+
+class TestColorIndices:
+
+    def test_1_index(self):
+        # (120347) Salacia by Stansberry et al. 2012
+        input = {'V-I': 0.87}
+        # expected = {'V': 1., 'I': 1.-0.87}
+        expected = (
+            ('V', 'I'),
+            mag2irradiance(np.array((0., -0.87))),
+            None
+        )
+        output = color_indices_parser(input)
+        np.testing.assert_equal(output, expected)
+
+    def test_3_indices(self):
+        # (120347) Salacia from MBOSS
+        input = {'B-V': 0.664, 'V-R': 0.403, 'R-I': 0.433}
+        # expected = {'B': 1., 'V': 1.-0.664, 'R': 1.-0.664-0.403, 'I': 1.-0.664-0.403-0.433}
+        expected = (
+            ('B', 'V', 'R', 'I'),
+            mag2irradiance(np.array((0., -0.664, -0.664-0.403, -0.664-0.403-0.433))),
+            None
+        )
+        output = color_indices_parser(input)
+        np.testing.assert_equal(output, expected)
+
+    def test_1_index_std(self):
+        # (120347) Salacia by Stansberry et al. 2012
+        input = {'V-I': [0.87, 0.01]}
+        # expected = {'V': [1., 0.], 'I': [1.-0.87, 0.]}
+        expected = (
+            ('V', 'I'),
+            mag2irradiance(np.array((0., -0.87))),
+            (0.008823506076353184, 0.005885815833609801) # not real values! output reference of working state
+        )
+        output = color_indices_parser(input)
+        np.testing.assert_equal(output, expected)
+
+    def test_3_indices_std(self):
+        # (120347) Salacia from MBOSS
+        input = {'B-V': [0.664, 0.098], 'V-R': [0.403, 0.061], 'R-I': [0.433, 0.118]}
+        # expected = {'B': [1., 0.], 'V': [1.-0.664, 0.], 'R': [1.-0.664-0.403, 0.], 'I': [1.-0.664-0.403-0.433, 0.]}
+        expected = (
+            ('B', 'V', 'R', 'I'),
+            mag2irradiance(np.array((0., -0.664, -0.664-0.403, -0.664-0.403-0.433))),
+            (0.08926846095326758, 0.024610219649774723, 0.14580865605424098, 0.37416765317580036)  # not real values! output reference of working state
+        )
+        output = color_indices_parser(input)
+        np.testing.assert_equal(output, expected)
+
+
+# TODO: add test for the spectrum generator from the slope
+# (120347) Salacia by Pinilla-Alonso et al. 2008
+# input = {'start': 520, 'stop': 860, 'percent_per_100nm': [12.6, 2.0]}
 
 
 class TestSpectralBinning:

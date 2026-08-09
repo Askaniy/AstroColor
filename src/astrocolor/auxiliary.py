@@ -675,7 +675,7 @@ def color_indices_parser(
     So it's better to minimize the differences not between the stds of magnitudes, but between
     the stds of scaled irradiances.
     """
-    first_color_index = tuple(indices.keys())[0]
+    first_color_index = next(iter(indices.keys()))
     filter0, _ = color_index_splitter(first_color_index)
     _, std0 = parse_value_std(indices[first_color_index])
     # Photospectrum calculation
