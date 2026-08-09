@@ -1,7 +1,6 @@
 from collections.abc import Callable, Iterator
 from copy import deepcopy
 from math import prod
-from types import UnionType
 from typing import Any, ClassVar, Final, Self, cast
 
 import numpy as np
@@ -236,7 +235,7 @@ class BaseObject:
     def _apply_element_wise_operation(
         self,
         other: 'BaseObject',
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.ArrayLike],
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray],
         error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, npt.NDArray | None], npt.NDArray | None]
     ) -> Self:
         """
@@ -256,7 +255,7 @@ class BaseObject:
     def _apply_scalar_operation(
         self,
         operand: npt.ArrayLike,
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.ArrayLike],
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray],
         error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, None], npt.NDArray | None]
     ) -> Self:
         """
@@ -468,10 +467,3 @@ class Cube(BaseObject):
     def height(self) -> int:
         """ Returns vertical spatial axis length. """
         return self.spatial_shape[1]
-
-
-RealObject: UnionType = Item | Set | Cube
-"""
-Type alias for any real (photo)spectral object.
-Can be an Item (1D), Set (2D), or Cube (3D).
-"""

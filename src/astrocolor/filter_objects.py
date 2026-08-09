@@ -230,11 +230,11 @@ class FilterSet(FilterObject, SpectralSet):
         """
         return self.spectral_dist.T * nm_step
 
-    def __getitem__(self, index: int) -> Filter:
-        """ Returns the filter profile with extra zeros trimmed off """
+    def __getitem__(self, index: int | slice) -> Filter:  # TODO: fix it properly! # pyright: ignore[reportIncompatibleMethodOverride]
+        """ Returns the filter profile with extra zeros trimmed off. Only `int` indexing is supported."""
+        if isinstance(index, slice):
+            raise TypeError(f'Slice indexing not yet implemented for {type(self).__name__}')
         # TODO: add support for a `slice` input and `FilterSet` output
-        if not isinstance(index, int):
-            raise TypeError(f'Index must be int, not {type(index).__name__}')
         # Trimming off the zeros and creating a new Filter object
         profile = self.spectral_dist[:,index]
         non_zero_indices = np.nonzero(profile)[0]

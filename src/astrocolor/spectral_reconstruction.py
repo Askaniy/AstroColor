@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from copy import deepcopy
-from typing import Any, Generic, Self, TypeVar
+from typing import Any, Self
 
 import numpy as np
 import numpy.typing as npt
@@ -18,12 +18,21 @@ from .photospectral_objects import (
 )
 from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
 
-# For type checkers, this type specifies that each reconstructed class
-# can only store hyperspectral objects of its own dimension.
-PhotospectralType = TypeVar('PhotospectralType', bound='PhotospectralObject')
 
+class ReconstructedSpectralObject(SpectralObject):
+    """
+    Internal parent class for reconstructed spectral objects.
+    The first index of the `spectral_dist` array iterates over the spectral axis.
 
-class ReconstructedSpectralObject(SpectralObject, Generic[PhotospectralType]):
+    Attributes:
+    - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
+    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `name` (Any): human-readable identifier
+    - `photospectral_obj` (PhotospectralObject): optional, a way to store the pre-reconstructed data
+    """
+
+    photospectral_obj: PhotospectralObject | None = None  # type: ignore[assignment]
 
     def __init__(
         self,
@@ -31,7 +40,7 @@ class ReconstructedSpectralObject(SpectralObject, Generic[PhotospectralType]):
         spectral_dist: npt.ArrayLike,
         uncertainty: npt.ArrayLike | None = None,
         name: Any = None,
-        photospectral_obj: PhotospectralType | None = None
+        photospectral_obj: PhotospectralObject | None = None  # type: ignore[assignment]
     ) -> None:
 
         """
@@ -58,13 +67,13 @@ class ReconstructedSpectralObject(SpectralObject, Generic[PhotospectralType]):
             extrapolated = super()._determine_at_trusted_wavelengths(requested_wavelengths)
         else:
             # Repeating the spectral reconstruction on the new wavelength range
-            extrapolated = self.photospectral_obj._determine_at_trusted_wavelengths(requested_wavelengths)
+            extrapolated = self.photospectral_obj._determine_at_trusted_wavelengths(requested_wavelengths)  # type: ignore[union-attr]
         return extrapolated
 
     def _apply_scalar_operation(
         self,
         operand: npt.ArrayLike,
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.ArrayLike],
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray],
         error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, None], npt.NDArray | None]
     ) -> Self:
         """
@@ -74,11 +83,15 @@ class ReconstructedSpectralObject(SpectralObject, Generic[PhotospectralType]):
         """
         output = super()._apply_scalar_operation(operand, value_handling, error_handling)
         if self.photospectral_obj is not None:
-            output.photospectral_obj = self.photospectral_obj._apply_scalar_operation(operand, value_handling, error_handling)
+            output.photospectral_obj = self.photospectral_obj._apply_scalar_operation(  # type: ignore[union-attr]
+                operand, value_handling, error_handling
+            )
         return output
 
 
-class ReconstructedSpectrum(ReconstructedSpectralObject[Photospectrum], Item):
+class ReconstructedSpectrum(ReconstructedSpectralObject, Item):
+    photospectral_obj: Photospectrum | None = None  # type: ignore[assignment]
+
     """
     Class to work with a single reconstructed spectrum (1D SpectralObject).
 
@@ -87,11 +100,13 @@ class ReconstructedSpectrum(ReconstructedSpectralObject[Photospectrum], Item):
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (Any): human-readable identifier
-    - `photospectral_obj` (PhotospectralObject): optional, a way to store the pre-reconstructed data
+    - `photospectral_obj` (Photospectrum): optional, a way to store the pre-reconstructed data
     """
 
 
-class ReconstructedSpectralSet(ReconstructedSpectralObject[PhotospectralSet], Set):
+class ReconstructedSpectralSet(ReconstructedSpectralObject, Set):
+    photospectral_obj: PhotospectralSet | None = None  # type: ignore[assignment]
+
     """
     Class to work with a line of continuous spectra (2D SpectralObject).
 
@@ -100,12 +115,14 @@ class ReconstructedSpectralSet(ReconstructedSpectralObject[PhotospectralSet], Se
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (Any): human-readable identifier
-    - `photospectral_obj` (PhotospectralObject): optional, a way to store the pre-reconstructed data
+    - `photospectral_obj` (PhotospectralSet): optional, a way to store the pre-reconstructed data
     - `size` (int): spatial axis length
     """
 
 
-class ReconstructedSpectralCube(ReconstructedSpectralObject[PhotospectralCube], Cube):
+class ReconstructedSpectralCube(ReconstructedSpectralObject, Cube):
+    photospectral_obj: PhotospectralCube | None = None  # type: ignore[assignment]
+
     """
     Class to work with an image of continuous spectra (3D SpectralObject).
 
@@ -114,7 +131,7 @@ class ReconstructedSpectralCube(ReconstructedSpectralObject[PhotospectralCube], 
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (Any): human-readable identifier
-    - `photospectral_obj` (PhotospectralObject): optional, a way to store the pre-reconstructed data
+    - `photospectral_obj` (PhotospectralCube): optional, a way to store the pre-reconstructed data
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length
     - `size` (int): number of pixels
@@ -122,10 +139,10 @@ class ReconstructedSpectralCube(ReconstructedSpectralObject[PhotospectralCube], 
 
     def flatten(self) -> 'ReconstructedSpectralSet':
         """ Returns a SpectralSet with linearized spatial axis """
-        output = super().flatten()
+        output = super().flatten()  # type: ignore[return-value]
         if self.photospectral_obj is not None:
-            output.photospectral_obj = self.photospectral_obj.flatten()
-        return output
+            output.photospectral_obj = self.photospectral_obj.flatten()  # type: ignore[union-attr]
+        return output  # TODO: fix it properly! # pyright: ignore[reportReturnType]
 
 
 def spectral_reconstruction(
@@ -149,18 +166,19 @@ def spectral_reconstruction(
     br0 = photospectral_obj.spectral_dist
     filter_set = photospectral_obj.filter_set.determine_at_wavelengths(requested_wavelengths, strictly=False)
     nm1 = filter_set.wavelength_nm
-    cov0 = None if photospectral_obj.ignore_uncertainty_forCubes and photospectral_obj.ndim == 3 else photospectral_obj.covariance_matrix
-    cov1 = None
+    if photospectral_obj.ignore_uncertainty_forCubes and photospectral_obj.ndim == 3:
+        cov0 = None
+    else:
+        cov0 = photospectral_obj.covariance_matrix
+    cov1: npt.NDArray[np.floating] | None = None
     if len(filter_set) == 1:
         # single-point PhotospectralObject support
         br1 = np.full((nm1.size, 1, 1)[:photospectral_obj.ndim], br0) # not tested
     else:
         filter_matrix = filter_set.matrix
-        #L = smoothness_matrix(T.shape[1], order=2)
-        #A = filter_matrix.T @ filter_matrix + 0.05 * L.T @ L
         order1_matrix = smoothness_matrix(filter_matrix.shape[1], order=1, step=filter_set.nm_step)
         order2_matrix = smoothness_matrix(filter_matrix.shape[1], order=2, step=filter_set.nm_step)
-        # TODO: research on some known spectra to find which ratios (0.005, 1) fit best
+        # TODO: research on some known spectra to find which alpha and beta fit best
         alpha = 1/8
         beta = 5000
         tikhonov_matrix = alpha * (order1_matrix.T @ order1_matrix + beta * order2_matrix.T @ order2_matrix)

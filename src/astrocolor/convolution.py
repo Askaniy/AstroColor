@@ -5,15 +5,20 @@ import numpy as np
 
 from .algebra import mul_error, mul_value
 from .auxiliary import integrate
-from .core import Cube, Item, RealObject, Set
+from .core import Cube, Item, Set
 from .filter_objects import Filter, FilterSet
-from .photospectral_objects import PhotospectralCube, PhotospectralSet, Photospectrum
-from .spectral_objects import Spectrum
+from .photospectral_objects import (
+    PhotospectralCube,
+    PhotospectralObject,
+    PhotospectralSet,
+    Photospectrum,
+)
+from .spectral_objects import SpectralObject, Spectrum
 
 
 @overload
 def observe(
-    target: Item | Set | Cube,
+    target: Item | Set | Cube | SpectralObject | PhotospectralObject,
     bandpass: Filter
 ) -> tuple[float, float | None]:
     ...
@@ -39,8 +44,22 @@ def observe(
 ) -> PhotospectralCube:
     ...
 
+@overload
 def observe(
-    target: RealObject,
+    target: SpectralObject,
+    bandpass: FilterSet
+) -> Photospectrum | PhotospectralSet | PhotospectralCube:
+    ...
+
+@overload
+def observe(
+    target: PhotospectralObject,
+    bandpass: FilterSet
+) -> Photospectrum | PhotospectralSet | PhotospectralCube:
+    ...
+
+def observe(
+    target: Item | Set | Cube | SpectralObject | PhotospectralObject,
     bandpass: Filter | FilterSet
 ):
     """
@@ -77,7 +96,7 @@ def observe(
 
 def scale_spectrum(
     target: Spectrum,
-    bandpass: Filter | FilterSet,
+    bandpass: Filter,
     requested_value: float | tuple[float, float] = 1
 ) -> Spectrum:
     """

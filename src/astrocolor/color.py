@@ -6,7 +6,7 @@ import numpy.typing as npt
 
 from .auxiliary import spatial_downscaling
 from .convolution import observe
-from .core import RealObject
+from .core import Cube, Item, Set
 from .filter_objects import FilterSet
 from .physical_models import sun_CALSPEC, vega_CALSPEC
 from .spectral_objects import Spectrum
@@ -191,7 +191,7 @@ class ColorObject:
         self._color_system = color_system
 
     @classmethod
-    def from_spectral_data(cls, data: RealObject) -> Self:
+    def from_spectral_data(cls, data: Item | Set | Cube) -> Self:
         """ Convolves (photo)spectrum with CIE 1931 XYZ color matching functions """
         photospectrum = observe(data, xyz_cmf)
         return cls(photospectrum.spectral_dist, photospectrum.covariance_matrix, xyz_color_system)

@@ -1,4 +1,4 @@
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from math import ceil, sqrt
 from typing import Literal, SupportsFloat, cast
 
@@ -632,7 +632,7 @@ def color_index_splitter(
     return filter1, filter2
 
 def color_indices_parser(
-    indices: dict[str, float | Sequence[float]]
+    indices: Mapping[str, float | Sequence[float]]
 ) -> tuple[tuple[str, ...], npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """
     Converts color indices to linear brightness, assuming mag=0 in the first filter.

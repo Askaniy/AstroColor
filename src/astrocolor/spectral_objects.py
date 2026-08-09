@@ -80,6 +80,7 @@ class SpectralObject(BaseObject):
         if np.any(np.isnan(spectral_dist)):
             spectral_dist = np.nan_to_num(spectral_dist)
             nan_values_warning('spectral_dist', name)
+        spectral_dist = cast(npt.NDArray[np.floating], spectral_dist)
         # Spectral axis check
         wavelength_nm = np.array(wavelength_nm) # numpy decides int or float
         if (len_nm := wavelength_nm.size) != (len_values := len(spectral_dist)):
@@ -89,6 +90,7 @@ class SpectralObject(BaseObject):
             uncertainty = None
         if uncertainty is not None:
             uncertainty = np.array(uncertainty, dtype=spectral_dist_dtype)
+        uncertainty = cast(npt.NDArray[np.floating] | None, uncertainty)
         if uncertainty is not None and (len_error := len(uncertainty)) != len_values:
             raise InconsistentUncertaintySizeError(len_error, len_values, name)
         is_cov_matrix = None # flag to switch between standard deviation and covariance matrix
@@ -102,27 +104,29 @@ class SpectralObject(BaseObject):
         # Fast increasing check
         if np.any(wavelength_nm[:-1] > wavelength_nm[1:]):
             order = np.argsort(wavelength_nm)
-            wavelength_nm = wavelength_nm[order]
-            spectral_dist = spectral_dist[order]
+            wavelength_nm = cast(npt.NDArray[Any], wavelength_nm[order])
+            spectral_dist = cast(npt.NDArray[np.floating], spectral_dist[order])
             if uncertainty is not None:
-                uncertainty = uncertainty[order]
+                uncertainty = cast(npt.NDArray[np.floating], uncertainty[order])
         # Red limit check
         if wavelength_nm[-1] > nm_red_limit:
             mask = np.where(wavelength_nm < nm_red_limit + nm_step) # with reserve to be averaged
-            wavelength_nm = wavelength_nm[mask]
-            spectral_dist = spectral_dist[mask]
+            wavelength_nm = cast(npt.NDArray[Any], wavelength_nm[mask])
+            spectral_dist = cast(npt.NDArray[np.floating], spectral_dist[mask])
             if uncertainty is not None:
-                uncertainty = uncertainty[mask]
+                uncertainty = cast(npt.NDArray[np.floating], uncertainty[mask])
         if is_emission_spectrum:
             if uncertainty is not None and is_cov_matrix:
                 erasing_correlations_warning(name)
-                uncertainty = np.sqrt(np.diag(uncertainty, axis=0))
+                uncertainty = np.sqrt(uncertainty.diagonal())
                 is_cov_matrix = False
             # The first spectral line
-            spectral_lines_sum = self.monochromatic(wavelength_nm[0], spectral_dist[0], None if uncertainty is None else uncertainty[0])
+            std0: float | None = None if uncertainty is None else cast(float, uncertainty[0])
+            spectral_lines_sum = self.monochromatic(wavelength_nm[0], spectral_dist[0], std0)
             if wavelength_nm.size > 1:
                 # The last spectral line
-                spectral_line = self.monochromatic(wavelength_nm[-1], spectral_dist[-1], None if uncertainty is None else uncertainty[-1])
+                std_last: float | None = None if uncertainty is None else cast(float, uncertainty[-1])
+                spectral_line = self.monochromatic(wavelength_nm[-1], spectral_dist[-1], std_last)
                 nm_range = (spectral_lines_sum.wavelength_nm[0], spectral_line.wavelength_nm[-1])
                 spectral_lines_sum.determine_at_wavelengths(nm_range)
                 spectral_line.determine_at_wavelengths(nm_range)
@@ -132,7 +136,8 @@ class SpectralObject(BaseObject):
                     # Reason for manually loading the boundary lines:
                     # to ensure that boundary zero values are processed correctly
                     for i in range(wavelength_nm.size)[1:-1]:
-                        spectral_line = self.monochromatic(wavelength_nm[i], spectral_dist[i], None if uncertainty is None else uncertainty[i])
+                        std_i: float | None = None if uncertainty is None else cast(float, uncertainty[i])
+                        spectral_line = self.monochromatic(wavelength_nm[i], spectral_dist[i], std_i)
                         spectral_lines_sum += spectral_line.determine_at_wavelengths(nm_range)
             self.wavelength_nm = spectral_lines_sum.wavelength_nm
             self.spectral_dist = spectral_lines_sum.spectral_dist
@@ -142,7 +147,7 @@ class SpectralObject(BaseObject):
             if np.any((diff := np.diff(wavelength_nm)) != nm_step) or wavelength_nm[0] % nm_step != 0:
                 if uncertainty is not None and is_cov_matrix:
                     erasing_correlations_warning(name)
-                    uncertainty = np.sqrt(np.diag(uncertainty, axis=0))
+                    uncertainty = cast(npt.NDArray[np.floating], np.sqrt(uncertainty.diagonal()))
                     is_cov_matrix = False
                 nm_uniform = self._uniform_grid(wavelength_nm[0], wavelength_nm[-1])
                 if diff.mean() >= self.nm_step:
@@ -155,10 +160,12 @@ class SpectralObject(BaseObject):
                     template = self.monochromatic(np.average(wavelength_nm, weights=spectral_dist))
                     nm_uniform = template.wavelength_nm
                     integral = np.sum(0.5 * (spectral_dist[:-1] + spectral_dist[1:]) * diff, axis=0) # Riemann sum
-                    spectral_dist = template.spectral_dist * integral
+                    spectral_dist = cast(npt.NDArray[np.floating], template.spectral_dist * integral)
                     if uncertainty is not None:
                         # Problem 4
-                        template.covariance_matrix *= np.sum(0.5 * (uncertainty[:-1] + uncertainty[1:]) * diff, axis=0)**2
+                        cov_scale = cast(npt.NDArray[np.floating], template.covariance_matrix)
+                        cov_scale *= np.sum(0.5 * (uncertainty[:-1] + uncertainty[1:]) * diff, axis=0)**2
+                        template.covariance_matrix = cov_scale
                 elif diff.max() < nm_step:
                     # Option 3: dense spectral grid -> flux-conserving binning cumulative-integral (CDF) method
                     spectral_dist, uncertainty = spectral_binning(wavelength_nm, spectral_dist, uncertainty, nm_uniform, nm_step, diff)
@@ -192,7 +199,7 @@ class SpectralObject(BaseObject):
         wavelength: float,
         intensity: float = 1,
         standard_deviation: float | None = None
-    ):
+    ) -> 'SpectralObject':
         """
         Creates a monochromatic SpectralObject on the 1- or 2-point spectral grid.
         It is normaized by default and have zeroed edges.
@@ -340,7 +347,8 @@ class SpectralObject(BaseObject):
         std = None
         if self.covariance_matrix is not None:
             erasing_correlations_warning(self.name)
-            std = np.sqrt(np.diag(self.covariance_matrix, axis=0))
+            cov = cast(npt.NDArray[np.floating], self.covariance_matrix)
+            std = np.sqrt(cov.diagonal())
         # Extrapolating
         nm, br, std = extrapolating(self.wavelength_nm, self.spectral_dist, std, requested_wavelengths, nm_step)
         # Creating new object
@@ -407,7 +415,7 @@ class SpectralObject(BaseObject):
     def _apply_element_wise_operation(
         self,
         other: 'BaseObject',
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.ArrayLike],
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray],
         error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, npt.NDArray | None], npt.NDArray | None]
     ) -> 'SpectralObject':
         """

@@ -79,11 +79,6 @@ class PhotospectralObject(BaseObject):
         stub_filter_set = FilterSet.get('Generic_Bessell.B', 'Generic_Bessell.V')
         return cls(stub_filter_set, np.zeros((2, 1, 1)[:cls.ndim]), name=name)
 
-    @property
-    def wavelength_nm(self) -> npt.NDArray:
-        """ Returns the definition range of the filter system """
-        return self.filter_set.wavelength_nm
-
     def convert_from_photon_spectral_density(self) -> Self:
         """
         Returns a new PhotospectralObject converted from photon spectral density
@@ -122,9 +117,9 @@ class PhotospectralObject(BaseObject):
     def _apply_element_wise_operation(
         self,
         other: 'BaseObject',
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.ArrayLike],
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray],
         error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, npt.NDArray | None], npt.NDArray | None]
-    ) -> Self:
+    ) -> 'PhotospectralObject':
         """
         Returns a new PhotospectralObject formed from element-wise operation with
         a SpectralObject or another PhotospectralObject. Operations between objects
@@ -134,10 +129,13 @@ class PhotospectralObject(BaseObject):
         to the filter system of the first object!
         """
         filter_set = self.filter_set
-        if isinstance(other, 'SpectralObject') or (isinstance(other, PhotospectralObject) and other.filter_set != filter_set):
+        from .spectral_objects import SpectralObject
+        if isinstance(other, SpectralObject) or (isinstance(other, PhotospectralObject) and other.filter_set != filter_set):
             # Converting to a PhotospectralObject of the same filter system
             from .convolution import observe
             other = observe(other, filter_set)
+        else:
+            return NotImplemented
         value = value_handling(self.spectral_dist, other.spectral_dist)
         error = error_handling(self.spectral_dist, self.covariance_matrix, other.spectral_dist, other.covariance_matrix)
         higher_dim = (self, other)[self.ndim < other.ndim]
