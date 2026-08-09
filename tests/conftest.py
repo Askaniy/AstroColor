@@ -1,5 +1,7 @@
 import pytest
+
 from astrocolor import Filter, FilterSet
+
 
 @pytest.fixture(scope='session')
 def v_filter():

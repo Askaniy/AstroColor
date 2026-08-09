@@ -119,7 +119,7 @@ class TestSpectralBinning:
         step = 5  # nm
         nm1 = np.arange(400, 700, step)
         nm0_diff = np.diff(nm0)
-        br1, std1 = spectral_binning(nm0, br0, None, nm1, step, nm0_diff)
+        br1, _ = spectral_binning(nm0, br0, None, nm1, step, nm0_diff)
         np.testing.assert_allclose(br1, nm1 / 100, rtol=0.1)
 
 

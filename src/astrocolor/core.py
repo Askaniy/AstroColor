@@ -1,7 +1,8 @@
 from collections.abc import Callable, Iterator
 from copy import deepcopy
 from math import prod
-from typing import Any, ClassVar, Final, Self, TypeAlias, cast
+from types import UnionType
+from typing import Any, ClassVar, Final, Self, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -469,7 +470,7 @@ class Cube(BaseObject):
         return self.spatial_shape[1]
 
 
-RealObject: TypeAlias = Item | Set | Cube
+RealObject: UnionType = Item | Set | Cube
 """
 Type alias for any real (photo)spectral object.
 Can be an Item (1D), Set (2D), or Cube (3D).

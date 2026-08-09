@@ -54,7 +54,7 @@ class PhotospectralObject(BaseObject):
             nan_values_warning('br', self.name)
         # Spectral axis check
         if not isinstance(filter_set, FilterSet):
-            raise ValueError('`filter_set` argument is not a FilterSet instance')
+            raise TypeError('`filter_set` argument is not a FilterSet instance')
         self.filter_set = filter_set
         if (len_filters := len(self.filter_set)) != (len_values := len(self.spectral_dist)):
             raise InconsistentAxesError(len_filters, len_values, self.name)

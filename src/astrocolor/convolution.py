@@ -84,7 +84,7 @@ def scale_spectrum(
     Returns a new spectrum that matches the query brightness value (1 by default)
     at the specified filter.
     """
-    current_value, std = observe(target, bandpass)
+    current_value, _ = observe(target, bandpass)
     if current_value <= 0:
         # Prevents errors of dividing by zero and inversion
         return target

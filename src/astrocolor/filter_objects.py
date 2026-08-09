@@ -20,7 +20,7 @@ def _cached_get(filter_id: str) -> 'Filter':
     This has been separated out to create copies of the results and avoid mutations.
     """
     if not isinstance(filter_id, str):
-        raise ValueError('Spanish Virtual Observatory filter ID must be a string')
+        raise TypeError('Spanish Virtual Observatory filter ID must be a string')
     try:
         file_path = next((script_folder / 'filters').glob(f'{filter_id}.*'))
         nm, sd = np.loadtxt(file_path).T[:2]

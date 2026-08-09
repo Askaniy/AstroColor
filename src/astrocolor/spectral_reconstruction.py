@@ -124,7 +124,7 @@ class ReconstructedSpectralCube(ReconstructedSpectralObject[PhotospectralCube], 
         """ Returns a SpectralSet with linearized spatial axis """
         output = super().flatten()
         if self.photospectral_obj is not None:
-            output.photospectral_obj = self.photospectral_obj.flatten()  # type: ignore[union-attr]
+            output.photospectral_obj = self.photospectral_obj.flatten()
         return output
 
 

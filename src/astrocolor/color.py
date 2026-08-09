@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import Self
+from typing import ClassVar, Self
 
 import numpy as np
 import numpy.typing as npt
@@ -124,7 +124,7 @@ class ColorSystem:
     # Values are color primaries (red, green, blue) and white points used.
     # See https://en.wikipedia.org/wiki/RGB_color_spaces
     # and http://brucelindbloom.com/index.html?WorkingSpaceInfo.html
-    supported_color_spaces = {
+    supported_color_spaces: ClassVar = {
         'CIE 1931 XYZ': (((1, 0), (0, 1), (0, 0)), 'Illuminant E'),
         'CIE 1931 RGB': (((0.73474284, 0.26525716), (0.27377903, 0.7174777), (0.16655563, 0.00891073)), 'Illuminant E'),
         'sRGB': (((0.64, 0.33), (0.30, 0.60), (0.15, 0.06)), 'Illuminant D65'),
@@ -138,7 +138,7 @@ class ColorSystem:
 
     # Values are (x, y) coordinates.
     # https://en.wikipedia.org/wiki/Standard_illuminant#White_points_of_standard_illuminants
-    supported_white_points = {
+    supported_white_points: ClassVar = {
         'Illuminant A': (0.44758, 0.40745),
         'Illuminant B': (0.34842, 0.35161),
         'Illuminant C': (0.31006, 0.31616),
