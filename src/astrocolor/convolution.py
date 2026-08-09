@@ -1,14 +1,14 @@
-from typing import overload, Tuple
-import numpy as np
-import numpy.typing as npt
 from collections.abc import Sequence
+from typing import overload
 
-from .auxiliary import integrate
+import numpy as np
+
 from .algebra import mul_error, mul_value
-from .core import Item, Set, Cube, RealObject
-from .spectral_objects import Spectrum
-from .photospectral_objects import Photospectrum, PhotospectralSet, PhotospectralCube
+from .auxiliary import integrate
+from .core import Cube, Item, RealObject, Set
 from .filter_objects import Filter, FilterSet
+from .photospectral_objects import PhotospectralCube, PhotospectralSet, Photospectrum
+from .spectral_objects import Spectrum
 
 
 @overload
@@ -78,7 +78,7 @@ def observe(
 def scale_spectrum(
     target: Spectrum,
     bandpass: Filter | FilterSet,
-    requested_value: int | float | tuple[float, float] = 1
+    requested_value: float | tuple[float, float] = 1
 ) -> Spectrum:
     """
     Returns a new spectrum that matches the query brightness value (1 by default)

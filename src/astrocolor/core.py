@@ -1,29 +1,29 @@
+from collections.abc import Callable, Iterator
+from copy import deepcopy
+from math import prod
+from typing import Any, ClassVar, Final, Self, TypeAlias, cast
+
 import numpy as np
 import numpy.typing as npt
-from math import prod
-from collections.abc import Callable
-from typing import cast, Self, Any, Final, ClassVar, TypeAlias, Iterator
-from copy import deepcopy
 
+from .algebra import (
+    add_error,
+    add_value,
+    div_error,
+    div_value,
+    mul_error,
+    mul_value,
+    sub_error,
+    sub_value,
+)
 from .auxiliary import (
     get_extremal_grid_endpoints,
     grid_endpoints_preprocessing,
-    uniform_grid,
     repr_generator,
-    spatial_downscaling
-)
-from .algebra import (
-    add_value,
-    add_error,
-    sub_value,
-    sub_error,
-    mul_value,
-    mul_error,
-    div_value,
-    div_error
+    spatial_downscaling,
+    uniform_grid,
 )
 from .errors import InconsistentAxesError, InconsistentUncertaintySizeError
-
 
 # For the sake of simplifying work with the spectrum,
 # its discretization step is fixed and frozen.
@@ -120,8 +120,8 @@ class BaseObject:
 
     def _grid_endpoints_preprocessing(
         self,
-        start: int | float,
-        end: int | float
+        start: float,
+        end: float
     ) -> tuple[int, int]:
         """
         Wavelength grid generation pipeline.
@@ -142,8 +142,8 @@ class BaseObject:
 
     def _uniform_grid(
         self,
-        start: int | float,
-        end: int | float
+        start: float,
+        end: float
     ) -> npt.NDArray:
         """
         Wavelength grid generation pipeline.
@@ -185,7 +185,7 @@ class BaseObject:
         """
         nm_min, nm_max = self._get_extremal_grid_endpoints(requested_wavelengths)
         requested_wavelengths = self._uniform_grid(nm_min, nm_max)
-        from.spectral_objects import SpectralObject
+        from .spectral_objects import SpectralObject
         spectral_obj = cast(SpectralObject, self._determine_at_trusted_wavelengths(requested_wavelengths))
         # Spectral range clipping
         if strictly and not np.array_equal(spectral_obj.wavelength_nm, requested_wavelengths):

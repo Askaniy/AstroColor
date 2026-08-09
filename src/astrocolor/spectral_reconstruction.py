@@ -1,17 +1,22 @@
+from collections.abc import Callable
+from copy import deepcopy
+from typing import Any, Generic, Self, TypeVar
+
 import numpy as np
 import numpy.typing as npt
-from collections.abc import Callable
-from typing import Any, Generic, TypeVar, Self
 from scipy.linalg import solve
 from scipy.optimize import minimize
-from copy import deepcopy
 
 from .auxiliary import smoothness_matrix
-from .core import Item, Set, Cube
-from .spectral_objects import SpectralObject, Spectrum, SpectralSet, SpectralCube
-from .photospectral_objects import PhotospectralObject, Photospectrum, PhotospectralSet, PhotospectralCube
+from .core import Cube, Item, Set
 from .errors import UnsupportedDimensionError
-
+from .photospectral_objects import (
+    PhotospectralCube,
+    PhotospectralObject,
+    PhotospectralSet,
+    Photospectrum,
+)
+from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
 
 # For type checkers, this type specifies that each reconstructed class
 # can only store hyperspectral objects of its own dimension.

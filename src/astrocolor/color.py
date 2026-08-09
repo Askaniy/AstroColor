@@ -1,15 +1,15 @@
-import numpy as np
-import numpy.typing as npt
 from copy import deepcopy
 from typing import Self
 
+import numpy as np
+import numpy.typing as npt
+
 from .auxiliary import spatial_downscaling
+from .convolution import observe
 from .core import RealObject
-from .spectral_objects import Spectrum
 from .filter_objects import FilterSet
 from .physical_models import sun_CALSPEC, vega_CALSPEC
-from .convolution import observe
-
+from .spectral_objects import Spectrum
 
 # CIE 1931 XYZ color matching functions, 2-deg
 # https://cie.co.at/datatable/cie-1931-colour-matching-functions-2-degree-observer

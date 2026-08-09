@@ -1,11 +1,10 @@
 import numpy as np
+
 import astrocolor as ac
-
-
 
 # === FilterObjects Statistics Tests ===
 
-class TestFilterStatistics():
+class TestFilterStatistics:
     """ Tests for mean_nm() and std_of_nm() on filters, spectra, and their sets. """
 
     # - mean_nm() tests
@@ -55,7 +54,7 @@ class TestFilterStatistics():
 
 # === Filter Unification Operation Tests ===
 
-class TestFilterUnification():
+class TestFilterUnification:
 
     def test_filter_filter(self):
         actual = ac.Filter.get('Generic_Bessell.B') | ac.Filter.get('Generic_Bessell.V')

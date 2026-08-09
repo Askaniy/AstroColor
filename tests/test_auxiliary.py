@@ -1,17 +1,18 @@
 import numpy as np
 import pytest
+
 import astrocolor as ac
-from astrocolor.core import nm_step, wavelength_nm_dtype
 from astrocolor.auxiliary import (
     get_extremal_grid_endpoints,
-    uniform_grid,
+    linear_interp,
+    parse_value_std,
     repr_generator,
     repr_generator_1D,
     repr_generator_2D,
-    linear_interp,
     spectral_binning,
-    parse_value_std
+    uniform_grid,
 )
+from astrocolor.core import nm_step, wavelength_nm_dtype
 
 np.random.seed(42)
 
@@ -19,7 +20,7 @@ np.random.seed(42)
 # === Auxiliary Utilities Tests ===
 
 
-class TestWavelengthGrids():
+class TestWavelengthGrids:
 
     def test_grid_reversibility(self):
         old_grid = uniform_grid(400, 600, nm_step, wavelength_nm_dtype)
@@ -28,7 +29,7 @@ class TestWavelengthGrids():
         np.testing.assert_equal(old_grid, new_grid)
 
 
-class TestParsing():
+class TestParsing:
 
     def test_sd_parsing_scalar(self):
         np.testing.assert_equal(parse_value_std(0.202), (0.202, None))
@@ -49,7 +50,7 @@ class TestParsing():
         )
 
 
-class TestSpectralBinning():
+class TestSpectralBinning:
 
     def test_spectral_binning(self):
         nm0_len = 100
@@ -64,7 +65,7 @@ class TestSpectralBinning():
         np.testing.assert_allclose(br1, nm1 / 100, rtol=0.1)
 
 
-class TestLinearInterp():
+class TestLinearInterp:
 
     # Basic 1D interpolation (no extrapolation)
     def test_basic_1d_interpolation(self):
@@ -202,7 +203,7 @@ class TestLinearInterp():
         np.testing.assert_allclose(y_linear, expected_linear, rtol=1e-5)
 
 
-class TestExtrapolation():
+class TestExtrapolation:
 
     def test_extrapolation_filter(self, v_filter):
         extrapolated = v_filter.determine_at_wavelengths(ac.visible_range, strictly=True)
@@ -235,7 +236,7 @@ class TestExtrapolation():
         )
 
 
-class TestReprGenerator1D():
+class TestReprGenerator1D:
     """ Tests for the repr_generator_1D function. """
 
     def test_int(self):
@@ -277,7 +278,7 @@ class TestReprGenerator1D():
             repr_generator_1D(arr_2d)
 
 
-class TestReprGenerator2D():
+class TestReprGenerator2D:
     """ Tests for the repr_generator_2D function. """
 
     def test_single_row(self):
@@ -309,7 +310,7 @@ class TestReprGenerator2D():
             repr_generator_2D(arr_1d)
 
 
-class TestReprGenerator():
+class TestReprGenerator:
     """ Tests for the main repr_generator dispatching function. """
 
     def test_dispatches_to_1d(self):

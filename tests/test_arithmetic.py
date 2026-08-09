@@ -1,10 +1,10 @@
 import numpy as np
-import astrocolor as ac
 
+import astrocolor as ac
 
 # === Arithmetic Operations Tests ===
 
-class TestArithmetic():
+class TestArithmetic:
     """ Tests for +, *, / operations between spectra and filters. """
 
     # - addition

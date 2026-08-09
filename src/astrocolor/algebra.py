@@ -2,7 +2,6 @@ import numpy as np
 import numpy.typing as npt
 
 
-
 def make_same_ndim(arr1: npt.ArrayLike, arr2: npt.ArrayLike):
     """ Equalizes the arrays dimensions along spatial axes to make it possible to broadcast """
     arr1 = np.asarray(arr1)

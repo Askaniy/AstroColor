@@ -1,13 +1,21 @@
+from collections.abc import Callable
+from copy import deepcopy
+from typing import Any, Self, cast
+
 import numpy as np
 import numpy.typing as npt
-from copy import deepcopy
-from typing import Self, Any, Callable, cast
 
-from .core import BaseObject, Item, Set, Cube, spectral_dist_dtype
+from .core import BaseObject, Cube, Item, Set, spectral_dist_dtype
+from .errors import (
+    InconsistentAxesError,
+    InconsistentDimensionError,
+    InconsistentUncertaintyShapeError,
+    InconsistentUncertaintySizeError,
+    nan_values_warning,
+)
+
 # No dependency on .spectral_objects to avoid a cycle!
 from .filter_objects import FilterSet
-from .errors import nan_values_warning, InconsistentDimensionError, \
-    InconsistentAxesError, InconsistentUncertaintySizeError, InconsistentUncertaintyShapeError
 
 
 class PhotospectralObject(BaseObject):
@@ -162,7 +170,6 @@ class Photospectrum(PhotospectralObject, Item):
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (Any): human-readable identifier
     """
-    pass
 
 
 class PhotospectralSet(PhotospectralObject, Set):
@@ -177,7 +184,6 @@ class PhotospectralSet(PhotospectralObject, Set):
     - `name` (Any): human-readable identifier
     - `size` (int): spatial axis length
     """
-    pass
 
 
 class PhotospectralCube(PhotospectralObject, Cube):

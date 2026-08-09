@@ -1,10 +1,8 @@
 import numpy as np
 import numpy.typing as npt
 
-from .spectral_objects import Spectrum
 from .data_manager import script_folder
-
-
+from .spectral_objects import Spectrum
 
 sun_data = np.load(script_folder/'data/Sun_CALSPEC.npz')
 sun_CALSPEC = Spectrum(sun_data['wavelength_nm'], sun_data['spectral_dist'])
@@ -29,14 +27,14 @@ const2 = h * c / k
 class BlackBodyModel:
     """ Creates a Spectrum object based on Planck's law and redshift formulas """
 
-    def __init__(self, temperature: int | float, velocity: float = 0.0, vII: float = 0.0) -> None:
+    def __init__(self, temperature: float, velocity: float = 0.0, vII: float = 0.0) -> None:
         self.T = temperature
         self.v = velocity
         self.vII = vII
 
     def planck_radiance(
         self,
-        nm: int | float | npt.NDArray
+        nm: float | npt.NDArray
     ) -> float | npt.NDArray[np.floating]:
         m = nm * 1e-9
         radiance = const1 / (m**5 * (np.exp(const2 / (m * self.T)) - 1))

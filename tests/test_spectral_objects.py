@@ -1,10 +1,10 @@
 import numpy as np
-import astrocolor as ac
 
+import astrocolor as ac
 
 # === Spectral Objects Creation & Properties Tests ===
 
-class TestSpectralObjects():
+class TestSpectralObjects:
 
     def test_spectrum_from_nm_float(self):
         spectrum = ac.Spectrum.monochromatic(555.5)

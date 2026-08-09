@@ -1,14 +1,16 @@
+from collections.abc import Sequence
 from copy import deepcopy
+from functools import lru_cache
+from typing import Any, Self
+
 import numpy as np
 import numpy.typing as npt
-from typing import Any, Sequence, Self
-from functools import lru_cache
 
 from .auxiliary import uniform_grid
 from .core import nm_step, wavelength_nm_dtype
-from .spectral_objects import SpectralObject, Spectrum, SpectralSet
 from .data_manager import script_folder
 from .errors import FilterNotFoundError
+from .spectral_objects import SpectralObject, SpectralSet, Spectrum
 
 
 @lru_cache(maxsize=128)

@@ -1,10 +1,10 @@
 import numpy as np
-import astrocolor as ac
 
+import astrocolor as ac
 
 # === Convolution Tests ===
 
-class TestConvolution():
+class TestConvolution:
     """ Tests for observe() and spectral convolution. """
 
     # - stub / return-type tests

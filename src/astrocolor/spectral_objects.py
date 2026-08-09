@@ -1,16 +1,43 @@
+from collections.abc import Callable
+from copy import deepcopy
+from typing import Any, Self, cast
+
 import numpy as np
 import numpy.typing as npt
-from collections.abc import Callable
-from typing import cast, Self, Any
-from copy import deepcopy
 
-from .auxiliary import grid_endpoints_preprocessing, integrate, stretch, interpolate, extrapolating, spectral_binning, spectral_downscaling
-from .core import BaseObject, Item, Set, Cube, nm_step, wavelength_nm_dtype, spectral_dist_dtype, nm_red_limit
+from .auxiliary import (
+    extrapolating,
+    grid_endpoints_preprocessing,
+    integrate,
+    interpolate,
+    spectral_binning,
+    spectral_downscaling,
+    stretch,
+)
+from .core import (
+    BaseObject,
+    Cube,
+    Item,
+    Set,
+    nm_red_limit,
+    nm_step,
+    spectral_dist_dtype,
+    wavelength_nm_dtype,
+)
+
 # No dependency on .photospectral_objects to avoid cycle!
-from .errors import UnsupportedDimensionError, InconsistentDimensionError, \
-    InconsistentAxesError, InconsistentUncertaintySizeError, InconsistentUncertaintyShapeError, \
-    erasing_correlations_warning, nan_values_warning, zero_brightness_warning, empty_spectral_intersection_operator_warning, \
-    empty_spectral_intersection_warning
+from .errors import (
+    InconsistentAxesError,
+    InconsistentDimensionError,
+    InconsistentUncertaintyShapeError,
+    InconsistentUncertaintySizeError,
+    UnsupportedDimensionError,
+    empty_spectral_intersection_operator_warning,
+    empty_spectral_intersection_warning,
+    erasing_correlations_warning,
+    nan_values_warning,
+    zero_brightness_warning,
+)
 
 
 class SpectralObject(BaseObject):
@@ -162,9 +189,9 @@ class SpectralObject(BaseObject):
     @classmethod
     def monochromatic(
         cls,
-        wavelength: int | float,
-        intensity: int | float = 1,
-        standard_deviation: int | float | None = None
+        wavelength: float,
+        intensity: float = 1,
+        standard_deviation: float | None = None
     ):
         """
         Creates a monochromatic SpectralObject on the 1- or 2-point spectral grid.
@@ -278,8 +305,8 @@ class SpectralObject(BaseObject):
 
     def get_spectral_dist_at_wavelengths(
         self,
-        start: int | float,
-        end: int | float
+        start: float,
+        end: float
     ) -> npt.NDArray[np.floating]:
         """ Returns standard deviation values over a range of wavelengths (endpoints included) """
         start, end = grid_endpoints_preprocessing(start, end, nm_step)
@@ -291,8 +318,8 @@ class SpectralObject(BaseObject):
 
     def get_covariance_matrix_at_wavelengths(
         self,
-        start: int | float,
-        end: int | float
+        start: float,
+        end: float
     ) -> npt.NDArray[np.floating] | None:
         """ Returns standard deviation values over a range of wavelengths (endpoints included) """
         if self.covariance_matrix is None:
@@ -434,7 +461,6 @@ class SpectralSet(SpectralObject, Set):
     - `name` (Any): human-readable identifier
     - `size` (int): spatial axis length
     """
-    pass
 
 
 class SpectralCube(SpectralObject, Cube):

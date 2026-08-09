@@ -1,10 +1,10 @@
 import numpy as np
-import astrocolor as ac
 
+import astrocolor as ac
 
 # === Color System Tests ===
 
-class TestColorSystem():
+class TestColorSystem:
 
     def test_color_of_flat_spectrum(self):
         nm = np.arange(200, 800, 5)

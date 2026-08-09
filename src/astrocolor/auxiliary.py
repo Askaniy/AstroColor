@@ -1,17 +1,18 @@
+from collections.abc import Iterable, Sequence
+from math import ceil, sqrt
+from typing import Literal, SupportsFloat, cast
+
 import numpy as np
 import numpy.typing as npt
-from math import sqrt, ceil
-from typing import cast, Iterable, SupportsFloat, Sequence, Literal, Optional
 
 from .errors import UnsupportedDimensionError
-
 
 # ------------ Core Section ------------
 
 def get_extremal_grid_endpoints(
     requested_grid: npt.ArrayLike,
-    lower_limit: Optional[int | float] = 0,
-    upper_limit: Optional[int | float] = np.inf
+    lower_limit: float | None = 0,
+    upper_limit: float | None = np.inf
 ) -> tuple[int | float, int | float]:
     """
     Grid generation pipeline.
@@ -36,8 +37,8 @@ def get_extremal_grid_endpoints(
     return v_min, v_max
 
 def grid_endpoints_preprocessing(
-    start: int | float,
-    end: int | float,
+    start: float,
+    end: float,
     step: int
 ) -> tuple[int, int]:
     """
@@ -57,8 +58,8 @@ def grid_endpoints_preprocessing(
     return int(start), int(end)
 
 def uniform_grid(
-    start: int | float,
-    end: int | float,
+    start: float,
+    end: float,
     step: int,
     dtype: npt.DTypeLike
 ) -> npt.NDArray:
@@ -77,7 +78,7 @@ def uniform_grid(
 
 def integrate(
     array: npt.NDArray,
-    step: int | float,
+    step: float,
     precisely: bool = False
 ) -> float | npt.NDArray[np.floating]:
     """
@@ -104,7 +105,7 @@ def spectral_binning(
     br0: npt.NDArray,
     std0: npt.NDArray | None,
     nm1: npt.NDArray,
-    step: int | float,
+    step: float,
     nm0_diff: npt.NDArray
 ) -> tuple[npt.NDArray, npt.NDArray[np.floating] | None]:
     """
@@ -187,7 +188,7 @@ fwhm_factor = np.sqrt(8 * np.log(2))
 
 def gaussian_width(
     current_resolution: npt.NDArray[np.floating],
-    target_resolution: int | float
+    target_resolution: float
 ) -> npt.NDArray[np.floating]:
     return np.sqrt(np.abs(target_resolution**2 - current_resolution**2)) / fwhm_factor
 
@@ -195,7 +196,7 @@ def gaussian_convolution(
     nm0: npt.NDArray,
     br0: npt.NDArray,
     nm1: npt.NDArray,
-    step: int | float
+    step: float
 ) -> npt.NDArray[np.floating]:
     """
     Applies Gaussian convolution to a non-uniform sparse mesh. Eliminates holes and noise from spectral axis.
@@ -218,7 +219,7 @@ def spectral_downscaling(
     br0: npt.NDArray,
     std0: npt.NDArray | None,
     nm1: npt.NDArray,
-    step: int | float
+    step: float
 ) -> tuple[npt.NDArray, npt.NDArray[np.floating] | None]:
     """
     Returns spectrum brightness values with decreased resolution.
@@ -385,7 +386,7 @@ def interpolate(
     x0: npt.NDArray,
     y0: npt.NDArray,
     x1: npt.NDArray,
-    step: int | float
+    step: float
 ) -> npt.NDArray[np.floating]:
     """
     Returns interpolated `y0` values on a uniform grid `x0`. Uses enhanced linear interpolation.
@@ -419,7 +420,7 @@ def stretch(
 def custom_extrap(
     grid: npt.NDArray,
     derivative: float | npt.NDArray,
-    corner_x: int | float,
+    corner_x: float,
     corner_y: npt.NDArray
 ) -> npt.NDArray[np.floating]:
     """
@@ -581,7 +582,7 @@ def parse_value_std_list(
         return np.array(values, dtype=np.float64), np.array(stds, dtype=np.float64)
 
 def repeat_if_value(
-    data: int | float | npt.ArrayLike,
+    data: float | npt.ArrayLike,
     arr_len: int
 ) -> npt.NDArray[np.floating]:
     """ If the input consists of a single number, stretches to 1D array """
@@ -593,15 +594,15 @@ def repeat_if_value(
         return arr
 
 def mag2irradiance(
-    mag: int | float | npt.NDArray,
+    mag: float | npt.NDArray,
     zero_point: float = 1.0
 ) -> int | float | npt.NDArray:
     """ Converts magnitudes to irradiance (by default in Vega units) """
     return zero_point * 10**(-0.4 * mag)
 
 def std_mag2std_irradiance(
-    std_mag: int | float | npt.NDArray,
-    irradiance: int | float | npt.NDArray
+    std_mag: float | npt.NDArray,
+    irradiance: float | npt.NDArray
 ) -> int | float | npt.NDArray:
     """
     Converts standard deviation of the magnitude to a irradiance standard deviation.
@@ -736,21 +737,21 @@ def color_indices_parser(
 c_kms = 299792.458 # Speed of light in km/s
 
 def cosmological_redshift(
-    wave: int | float | npt.NDArray,
+    wave: float | npt.NDArray,
     z: float
 ) -> int | float | npt.NDArray:
     """ Applyes the redshift correction to the wavelength array (1+z = λ_obs/λ_emit) """
     return wave / (1 + z)
 
 def calc_redshift_sqrt(
-    vel: int | float
+    vel: float
 ) -> float:
     """ Calculates the redshift from the velocity in km/s """
     v = vel / c_kms
     return np.sqrt((1+v)/(1-v)) - 1
 
 def calc_redshift_exp(
-    vel: int | float
+    vel: float
 ) -> float:
     """ Calculates the redshift from the velocity in km/s """
     v = vel / c_kms
@@ -759,7 +760,7 @@ def calc_redshift_exp(
 
 # === String representation functions ===
 
-def repr_value(value: int | float, is_int: bool):
+def repr_value(value: float, is_int: bool):
     """ Helper function to format numpy elements for string representation """
     return str(int(value)) if is_int else f'{value:.3f}'
 
