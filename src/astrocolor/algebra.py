@@ -76,14 +76,20 @@ def mul_error(mean_x, cov_x, mean_y, cov_y):
 def div_value(mean_x, mean_y):
     try:
         # Numeric and same-ndim numpy arrays cases
-        return mean_x / mean_y
+        with np.errstate(divide='raise', invalid='raise'):
+            return mean_x / mean_y
     except ValueError:
         # Different ndim case
         mean_x = np.asarray(mean_x)
         mean_y = np.asarray(mean_y)
-        if mean_y.ndim > mean_x.ndim:
-            mean_x, mean_y = mean_y, mean_x
         return (mean_x.T / mean_y).T
+    except FloatingPointError:
+        if np.all(np.asarray(mean_x) == 0.):
+            # Case of dividing zero by zero
+            return np.zeros_like(mean_x)
+        else:
+            # Case of dividing by zero
+            return np.full_like(mean_x, np.inf)
 
 def div_error(mean_x, cov_x, mean_y, cov_y):
     if cov_x is None and cov_y is None:

@@ -39,6 +39,12 @@ def test_multiplication_observation(v_filter, ubv_filterset):
 
 # - division
 
+def test_zero_division_error(v_filter):
+    np.testing.assert_equal((v_filter / 0).spectral_dist, np.full_like(v_filter.spectral_dist, np.inf))
+
+def test_zero_division_by_zero_error():
+    np.testing.assert_equal((ac.SpectralSet.stub() / 0).spectral_dist, [[0.]])
+
 def test_division_filter_spectrum_mean(v_filter, ubv_filterset):
     np.testing.assert_allclose(
         (v_filter / ac.vega_CALSPEC).mean_nm(), 558.681024, rtol=0.01
