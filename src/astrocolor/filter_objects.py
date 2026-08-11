@@ -8,8 +8,8 @@ import numpy.typing as npt
 
 from .auxiliary import uniform_grid
 from .core import nm_step, wavelength_nm_dtype
-from .data_manager import script_folder
 from .errors import FilterNotFoundError
+from .filter_loader import filters_folder
 from .spectral_objects import SpectralObject, SpectralSet, Spectrum
 
 
@@ -22,7 +22,9 @@ def _cached_get(filter_id: str) -> 'Filter':
     if not isinstance(filter_id, str):
         raise TypeError('Spanish Virtual Observatory filter ID must be a string')
     try:
-        file_path = next((script_folder / 'filters').glob(f'{filter_id}.*'))
+        group, name = filter_id.split('/')
+        group_folder = filters_folder / group
+        file_path = next(group_folder.glob(f'{name}.*'))
         nm, sd = np.loadtxt(file_path).T[:2]
     except (StopIteration, FileNotFoundError):
         raise FilterNotFoundError(filter_id)
@@ -117,8 +119,8 @@ class Filter(FilterObject, Spectrum):
 
     Example:
     ```
-    >>> b = Filter.get('Generic_Bessell.B')
-    >>> v = Filter.get('Generic_Bessell.V')
+    >>> b = Filter.get('Generic/Bessell.B')
+    >>> v = Filter.get('Generic/Bessell.V')
     >>> bv = b | v  # -> FilterSet containing B and V filters
     ```
     """
@@ -161,9 +163,9 @@ class FilterSet(FilterObject, SpectralSet):
 
     Example:
     ```
-    >>> bvr = FilterSet.get('Generic_Bessell.B', 'Generic_Bessell.V', 'Generic_Bessell.R')
-    >>> bv = Filter.get('Generic_Bessell.B') | Filter.get('Generic_Bessell.V')  # -> FilterSet
-    >>> bvr = bv | Filter.get('Generic_Bessell.R')  # -> FilterSet
+    >>> bvr = FilterSet.get('Generic/Bessell.B', 'Generic/Bessell.V', 'Generic/Bessell.R')
+    >>> bv = Filter.get('Generic/Bessell.B') | Filter.get('Generic/Bessell.V')  # -> FilterSet
+    >>> bvr = bv | Filter.get('Generic/Bessell.R')  # -> FilterSet
     ```
     """
 

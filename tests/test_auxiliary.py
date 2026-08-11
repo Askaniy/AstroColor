@@ -274,8 +274,8 @@ class TestExtrapolation:
         assert extrapolated.wavelength_nm.size == ac.visible_range.size
 
     def test_extrapolation_spectrum(self):
-        filt = ac.Filter.get('Generic_Bessell.U')
-        spectrum = ac.Spectrum(filt.wavelength_nm, filt.spectral_dist)
+        u_filter = ac.Filter.get('Generic/Bessell.U')
+        spectrum = ac.Spectrum(u_filter.wavelength_nm, u_filter.spectral_dist)
         extrapolated = spectrum.determine_at_wavelengths(ac.visible_range, strictly=True)
         assert extrapolated.wavelength_nm.size == ac.visible_range.size
 

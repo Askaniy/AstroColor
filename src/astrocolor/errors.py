@@ -40,7 +40,14 @@ class InconsistentUncertaintyShapeError(AstroColorError, ValueError):
 
 class FilterNotFoundError(AstroColorError):
     def __init__(self, filter_id: str):
-        super().__init__(f'Filter "{filter_id}" not found in the "filters" folder.')
+        super().__init__(f'Filter "{filter_id}" not available locally or online.')
+
+class FilterNetworkError(AstroColorError):
+    def __init__(self, filter_id: str, reason: str | None = None):
+        msg = f'Failed to fetch filter "{filter_id}" from SVO FPS'
+        if reason:
+            msg += f': {reason}'
+        super().__init__(msg)
 
 
 # Warnings

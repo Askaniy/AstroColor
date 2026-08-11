@@ -76,7 +76,7 @@ class PhotospectralObject(BaseObject):
     @classmethod
     def stub(cls, name=None) -> Self:
         """ Initializes an object in case of the data problems """
-        stub_filter_set = FilterSet.get('Generic_Bessell.B', 'Generic_Bessell.V')
+        stub_filter_set = FilterSet.get('Generic/Bessell.B', 'Generic/Bessell.V')
         return cls(stub_filter_set, np.zeros((2, 1, 1)[:cls.ndim]), name=name)
 
     def convert_from_photon_spectral_density(self) -> Self:

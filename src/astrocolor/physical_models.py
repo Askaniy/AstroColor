@@ -1,7 +1,7 @@
 import numpy as np
 import numpy.typing as npt
 
-from .data_manager import script_folder
+from .filter_loader import script_folder
 from .spectral_objects import Spectrum
 
 sun_data = np.load(script_folder/'data/Sun_CALSPEC.npz')
