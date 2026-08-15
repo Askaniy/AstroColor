@@ -8,8 +8,14 @@ import numpy.typing as npt
 
 from .auxiliary import uniform_grid
 from .core import nm_step, wavelength_nm_dtype
-from .errors import FilterNotFoundError
-from .filter_loader import filters_folder
+from .errors import FilterNetworkError, FilterNotFoundError
+from .filter_loader import (
+    allow_internet_access,
+    fetch_from_fps_raw,
+    filters_folder,
+    get_parameter,
+    get_profile,
+)
 from .spectral_objects import SpectralObject, SpectralSet, Spectrum
 
 
@@ -17,22 +23,102 @@ from .spectral_objects import SpectralObject, SpectralSet, Spectrum
 def _cached_get(filter_id: str) -> 'Filter':
     """
     Returns a cached filter object.
+    Search order:
+      1. Cached in lru_cache (handled by decorator)
+      2. Local file (.txt) in filters_folder
+      3. SVO FPS network fetch (if allow_internet_access is True)
     This has been separated out to create copies of the results and avoid mutations.
     """
     if not isinstance(filter_id, str):
         raise TypeError('Spanish Virtual Observatory filter ID must be a string')
+
     try:
         group, name = filter_id.split('/')
-        group_folder = filters_folder / group
-        file_path = next(group_folder.glob(f'{name}.*'))
-        nm, sd = np.loadtxt(file_path).T[:2]
-    except (StopIteration, FileNotFoundError):
-        raise FilterNotFoundError(filter_id)
-    # TODO: remove the block below after SVO FPS support is ready!
-    if str(file_path)[-1] == 'A':
-        # temporal workaround: convert angstrom to nm
-        nm /= 10
-    return Filter(nm, sd, name=filter_id)
+    except ValueError as e:
+        raise FilterNotFoundError(filter_id) from e
+
+    group_folder = filters_folder/group
+
+    # Try to find the local file
+    local_path = next(group_folder.glob(f'{name}.*'), None)
+
+    if local_path is not None:
+        wl, sd = np.loadtxt(local_path).T[:2]
+
+        # - Extension parsing
+        extension = local_path.suffix[1:]
+
+        # Wavelength units:
+        # 'N' (nm) — nanometer (default)
+        # 'A' (Å) — angstrom
+        # 'U' (μ) — micrometer
+        wavelength_unit = 'Nanometer'
+        if 'A' in extension:
+            wavelength_unit = 'Angstrom'
+        elif 'U' in extension:
+            wavelength_unit = 'Micrometer'
+
+        # Detector types:
+        # 'E' — energy counter per wavelength (default)
+        # 'P' — photon counter
+        # 'J' — energy counter per frequency
+        detector_type = 0
+        if 'P' in extension:
+            detector_type = 1
+        if 'J' in extension:
+            detector_type = 2
+
+    else:
+        # Local file not found: fetch from SVO FPS and save locally if allowed
+        if not allow_internet_access:
+            raise FilterNotFoundError(filter_id)
+
+        try:
+            xml_content = fetch_from_fps_raw(filter_id)
+            wl, sd = get_profile(xml_content, filter_id)
+            wavelength_unit = get_parameter(xml_content, 'WavelengthUnit', default='Angstrom')
+            detector_type = int(get_parameter(xml_content, 'DetectorType', default='0'))
+
+            # Extension generation
+            extension = '.txt'
+            if wavelength_unit == 'Angstrom':
+                extension += 'A'
+            if detector_type == 1:
+                extension += 'P'
+
+            # Save to local folder for future use
+            group_folder.mkdir(parents=True, exist_ok=True)
+            np.savetxt(
+                f'{group_folder}/{name}',
+                np.column_stack([wl, sd]),
+                fmt='%.6f',
+            )
+        except FilterNetworkError:
+            raise FilterNotFoundError(filter_id)
+
+    # Convert to nanometers
+    match wavelength_unit:
+        case 'Angstrom':
+            wl *= 0.1
+        case 'Micrometer':
+            wl *= 1000.
+        case _:
+            pass
+
+    # Create filter object
+    filter_obj = Filter(wl, sd, name=filter_id)
+
+    # Apply photon-counting conversion if the filter uses a Photon counter
+    match detector_type:
+        case 1:
+            filter_obj = filter_obj.convert_for_photon_counter()
+        # TODO: add inverse conversion from energy per frequency to energy per wavelength
+        # case 2:
+        #    filter_obj = filter_obj.convert_for_photon_counter()
+        case _:
+            pass
+
+    return filter_obj
 
 
 class FilterObject(SpectralObject):
@@ -147,7 +233,10 @@ class Filter(FilterObject, Spectrum):
 
     @staticmethod
     def get(filter_id: str) -> 'Filter':
-        """ Use Spanish Virtual Observatory filter ID to create a `Filter` object. """
+        """
+        Use Spanish Virtual Observatory filter ID to create a `Filter` object.
+        Searches cache → local files → SVO FPS network fetch (if enabled).
+        """
         return deepcopy(_cached_get(filter_id))
 
 
