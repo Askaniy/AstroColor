@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from copy import deepcopy
 from functools import lru_cache
-from typing import Any, Self
+from typing import Self
 
 import numpy as np
 import numpy.typing as npt
@@ -29,8 +29,6 @@ def _cached_get(filter_id: str) -> 'Filter':
       3. SVO FPS network fetch (if allow_internet_access is True)
     This has been separated out to create copies of the results and avoid mutations.
     """
-    if not isinstance(filter_id, str):
-        raise TypeError('Spanish Virtual Observatory filter ID must be a string')
 
     try:
         group, name = filter_id.split('/')
@@ -176,14 +174,14 @@ class FilterObject(SpectralObject):
             raise TypeError(f'Cannot combine a `FilterObject` with {type(other).__name__}')
         return FilterSet.from_filters(filters)
 
-    def __or__(self, other: Any) -> 'FilterSet':
+    def __or__(self, other: object) -> 'FilterSet':
         """ Combine this `FilterObject` with another `FilterObject` into a new `FilterSet`. """
         if isinstance(other, FilterObject):
             return self._apply_union(other)
         else:
             return NotImplemented
 
-    def __ror__(self, other: Any) -> 'FilterSet':
+    def __ror__(self, other: object) -> 'FilterSet':
         if isinstance(other, FilterObject):
             return other.__or__(self)
         else:
@@ -216,7 +214,7 @@ class Filter(FilterObject, Spectrum):
         wavelength_nm: npt.ArrayLike,
         spectral_dist: npt.ArrayLike,
         uncertainty: None = None,
-        name: Any = None,
+        name: object = None,
     ) -> None:
         """
         Creates a `Filter` from arrays of wavelength and transmission profile.
@@ -226,7 +224,7 @@ class Filter(FilterObject, Spectrum):
         Args:
         - `wavelength_nm` (ArrayLike): list of wavelengths in nanometers on an arbitrary grid
         - `spectral_dist` (ArrayLike): normalized transmission profile
-        - `name` (Any): human-readable identifier
+        - `name` (object): human-readable identifier
         """
         spectrum = Spectrum(wavelength_nm, spectral_dist, name=name)
         self._init_from_spectral_data(spectrum)
@@ -263,7 +261,7 @@ class FilterSet(FilterObject, SpectralSet):
         wavelength_nm: npt.ArrayLike,
         spectral_dist: npt.ArrayLike,
         uncertainty: None = None,
-        name: Any = None,
+        name: object = None,
     ) -> None:
         """
         Creates a `FilterSet` from arrays of wavelength and transmission profile.
@@ -273,7 +271,7 @@ class FilterSet(FilterObject, SpectralSet):
         Args:
         - `wavelength_nm` (ArrayLike): combined spectral axis in nanometers on an arbitrary grid
         - `spectral_dist` (ArrayLike): transmission profile
-        - `name` (Any): list of filter names or a human-readable identifier
+        - `name` (object): list of filter names or a human-readable identifier
         """
         spectral_set = SpectralSet(wavelength_nm, spectral_dist, name=name)
         self._init_from_spectral_data(spectral_set)
@@ -303,7 +301,7 @@ class FilterSet(FilterObject, SpectralSet):
             nm_min = min(nm_min, float(profile.wavelength_nm[0]))
             nm_max = max(nm_max, float(profile.wavelength_nm[-1]))
         # Naming
-        name: tuple[Any, ...] = tuple(names)
+        name: tuple[object, ...] = tuple(names)
         # Matrix packing
         wavelength_nm = uniform_grid(nm_min, nm_max, nm_step, dtype=wavelength_nm_dtype)
         spectral_dist = np.zeros((len(wavelength_nm), len(filters)), dtype=np.float64)

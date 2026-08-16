@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from copy import deepcopy
-from typing import Any, Self, cast
+from typing import Self, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -27,7 +27,7 @@ class PhotospectralObject(BaseObject):
     - `wavelength_nm` (npt.NDArray): shortcut for filter_set.wavelength_nm, the definition range
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): human-readable identifier
+    - `name` (object): human-readable identifier
     """
 
     def __init__(
@@ -35,14 +35,14 @@ class PhotospectralObject(BaseObject):
         filter_set: FilterSet,
         spectral_dist: npt.ArrayLike,
         uncertainty: npt.ArrayLike | None = None,
-        name: Any = None
+        name: object = None
     ) -> None:
         """
         Args:
         - `filter_set` (FilterSet): instance of the class storing filter profiles
         - `spectral_dist` (ArrayLike): array of "brightness" in energy density units (not a photon counter)
         - `uncertainty` (ArrayLike): optional array of standard deviations or a covariance matrix
-        - `name` (Any): human-readable identifier
+        - `name` (object): human-readable identifier
         """
         self.name = name
         # Spatial axis check
@@ -117,8 +117,8 @@ class PhotospectralObject(BaseObject):
     def _apply_element_wise_operation(
         self,
         other: 'BaseObject',
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray],
-        error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, npt.NDArray | None], npt.NDArray | None]
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray[np.floating]],
+        error_handling: Callable[[npt.ArrayLike, npt.ArrayLike | None, npt.ArrayLike, npt.ArrayLike | None], npt.NDArray[np.floating] | None]
     ) -> 'PhotospectralObject':
         """
         Returns a new PhotospectralObject formed from element-wise operation with
@@ -166,7 +166,7 @@ class Photospectrum(PhotospectralObject, Item):
     - `wavelength_nm` (npt.NDArray): shortcut for filter_set.wavelength_nm, the definition range
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): human-readable identifier
+    - `name` (object): human-readable identifier
     """
 
 
@@ -179,7 +179,7 @@ class PhotospectralSet(PhotospectralObject, Set):
     - `wavelength_nm` (npt.NDArray): shortcut for filter_set.wavelength_nm, the definition range
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): human-readable identifier
+    - `name` (object): human-readable identifier
     - `size` (int): spatial axis length
     """
 
@@ -193,7 +193,7 @@ class PhotospectralCube(PhotospectralObject, Cube):
     - `wavelength_nm` (npt.NDArray): shortcut for filter_set.wavelength_nm, the definition range
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): human-readable identifier
+    - `name` (object): human-readable identifier
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length
     - `size` (int): number of pixels

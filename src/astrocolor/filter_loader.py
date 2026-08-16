@@ -25,8 +25,8 @@ def fetch_from_fps_raw(filter_id: str) -> ET.Element:
 
     try:
         req = Request(url)
-        with urlopen(req, timeout=30) as resp:
-            xml_content = resp.read()
+        with urlopen(req, timeout=30) as resp:  # pyright: ignore[reportAny]
+            xml_content = resp.read()  # pyright: ignore[reportAny]
     except HTTPError as e:
         raise FilterNetworkError(filter_id, f'HTTP error: {e.code} {e.reason}')
     except URLError as e:

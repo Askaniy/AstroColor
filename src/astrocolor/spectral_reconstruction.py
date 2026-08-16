@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from copy import deepcopy
-from typing import Any, Self
+from typing import Self
 
 import numpy as np
 import numpy.typing as npt
@@ -28,7 +28,7 @@ class ReconstructedSpectralObject(SpectralObject):
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): human-readable identifier
+    - `name` (object): human-readable identifier
     - `photospectral_obj` (PhotospectralObject): optional, a way to store the pre-reconstructed data
     """
 
@@ -39,7 +39,7 @@ class ReconstructedSpectralObject(SpectralObject):
         wavelength_nm: npt.ArrayLike,
         spectral_dist: npt.ArrayLike,
         uncertainty: npt.ArrayLike | None = None,
-        name: Any = None,
+        name: object = None,
         photospectral_obj: PhotospectralObject | None = None  # type: ignore[assignment]
     ) -> None:
 
@@ -51,7 +51,7 @@ class ReconstructedSpectralObject(SpectralObject):
         - `wavelength_nm` (ArrayLike): list of wavelengths in nanometers on an arbitrary grid
         - `spectral_dist` (ArrayLike): array of "brightness" in energy density units (not a photon counter)
         - `uncertainty`: (ArrayLike): optional array of standard deviations or covariance matrix
-        - `name` (Any): human-readable identifier
+        - `name` (object): human-readable identifier
         - `is_emission_spectrum` (bool): if `True`, creates an emission spectral object from the spectral lines
         - `photospectral_obj` (PhotospectralObject): optional, a way to store the pre-reconstructed data
         """
@@ -73,8 +73,8 @@ class ReconstructedSpectralObject(SpectralObject):
     def _apply_scalar_operation(
         self,
         operand: npt.ArrayLike,
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray],
-        error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, None], npt.NDArray | None]
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray[np.floating]],
+        error_handling: Callable[[npt.ArrayLike, npt.ArrayLike | None, npt.ArrayLike, npt.ArrayLike | None], npt.NDArray[np.floating] | None]
     ) -> Self:
         """
         Returns a new object of the same class transformed according to the linear operator.
@@ -99,7 +99,7 @@ class ReconstructedSpectrum(ReconstructedSpectralObject, Item):
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): human-readable identifier
+    - `name` (object): human-readable identifier
     - `photospectral_obj` (Photospectrum): optional, a way to store the pre-reconstructed data
     """
 
@@ -114,7 +114,7 @@ class ReconstructedSpectralSet(ReconstructedSpectralObject, Set):
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): human-readable identifier
+    - `name` (object): human-readable identifier
     - `photospectral_obj` (PhotospectralSet): optional, a way to store the pre-reconstructed data
     - `size` (int): spatial axis length
     """
@@ -130,7 +130,7 @@ class ReconstructedSpectralCube(ReconstructedSpectralObject, Cube):
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): human-readable identifier
+    - `name` (object): human-readable identifier
     - `photospectral_obj` (PhotospectralCube): optional, a way to store the pre-reconstructed data
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length

@@ -1,44 +1,48 @@
-from .spectral_objects import Spectrum, SpectralSet, SpectralCube
-from .photospectral_objects import Photospectrum, PhotospectralSet, PhotospectralCube
+from .color import (
+    ColorImage,
+    ColorLine,
+    ColorPoint,
+    ColorSystem,
+    visible_range,
+    xyz_cmf,
+    xyz_color_system,
+)
+from .convolution import observe, scale_spectrum
+from .filter_objects import Filter, FilterSet
+from .photospectral_objects import PhotospectralCube, PhotospectralSet, Photospectrum
+from .physical_models import BlackBodyModel, sun_CALSPEC, vega_CALSPEC
+from .spectral_objects import SpectralCube, SpectralSet, Spectrum
 from .spectral_reconstruction import (
-    ReconstructedSpectrum,
-    ReconstructedSpectralSet,
     ReconstructedSpectralCube,
+    ReconstructedSpectralSet,
+    ReconstructedSpectrum,
     spectral_reconstruction,
 )
-from .filter_objects import Filter, FilterSet
-from .convolution import observe, scale_spectrum
-from .color import (
-    ColorSystem, ColorPoint, ColorLine, ColorImage,
-    visible_range, xyz_cmf, xyz_color_system
-)
-from .physical_models import sun_CALSPEC, vega_CALSPEC, BlackBodyModel
-
 
 # API namespace
 __all__ = (
-    'Spectrum',
-    'SpectralSet',
-    'SpectralCube',
-    'Photospectrum',
-    'PhotospectralSet',
-    'PhotospectralCube',
-    'ReconstructedSpectrum',
-    'ReconstructedSpectralSet',
-    'ReconstructedSpectralCube',
-    'spectral_reconstruction',
+    'BlackBodyModel',
+    'ColorImage',
+    'ColorLine',
+    'ColorPoint',
+    'ColorSystem',
     'Filter',
     'FilterSet',
+    'PhotospectralCube',
+    'PhotospectralSet',
+    'Photospectrum',
+    'ReconstructedSpectralCube',
+    'ReconstructedSpectralSet',
+    'ReconstructedSpectrum',
+    'SpectralCube',
+    'SpectralSet',
+    'Spectrum',
     'observe',
     'scale_spectrum',
-    'ColorSystem',
-    'ColorPoint',
-    'ColorLine',
-    'ColorImage',
-    'visible_range',
-    'xyz_cmf',
-    'xyz_color_system',
+    'spectral_reconstruction',
     'sun_CALSPEC',
     'vega_CALSPEC',
-    'BlackBodyModel'
+    'visible_range',
+    'xyz_cmf',
+    'xyz_color_system'
 )

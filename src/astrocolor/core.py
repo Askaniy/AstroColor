@@ -1,7 +1,7 @@
 from collections.abc import Callable, Iterator
 from copy import deepcopy
 from math import prod
-from typing import Any, ClassVar, Final, Self, cast
+from typing import ClassVar, Final, Self, cast, override
 
 import numpy as np
 import numpy.typing as npt
@@ -36,7 +36,7 @@ spectral_dist_dtype: Final[npt.DTypeLike] = np.float64
 # Maximum wavelength, the clipping level
 # It is important that there be no overflow when raising a number to the second power
 # See convert_from_energy_spectral_density_per_frequency()
-nm_red_limit: Final[int] = int(np.sqrt(np.iinfo(wavelength_nm_dtype).max)) # 46340 nm
+nm_red_limit: Final[int] = int(cast(float, np.sqrt(np.iinfo(wavelength_nm_dtype).max))) # 46340 nm
 
 
 class BaseObject:
@@ -44,10 +44,10 @@ class BaseObject:
     Internal class for inheriting spectral data properties.
     Provides common attributes and methods for all (photo)spectral objects.
     """
-    wavelength_nm: npt.NDArray = NotImplemented  # the own spectral axis or the wavelength range of the filter set
-    spectral_dist: npt.NDArray = NotImplemented
-    covariance_matrix: npt.NDArray | None = None
-    name: Any = None
+    wavelength_nm: npt.NDArray[np.integer] = NotImplemented  # the own spectral axis or the wavelength range of the filter set
+    spectral_dist: npt.NDArray[np.floating] = NotImplemented
+    covariance_matrix: npt.NDArray[np.floating] | None = None
+    name: object = None
 
     ndim: ClassVar[int] = NotImplemented
 
@@ -65,7 +65,7 @@ class BaseObject:
     def spectral_size(self) -> int:
         """ Returns the spectral axis length. """
         len_nm = self.wavelength_nm.size
-        len_values = self.spectral_dist.shape[0]
+        len_values = cast(int, self.spectral_dist.shape[0])
         if len_nm != len_values:
             raise InconsistentAxesError(len_nm, len_values, self.name)
         return len_values
@@ -95,7 +95,7 @@ class BaseObject:
             return np.sqrt(np.diag(self.covariance_matrix))
 
     @classmethod
-    def stub(cls, name: Any = None) -> Self:
+    def stub(cls, name: object = None) -> Self:  # pyright: ignore[reportUnusedParameter]
         """
         Initializes a stub object in case of data problems.
         Implemented in the inherited classes.
@@ -144,7 +144,7 @@ class BaseObject:
         self,
         start: float,
         end: float
-    ) -> npt.NDArray:
+    ) -> npt.NDArray[np.integer]:
         """
         Wavelength grid generation pipeline.
         Returns a uniform grid array with the points being multiples of the grid step (endpoints included).
@@ -162,7 +162,7 @@ class BaseObject:
         self,
         requested_wavelengths: npt.ArrayLike,
         strictly: bool = False
-    ) -> Self | Any:
+    ) -> Self | object:
         """
         Returns a new SpectralObject, guaranteeing that the specified wavelength range
         has been determined or reconstructed for it.
@@ -201,8 +201,8 @@ class BaseObject:
 
     def _determine_at_trusted_wavelengths(
         self,
-        requested_wavelengths: npt.NDArray
-    ):
+        requested_wavelengths: npt.NDArray[np.integer]  # pyright: ignore[reportUnusedParameter]
+    ) -> object:
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!
         See `determine_at_wavelengths()` for the general case.
@@ -234,9 +234,9 @@ class BaseObject:
 
     def _apply_element_wise_operation(
         self,
-        other: 'BaseObject',
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray],
-        error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, npt.NDArray | None], npt.NDArray | None]
+        other: Self,  # pyright: ignore[reportUnusedParameter]
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray[np.floating]],  # pyright: ignore[reportUnusedParameter]
+        error_handling: Callable[[npt.ArrayLike, npt.ArrayLike | None, npt.ArrayLike, npt.ArrayLike | None], npt.NDArray[np.floating] | None]  # pyright: ignore[reportUnusedParameter]
     ) -> Self:
         """
         Returns a new object formed from element-wise operation.
@@ -255,8 +255,8 @@ class BaseObject:
     def _apply_scalar_operation(
         self,
         operand: npt.ArrayLike,
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray],
-        error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, None], npt.NDArray | None]
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray[np.floating]],
+        error_handling: Callable[[npt.ArrayLike, npt.ArrayLike | None, npt.ArrayLike, npt.ArrayLike | None], npt.NDArray[np.floating] | None]
     ) -> Self:
         """
         Returns a new object of the same class transformed according to the operator.
@@ -274,7 +274,7 @@ class BaseObject:
         output.covariance_matrix = error_handling(self.spectral_dist, self.covariance_matrix, operand, None)
         return output
 
-    def __add__(self, other) -> Self:
+    def __add__(self, other: Self | npt.ArrayLike) -> Self:
         """
         Implements the addition operator.
 
@@ -286,7 +286,7 @@ class BaseObject:
         else:
             return self._apply_scalar_operation(other, add_value, add_error)
 
-    def __sub__(self, other) -> Self:
+    def __sub__(self, other: Self | npt.ArrayLike) -> Self:
         """
         Implements the subtraction operator.
 
@@ -298,7 +298,7 @@ class BaseObject:
         else:
             return self._apply_scalar_operation(other, sub_value, sub_error)
 
-    def __mul__(self, other) -> Self:
+    def __mul__(self, other: Self | npt.ArrayLike) -> Self:
         """
         Implements the multiplication operator.
 
@@ -310,7 +310,7 @@ class BaseObject:
         else:
             return self._apply_scalar_operation(other, mul_value, mul_error)
 
-    def __truediv__(self, other) -> Self:
+    def __truediv__(self, other: Self | npt.ArrayLike) -> Self:
         """
         Implements the division operator.
 
@@ -322,17 +322,7 @@ class BaseObject:
         else:
             return self._apply_scalar_operation(other, div_value, div_error)
 
-    def __hash__(self) -> int:
-        """
-        Returns the hash value based on the object's name.
-
-        Raises:
-        - TypeError: If the object has no name (name is None).
-        """
-        if self.name is None:
-            raise TypeError('Unhashable type: "NoneType"')
-        return hash(self.name)
-
+    @override
     def __eq__(self, other: object) -> bool:
         """
         Checks equality with another BaseObject instance.
@@ -377,6 +367,7 @@ class BaseObject:
             }
         return repr_config
 
+    @override
     def __repr__(self) -> str:
         """
         Returns a string representation of the object.
@@ -419,8 +410,6 @@ class Set(BaseObject):
 
     def __getitem__(self, item: int | slice) -> Self:
         """ Returns the spatial axis element or slice. """
-        if not isinstance(item, int | slice):
-            raise TypeError(f'Index must be int or slice, not {type(item).__name__}')
         output = deepcopy(self)
         output.spectral_dist = output.spectral_dist[:,item]
         if output.covariance_matrix is not None:

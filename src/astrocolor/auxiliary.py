@@ -1,6 +1,6 @@
 from collections.abc import Iterable, Mapping, Sequence
 from math import ceil, sqrt
-from typing import Literal, SupportsFloat, cast
+from typing import Literal, SupportsFloat, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -26,14 +26,12 @@ def get_extremal_grid_endpoints(
     Returns:
     - Tuple of (v_min, v_max) clamped to [0, upper_limit].
     """
-    if isinstance(requested_grid, np.ndarray):
-        v_min = requested_grid.min()
-        v_max = requested_grid.max()
-    else:
-        v_min = np.min(requested_grid)
-        v_max = np.max(requested_grid)
-    v_min = max(v_min, lower_limit)
-    v_max = min(v_max, upper_limit)
+    v_min = cast(float, np.min(requested_grid))
+    v_max = cast(float, np.max(requested_grid))
+    if lower_limit is not None:
+        v_min = max(v_min, lower_limit)
+    if upper_limit is not None:
+        v_max = min(v_max, upper_limit)
     return v_min, v_max
 
 def grid_endpoints_preprocessing(
@@ -62,7 +60,7 @@ def uniform_grid(
     end: float,
     step: int,
     dtype: npt.DTypeLike
-) -> npt.NDArray:
+) -> npt.NDArray[np.integer]:
     """
     Creates a uniform grid array with the points being multiples of the grid step (endpoints included).
 
@@ -77,7 +75,7 @@ def uniform_grid(
     return np.arange(start, end, step, dtype=dtype)
 
 def integrate(
-    array: npt.NDArray,
+    array: npt.NDArray[np.floating],
     step: float,
     precisely: bool = False
 ) -> float | npt.NDArray[np.floating]:
@@ -91,30 +89,31 @@ def integrate(
     one hundredth of a factor.
     """
     if precisely:
-        return step * 0.5 * np.sum(array[:-1] + array[1:], axis=0) # Riemann sum
+        sum = 0.5 * cast(float | npt.NDArray[np.floating], np.sum(array[:-1] + array[1:], axis=0)) # Riemann sum
     else:
-        return step * np.sum(array, axis=0) # rectangle method
+        sum = cast(float | npt.NDArray[np.floating], np.sum(array, axis=0)) # rectangle method
+    return sum * step
 
-def is_smooth(array: npt.NDArray) -> bool:
+def is_smooth(array: npt.NDArray[np.floating]) -> bool:
     """ Boolean function, checks the second derivative for sign reversal, a simple criterion for smoothness """
     diff2 = np.diff(np.diff(array, axis=0), axis=0)
     return bool(np.all(diff2 <= 0) | np.all(diff2 >= 0))
 
 def spectral_binning(
-    nm0: npt.NDArray,
-    br0: npt.NDArray,
-    std0: npt.NDArray | None,
-    nm1: npt.NDArray,
+    nm0: npt.NDArray[np.integer],
+    br0: npt.NDArray[np.floating],
+    std0: npt.NDArray[np.floating] | None,
+    nm1: npt.NDArray[np.integer],
     step: float,
-    nm0_diff: npt.NDArray
-) -> tuple[npt.NDArray, npt.NDArray[np.floating] | None]:
+    nm0_diff: npt.NDArray[np.integer]
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """
     Cumulative-integral binning method for a uniform grid. Fast (O(N) complexity), vectorized.
     Requires at least one measurement per bin; otherwise use `spectral_downscaling()`.
     """
     # Computing bin edges assuming that nm1 is a uniform grid
     half_step = 0.5 * step
-    nm1_edges = np.append(nm1 - half_step, nm1[-1] + half_step)
+    nm1_edges = np.append(nm1 - half_step, cast(int, nm1[-1]) + half_step)
     nm0_diff = stretch(nm0_diff, br0.shape[1:])
     # Cumulative distribution function
     br_cdf = np.zeros(br0.shape, dtype=np.float64)
@@ -129,9 +128,9 @@ def spectral_binning(
     return br1, std1
 
 def linear_interp(
-    x0: npt.NDArray,
-    y0: npt.NDArray,
-    x1: npt.NDArray,
+    x0: npt.NDArray[np.integer | np.floating],
+    y0: npt.NDArray[np.floating],
+    x1: npt.NDArray[np.integer | np.floating],
     extrap_mode: Literal['linear', 'nearest'] = 'linear'
 ) -> npt.NDArray[np.floating]:
     """
@@ -144,7 +143,7 @@ def linear_interp(
     if len_x0 < 2:
         raise ValueError('x0 must contain at least 2 elements for interpolation')
     idx_all = np.searchsorted(x0, x1, side='right')
-    on_right = x1 == x0[-1]
+    on_right = cast(bool, x1 == x0[-1])
     if np.any(on_right):
         idx_all[on_right] = len_x0 - 1
     interior_mask = (idx_all > 0) & (idx_all < len_x0)
@@ -171,20 +170,20 @@ def linear_interp(
     # Slopes for extrapolation
     slope_L = slope_R = 0.
     if extrap_mode == 'linear':
-        slope_L = (y0[1] - y0[0]) / (x0[1] - x0[0])
-        slope_R = (y0[-1] - y0[-2]) / (x0[-1] - x0[-2])
+        slope_L = cast(npt.NDArray[np.floating], (y0[1] - y0[0]) / (x0[1] - x0[0]))
+        slope_R = cast(npt.NDArray[np.floating], (y0[-1] - y0[-2]) / (x0[-1] - x0[-2]))
     # Fill extrapolation points
-    exterior_mask_L = idx_all == 0
-    exterior_mask_R = idx_all == len_x0
+    exterior_mask_L = cast(bool, idx_all == 0)
+    exterior_mask_R = cast(bool, idx_all == len_x0)
     y1[exterior_mask_L] = (
-        y0[0] + slope_L * (x1[exterior_mask_L] - x0[0]).reshape(-1, *extra_dims)
+        y0[0] + slope_L * cast(npt.NDArray[np.integer | np.floating], x1[exterior_mask_L] - x0[0]).reshape(-1, *extra_dims)
     )
     y1[exterior_mask_R] = (
-        y0[-1] + slope_R * (x1[exterior_mask_R] - x0[-1]).reshape(-1, *extra_dims)
+        y0[-1] + slope_R * cast(npt.NDArray[np.integer | np.floating], x1[exterior_mask_R] - x0[-1]).reshape(-1, *extra_dims)
     )
     return y1
 
-fwhm_factor = np.sqrt(8 * np.log(2))
+fwhm_factor = cast(float, np.sqrt(8 * cast(float, np.log(2))))
 
 def gaussian_width(
     current_resolution: npt.NDArray[np.floating],
@@ -193,9 +192,9 @@ def gaussian_width(
     return np.sqrt(np.abs(target_resolution**2 - current_resolution**2)) / fwhm_factor
 
 def gaussian_convolution(
-    nm0: npt.NDArray,
-    br0: npt.NDArray,
-    nm1: npt.NDArray,
+    nm0: npt.NDArray[np.integer | np.floating],
+    br0: npt.NDArray[np.floating],
+    nm1: npt.NDArray[np.integer | np.floating],
     step: float
 ) -> npt.NDArray[np.floating]:
     """
@@ -210,17 +209,17 @@ def gaussian_convolution(
     factor = -0.5 / step**2 # Gaussian exponent multiplier
     br1 = np.empty_like(nm1, dtype=br0.dtype)
     for i in range(len(nm1)):
-        br0_convolved = br0 * np.exp(factor*(nm0 - nm1[i])**2)
+        br0_convolved = br0 * np.exp(factor * (nm0 - cast(float, nm1[i]))**2)
         br1[i] = np.average(br0, weights=br0_convolved)
     return br1
 
 def spectral_downscaling(
-    nm0: npt.NDArray,
-    br0: npt.NDArray,
-    std0: npt.NDArray | None,
-    nm1: npt.NDArray,
+    nm0: npt.NDArray[np.integer | np.floating],
+    br0: npt.NDArray[np.floating],
+    std0: npt.NDArray[np.floating] | None,
+    nm1: npt.NDArray[np.integer | np.floating],
     step: float
-) -> tuple[npt.NDArray, npt.NDArray[np.floating] | None]:
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """
     Returns spectrum brightness values with decreased resolution.
     Incoming graphs or point clouds may have gaps and areas of varying resolution.
@@ -240,7 +239,7 @@ def spectral_downscaling(
     """
     cube_flag = br0.ndim == 3 # spectral cube processing
     if br0.min() < 0:
-        br0 = np.clip(br0, np.nextafter(0, 1), None) # strange NumPy errors with weights without it
+        br0 = np.clip(br0, cast(float, np.nextafter(0, 1)), None) # strange NumPy errors with weights without it
     notnan = ~np.isnan(br0)
     nm0 = nm0[notnan]
     br0 = br0[notnan]
@@ -265,7 +264,7 @@ def spectral_downscaling(
         uncertainty_weights = std0**(-2)
     for i in range(len(nm1)):
         # Variable convolution kernel
-        gaussian_weights = np.exp(factors[i]*(nm0 - nm1[i])**2)
+        gaussian_weights = np.exp(cast(float, factors[i]) * (nm0 - cast(float, nm1[i]))**2)
         weights = uncertainty_weights * gaussian_weights
         if cube_flag:
             weights = stretch(weights, br0.shape[1:3])
@@ -286,13 +285,13 @@ def spectral_downscaling(
     return br1, std1
 
 def spatial_downscaling(
-    spectral_dist: npt.NDArray,
-    covariance_matrix: npt.NDArray | None,
+    spectral_dist: npt.NDArray[np.floating],
+    covariance_matrix: npt.NDArray[np.floating] | None,
     pixels_limit: int
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """ Brings the spatial resolution of the cube to approximately match the number of pixels """
     # TODO: averaging like in https://stackoverflow.com/questions/10685654/reduce-resolution-of-array-through-summation
-    _, x, y = spectral_dist.shape
+    _, x, y = cast(tuple[int, ...], spectral_dist.shape)
     factor = ceil(sqrt(x * y / pixels_limit))
     if covariance_matrix is None:
         return spectral_dist[:,::factor,::factor], None
@@ -316,47 +315,48 @@ def smoothness_matrix(
         return np.eye(n, dtype=np.uint8)
     else:
         m = max(0, n - order)
-        L = np.zeros((m, n), dtype='float64')
+        matrix = np.zeros((m, n), dtype='float64')
         match order:
             # Note: numpy doesn't make it faster
             # tested: diag = np.eye(m, dtype='int8'); L[:,:-1] = diag; L[:,1:] -= diag
             case 1:
                 # Height change restriction
                 for i in range(m):
-                    L[i, i] = 1
-                    L[i, i+1] = -1
-                L /= step
+                    matrix[i, i] = 1
+                    matrix[i, i+1] = -1
+                matrix /= step
             case 2:
                 # Curvature restriction
                 for i in range(m):
-                    L[i, i] = 1
-                    L[i, i+1] = -2
-                    L[i, i+2] = 1
-                L /= step**2
+                    matrix[i, i] = 1
+                    matrix[i, i+1] = -2
+                    matrix[i, i+2] = 1
+                matrix /= step**2
             case _:
                 raise ValueError(f'Order {order} of smoothness matrix is not supported.')
-    return L
+    return matrix
 
-def expand2x(
-    array0: npt.NDArray
+def subdivide2x(
+    array0: npt.NDArray[np.integer | np.floating]
 ) -> npt.NDArray[np.floating]:
     """ Expands the array along the first axis by half """
-    new_length = 2 * array0.shape[0] - 1
+    new_length = 2 * cast(int, array0.shape[0]) - 1
+    new_dtype = np.float64 if np.issubdtype(array0.dtype, np.integer) else array0.dtype
     match array0.ndim:
         case 1:
-            array1 = np.empty(new_length, dtype=array0.dtype)
+            array1 = np.empty(new_length, dtype=new_dtype)
         case 2: # spectral set processing
-            array1 = np.empty((new_length, array0.shape[1]), dtype=array0.dtype)
+            array1 = np.empty((new_length, array0.shape[1]), dtype=new_dtype)
         case 3: # spectral cube processing
-            array1 = np.empty((new_length, array0.shape[1], array0.shape[2]), dtype=array0.dtype)
+            array1 = np.empty((new_length, array0.shape[1], array0.shape[2]), dtype=new_dtype)
         case _:
             raise UnsupportedDimensionError(array0.ndim)
-    array1[0::2] = array0
+    array1[0::2] = array0.astype(new_dtype)
     array1[1::2] = (array0[:-1] + array0[1:]) * 0.5
     return array1
 
 def custom_interp(
-    array0: npt.NDArray,
+    array0: npt.NDArray[np.floating],
     k: int = 16
 ) -> npt.NDArray[np.floating]:
     """
@@ -367,7 +367,7 @@ def custom_interp(
     - `array0` (npt.NDArray): values to be interpolated in shape (2, N)
     - `k` (int): lower -> more chaotic, higher -> more linear, best results around 10-20
     """
-    array1 = expand2x(array0)
+    array1 = subdivide2x(array0)
     match array0.ndim:
         case 1:
             zero = np.zeros((1,))
@@ -383,9 +383,9 @@ def custom_interp(
     return array1
 
 def interpolate(
-    x0: npt.NDArray,
-    y0: npt.NDArray,
-    x1: npt.NDArray,
+    x0: npt.NDArray[np.integer | np.floating],
+    y0: npt.NDArray[np.floating],
+    x1: npt.NDArray[np.integer | np.floating],
     step: float
 ) -> npt.NDArray[np.floating]:
     """
@@ -393,17 +393,41 @@ def interpolate(
     Combination of `custom_interp` (which returns an uneven mesh) and linear interpolation after it.
     The chaotic-linearity parameter increases with each iteration to reduce the disadvantages of custom_interp.
     """
-    for i in range(int(np.log2(np.diff(x0).max() / step))):
-        x0 = expand2x(x0)
+    for i in range(int(cast(float, np.log2(cast(float, np.diff(x0).max()) / step)))):
+        x0 = subdivide2x(x0)
         y0 = custom_interp(y0, k=11+i)
     return linear_interp(x0, y0, x1)
 
 
+@overload
 def stretch(
-    arr: npt.NDArray,
+    arr: npt.NDArray[np.integer],
+    times: int | tuple[int, ...],
+    copy: bool = False
+) -> npt.NDArray[np.integer]:
+    ...
+
+@overload
+def stretch(
+    arr: npt.NDArray[np.floating],
     times: int | tuple[int, ...],
     copy: bool = False
 ) -> npt.NDArray[np.floating]:
+    ...
+
+@overload
+def stretch(
+    arr: npt.NDArray[np.integer | np.floating],
+    times: int | tuple[int, ...],
+    copy: bool = False
+) -> npt.NDArray[np.integer | np.floating]:
+    ...
+
+def stretch(
+    arr: npt.NDArray[np.integer | np.floating],
+    times: int | tuple[int, ...],
+    copy: bool = False
+) -> npt.NDArray[np.integer | np.floating]:
     """
     Adds dimensions to the array at the end and repeats it there.
     Uses broadcast by default for memory-efficiency. Uses np.tile() for copying.
@@ -418,10 +442,10 @@ def stretch(
 
 
 def custom_extrap(
-    grid: npt.NDArray,
-    derivative: float | npt.NDArray,
+    grid: npt.NDArray[np.integer | np.floating],
+    derivative: float | npt.NDArray[np.floating],
     corner_x: float,
-    corner_y: npt.NDArray
+    corner_y: npt.NDArray[np.floating]
 ) -> npt.NDArray[np.floating]:
     """
     Returns an intuitive continuation of the function on the grid using information about the last point.
@@ -436,23 +460,23 @@ def custom_extrap(
         return np.exp((1 - (np.abs(derivative) * (grid - corner_x) / corner_y - sign)**2) / 2) * corner_y
 
 def extrap_std(
-    corner_y: float | npt.NDArray,
-    x_arr: npt.NDArray
+    corner_y: float | npt.NDArray[np.floating],
+    x_arr: npt.NDArray[np.integer | np.floating]
 ) -> npt.NDArray[np.floating]:
     """ The exponential growth of uncertainty is completely arbitrary and needs to be investigated """
     return corner_y * 0.05 * (1.01**x_arr - 1)
 
 
-weights_center_of_mass = 1 - 1 / np.sqrt(2)
+weights_center_of_mass = 1 - 1 / cast(float, np.sqrt(2))
 
 def extrapolating(
-    x: npt.NDArray,
-    y: npt.NDArray,
-    std: npt.NDArray | None,
-    x_arr: npt.NDArray,
+    x: npt.NDArray[np.integer | np.floating],
+    y: npt.NDArray[np.floating],
+    std: npt.NDArray[np.floating] | None,
+    x_arr: npt.NDArray[np.integer | np.floating],
     step: int,
     avg_steps: int = 20
-) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray[np.floating] | None]:
+) -> tuple[npt.NDArray[np.integer | np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """
     Defines a (multi-dimensional) curve an intuitive continuation on the `x_arr`, if needed.
     `avg_steps` is a number of corner curve points to be averaged if the curve is not smooth.
@@ -466,57 +490,63 @@ def extrapolating(
         std = np.zeros_like(y)
         std_left = std_right = 0.
     else:
-        std_left = std[0]
-        std_right = std[-1]
+        std_left = cast(npt.NDArray[np.floating], std[0])
+        std_right = cast(npt.NDArray[np.floating], std[-1])
+    x_0 = cast(float, x[0])
+    x_1 = cast(float, x[-1])
+    y_0 = cast(npt.NDArray[np.floating], y[0])
+    y_1 = cast(npt.NDArray[np.floating], y[-1])
+    x_arr_0 = cast(float, x_arr[0])
+    x_arr_1 = cast(float, x_arr[-1])
     if len(x) == 1: # filling with equal-energy spectrum
-        x1 = np.arange(min(x_arr[0], x[0]), max(x_arr[-1], x[0])+step, step)
-        y1 = stretch(y[0], x1.size)
-        std = extrap_std(y[0], np.abs(x1 - x[0]))
+        x1 = np.arange(min(x_arr_0, x_0), max(x_arr_1, x_0) + step, step)
+        y1 = stretch(cast(npt.NDArray[np.floating], y[0]), x1.size)
+        std = extrap_std(cast(npt.NDArray[np.floating], std[0]), np.abs(x1 - x_0))
         x = x1
         y = y1
     else:
-        if x[0] > x_arr[0]:
+        if x_0 > x_arr_0:
             # Extrapolation to blue
-            x1 = np.arange(x_arr[0], x[0], step)
-            if np.all(y[0] == 0):
+            x1 = np.arange(x_arr_0, x_0, step)
+            if not y_0.any():
                 # Corner point is zero -> no extrapolation needed: most likely it's a filter profile
                 y1 = std1 = np.zeros((x1.size, *spatial_shape))
             else:
                 y_arr = y[:avg_steps]
                 if is_smooth(y_arr):
-                    diff = y[1]-y[0]
-                    corner_y = y[0]
+                    diff = cast(npt.NDArray[np.floating], y[1] - y_0)
+                    corner_y = y_0
                 else:
                     # Linear weights. Could be more complicated, but there is no need
                     avg_weights = stretch(np.arange(-avg_steps, 0)[avg_steps-y_arr.shape[0]:], spatial_shape)
                     diff = np.average(np.diff(y_arr, axis=0), weights=avg_weights[:-1], axis=0)
                     corner_y = np.average(y_arr, weights=avg_weights, axis=0) - diff * avg_steps * weights_center_of_mass
-                y1 = custom_extrap(x1, diff/step, x[0], corner_y)
-                std1 = std_left + stretch(extrap_std(corner_y, np.arange(x[0]-x_arr[0], 0, -step) - step), spatial_shape)
+                y1 = custom_extrap(x1, diff/step, x_0, corner_y)
+                std1 = std_left + stretch(extrap_std(corner_y, np.arange(x_0-x_arr_0, 0, -step) - step), spatial_shape)
             x = np.append(x1, x)
             y = np.append(y1, y, axis=0)
             std = np.append(std1, std, axis=0)
-        if x[-1] < x_arr[-1]:
+        if x_1 < x_arr_1:
             # Extrapolation to red
-            x1 = np.arange(x[-1], x_arr[-1], step) + step
-            if np.all(y[0] == 0):
+            x1 = np.arange(x_1, x_arr_1, step) + step
+            if not y_1.any():
                 # Corner point is zero -> no extrapolation needed: most likely it's a filter profile
                 y1 = std1 = np.zeros((x1.size, *spatial_shape))
             else:
                 y_arr = y[-avg_steps:]
                 if is_smooth(y_arr):
-                    diff = y[-1]-y[-2]
-                    corner_y = y[-1]
+                    diff = cast(npt.NDArray[np.floating], y_1 - y[-2])
+                    corner_y = y_1
                 else:
                     avg_weights = stretch(np.arange(avg_steps)[:y_arr.shape[0]] + 1, spatial_shape)
                     diff = np.average(np.diff(y_arr, axis=0), weights=avg_weights[1:], axis=0)
                     corner_y = np.average(y_arr, weights=avg_weights, axis=0) + diff * avg_steps * weights_center_of_mass
-                y1 = custom_extrap(x1, diff/step, x[-1], corner_y)
-                std1 = std_right + stretch(extrap_std(corner_y, np.arange(0, x_arr[-1]-x[-1], step)), spatial_shape)
+                y1 = custom_extrap(x1, diff/step, x_1, corner_y)
+                std1 = std_right + stretch(extrap_std(corner_y, np.arange(0, x_arr_1-x_1, step)), spatial_shape)
             x = np.append(x, x1)
             y = np.append(y, y1, axis=0)
             std = np.append(std, std1, axis=0)
-    if std is not None and std.sum() == 0:
+    if std.sum() == 0:
         std = None
     return x, y, std
 
@@ -539,7 +569,7 @@ def parse_value_std(
     if isinstance(data, SupportsFloat):
         # no standard deviation
         return float(data), None
-    elif isinstance(data, Sequence):
+    elif isinstance(data, Sequence):  # pyright: ignore[reportUnnecessaryIsInstance]
         match len(data):
             case 2:
                 # regular standard deviation
@@ -549,17 +579,20 @@ def parse_value_std(
                 value, std1, std2 = data
                 std = 0.5 * (abs(std1) + abs(std2)) # reduced to regular
                 return value, std
+            case _:
+                pass
     raise ValueError(f'Invalid data input: {data}. Must be a numeric value or a [value, std] list.')
 
 def parse_value_std_list(
     arr: Iterable[float | Sequence[float]]
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """ Splits the values and standard deviations into two arrays """
+    values: list[float] = []
+    stds: list[float | None] = []
     try:
         arr = np.array(arr, dtype=np.float64) # ValueError here means inhomogeneous shape
     except ValueError:
         # Inhomogeneous standard deviation input
-        values = []
         for data in arr:
             value, _ = parse_value_std(data)
             values.append(value)
@@ -573,10 +606,8 @@ def parse_value_std_list(
         return arr, None
     except ValueError:
         # Standard deviations are present
-        values = []
-        stds = []
-        for data in arr:
-            value, std = parse_value_std(data)
+        for data in arr:  # pyright: ignore[reportAny]
+            value, std = parse_value_std(cast(Sequence[float], data))
             values.append(value)
             stds.append(std)
         return np.array(values, dtype=np.float64), np.array(stds, dtype=np.float64)
@@ -594,16 +625,16 @@ def repeat_if_value(
         return arr
 
 def mag2irradiance(
-    mag: float | npt.NDArray,
+    mag: float | npt.NDArray[np.floating],
     zero_point: float = 1.0
-) -> int | float | npt.NDArray:
+) -> int | float | npt.NDArray[np.floating]:
     """ Converts magnitudes to irradiance (by default in Vega units) """
     return zero_point * 10**(-0.4 * mag)
 
 def std_mag2std_irradiance(
-    std_mag: float | npt.NDArray,
-    irradiance: float | npt.NDArray
-) -> int | float | npt.NDArray:
+    std_mag: float | npt.NDArray[np.floating],
+    irradiance: float | npt.NDArray[np.floating]
+) -> int | float | npt.NDArray[np.floating]:
     """
     Converts standard deviation of the magnitude to a irradiance standard deviation.
 
@@ -613,7 +644,7 @@ def std_mag2std_irradiance(
     I' = zero_point∙(10^(-0.4 mag))' = zero_point∙10^(-0.4 mag)∙ln(10^(-0.4)) = I∙(-0.4) ln(10)
     std_I = |I'| ∙ std_mag = 0.4 ln(10) ∙ I ∙ std_mag
     """
-    return 0.4 * np.log(10) * irradiance * std_mag
+    return 0.4 * cast(float, np.log(10)) * irradiance * std_mag
 
 def color_index_splitter(
     index: str
@@ -699,11 +730,11 @@ def color_indices_parser(
         std0 = cast(float, std0)
         shot_noise_factor = np.sqrt(irradiance) # common Poisson noise factor
         std_of_std = np.inf
-        for std_assumed in np.linspace(0, std0, 1001):
+        for std_assumed in np.linspace(0, std0, 1001):  # pyright: ignore[reportAny]
             impossible_assumption = False
             # Numerically select the best value of the standard deviation of the first point,
             # on which all other standard deviations clearly depend
-            filters = {filter0: std_assumed}
+            filters = {filter0: cast(float, std_assumed)}
             for key, value in indices.items():
                 bluer_filter, redder_filter = color_index_splitter(key)
                 index_std = cast(float, parse_value_std(value)[1])
@@ -737,10 +768,10 @@ def color_indices_parser(
 c_kms = 299792.458 # Speed of light in km/s
 
 def cosmological_redshift(
-    wave: float | npt.NDArray,
+    wave: float | npt.NDArray[np.floating],
     z: float
-) -> int | float | npt.NDArray:
-    """ Applyes the redshift correction to the wavelength array (1+z = λ_obs/λ_emit) """
+) -> int | float | npt.NDArray[np.floating]:
+    """ Applies the redshift correction to the wavelength array (1+z = λ_obs/λ_emit) """
     return wave / (1 + z)
 
 def calc_redshift_sqrt(
@@ -748,14 +779,14 @@ def calc_redshift_sqrt(
 ) -> float:
     """ Calculates the redshift from the velocity in km/s """
     v = vel / c_kms
-    return np.sqrt((1+v)/(1-v)) - 1
+    return cast(float, np.sqrt((1 + v) / (1 - v))) - 1
 
 def calc_redshift_exp(
     vel: float
 ) -> float:
     """ Calculates the redshift from the velocity in km/s """
     v = vel / c_kms
-    return np.exp(v) - 1
+    return cast(float, np.exp(v)) - 1
 
 
 # === String representation functions ===
@@ -764,7 +795,9 @@ def repr_value(value: float, is_int: bool):
     """ Helper function to format numpy elements for string representation """
     return str(int(value)) if is_int else f'{value:.3f}'
 
-def repr_generator_1D(arr: npt.NDArray) -> str:
+def repr_generator_1D(
+    arr: npt.NDArray[np.integer | np.floating]
+) -> str:
     """ Generates a string representation for a 1-dimensional array. """
     if arr.ndim != 1:
         raise ValueError(f'The input array must be 1D, not {arr.ndim}D')
@@ -772,19 +805,21 @@ def repr_generator_1D(arr: npt.NDArray) -> str:
     shape = len(arr)
     is_int = np.issubdtype(arr.dtype, np.integer)
     if 1 <= shape <= 3:
-        output = ', '.join([repr_value(v, is_int) for v in arr])
+        output = ', '.join([repr_value(v, is_int) for v in arr])  # pyright: ignore[reportAny]
     elif shape >= 4:
-        first_val = repr_value(arr[0], is_int)
-        second_val = repr_value(arr[1], is_int)
-        last_val = repr_value(arr[-1], is_int)
+        first_val = repr_value(cast(float, arr[0]), is_int)
+        second_val = repr_value(cast(float, arr[1]), is_int)
+        last_val = repr_value(cast(float, arr[-1]), is_int)
         output = f'{first_val}, {second_val}, ..., {last_val}'
     return '[' + output + ']'
 
-def repr_generator_2D(arr: npt.NDArray) -> str:
+def repr_generator_2D(
+    arr: npt.NDArray[np.integer | np.floating]
+) -> str:
     """ Generates a string representation for a 2-dimensional array. """
     if arr.ndim != 2:
         raise ValueError(f'The input array must be 2D, not {arr.ndim}D')
-    shape = arr.shape[0]
+    shape = cast(int, arr.shape[0])
     output = ''
     if 1 <= shape <= 3:
         output = '\t' + ',\n\t'.join([repr_generator_1D(arr[i,:]) for i in range(shape)])
@@ -795,7 +830,9 @@ def repr_generator_2D(arr: npt.NDArray) -> str:
         output = f'\t{first_row},\n\t{second_row},\n\t...\n\t{last_row}'
     return '[\n' + output + '\n]'
 
-def repr_generator(arr: npt.NDArray) -> str:
+def repr_generator(
+    arr: npt.NDArray[np.integer | np.floating]
+) -> str:
     """ Generates string representations of arrays for display purposes. """
     match arr.ndim:
         case 1:

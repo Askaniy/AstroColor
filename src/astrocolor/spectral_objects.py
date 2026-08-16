@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from copy import deepcopy
-from typing import Any, Self, cast
+from typing import Self, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -50,7 +50,7 @@ class SpectralObject(BaseObject):
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `standard_deviation` (npt.NDArray): optional array of standard deviations
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): human-readable identifier
+    - `name` (object): human-readable identifier
     """
 
     def __init__(
@@ -58,7 +58,7 @@ class SpectralObject(BaseObject):
         wavelength_nm: npt.ArrayLike,
         spectral_dist: npt.ArrayLike,
         uncertainty: npt.ArrayLike | None = None,
-        name: Any = None,
+        name: object = None,
         is_emission_spectrum: bool = False
     ) -> None:
         """
@@ -69,7 +69,7 @@ class SpectralObject(BaseObject):
         - `wavelength_nm` (ArrayLike): list of wavelengths in nanometers on an arbitrary grid
         - `spectral_dist` (ArrayLike): array of "brightness" in energy density units (not a photon counter)
         - `uncertainty`: (ArrayLike): optional array of standard deviations or a covariance matrix
-        - `name` (Any): human-readable identifier
+        - `name` (object): human-readable identifier
         - `is_emission_spectrum` (bool): if `True`, creates an emission spectral object from the spectral lines
         """
         self.name = name
@@ -104,14 +104,14 @@ class SpectralObject(BaseObject):
         # Fast increasing check
         if np.any(wavelength_nm[:-1] > wavelength_nm[1:]):
             order = np.argsort(wavelength_nm)
-            wavelength_nm = cast(npt.NDArray[Any], wavelength_nm[order])
+            wavelength_nm = cast(npt.NDArray[np.integer], wavelength_nm[order])
             spectral_dist = cast(npt.NDArray[np.floating], spectral_dist[order])
             if uncertainty is not None:
                 uncertainty = cast(npt.NDArray[np.floating], uncertainty[order])
         # Red limit check
         if wavelength_nm[-1] > nm_red_limit:
             mask = np.where(wavelength_nm < nm_red_limit + nm_step) # with reserve to be averaged
-            wavelength_nm = cast(npt.NDArray[Any], wavelength_nm[mask])
+            wavelength_nm = cast(npt.NDArray[np.integer], wavelength_nm[mask])
             spectral_dist = cast(npt.NDArray[np.floating], spectral_dist[mask])
             if uncertainty is not None:
                 uncertainty = cast(npt.NDArray[np.floating], uncertainty[mask])
@@ -415,8 +415,8 @@ class SpectralObject(BaseObject):
     def _apply_element_wise_operation(
         self,
         other: 'BaseObject',
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray],
-        error_handling: Callable[[npt.ArrayLike, npt.NDArray | None, npt.ArrayLike, npt.NDArray | None], npt.NDArray | None]
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray[np.floating]],
+        error_handling: Callable[[npt.ArrayLike, npt.ArrayLike | None, npt.ArrayLike, npt.ArrayLike | None], npt.NDArray[np.floating] | None]
     ) -> 'SpectralObject':
         """
         Returns a new SpectralObject formed from element-wise operation between SpectralObjects
@@ -454,7 +454,7 @@ class Spectrum(SpectralObject, Item):
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): human-readable identifier
+    - `name` (object): human-readable identifier
     """
 
 
@@ -466,7 +466,7 @@ class SpectralSet(SpectralObject, Set):
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): human-readable identifier
+    - `name` (object): human-readable identifier
     - `size` (int): spatial axis length
     """
 
@@ -479,7 +479,7 @@ class SpectralCube(SpectralObject, Cube):
     - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
     - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
-    - `name` (Any): human-readable identifier
+    - `name` (object): human-readable identifier
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length
     - `size` (int): number of pixels
