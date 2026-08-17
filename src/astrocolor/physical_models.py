@@ -42,7 +42,7 @@ class BlackBodyModel:
 
     def _determine_at_trusted_wavelengths(
         self,
-        requested_wavelengths: npt.NDArray
+        requested_wavelengths: npt.NDArray[np.integer]
     ) -> Spectrum:
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!

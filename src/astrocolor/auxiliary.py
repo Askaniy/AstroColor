@@ -100,7 +100,7 @@ def is_smooth(array: npt.NDArray[np.floating]) -> bool:
     return bool(np.all(diff2 <= 0) | np.all(diff2 >= 0))
 
 def spectral_binning(
-    nm0: npt.NDArray[np.integer],
+    nm0: npt.NDArray[np.integer | np.floating],
     br0: npt.NDArray[np.floating],
     std0: npt.NDArray[np.floating] | None,
     nm1: npt.NDArray[np.integer],
@@ -217,7 +217,7 @@ def spectral_downscaling(
     nm0: npt.NDArray[np.integer | np.floating],
     br0: npt.NDArray[np.floating],
     std0: npt.NDArray[np.floating] | None,
-    nm1: npt.NDArray[np.integer | np.floating],
+    nm1: npt.NDArray[np.integer],
     step: float
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """
@@ -468,6 +468,39 @@ def extrap_std(
 
 
 weights_center_of_mass = 1 - 1 / cast(float, np.sqrt(2))
+
+@overload
+def extrapolating(
+    x: npt.NDArray[np.integer],
+    y: npt.NDArray[np.floating],
+    std: npt.NDArray[np.floating] | None,
+    x_arr: npt.NDArray[np.integer | np.floating],
+    step: int,
+    avg_steps: int = 20
+) -> tuple[npt.NDArray[np.integer], npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
+    ...
+
+@overload
+def extrapolating(
+    x: npt.NDArray[np.floating],
+    y: npt.NDArray[np.floating],
+    std: npt.NDArray[np.floating] | None,
+    x_arr: npt.NDArray[np.integer | np.floating],
+    step: int,
+    avg_steps: int = 20
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
+    ...
+
+@overload
+def extrapolating(
+    x: npt.NDArray[np.integer | np.floating],
+    y: npt.NDArray[np.floating],
+    std: npt.NDArray[np.floating] | None,
+    x_arr: npt.NDArray[np.integer | np.floating],
+    step: int,
+    avg_steps: int = 20
+) -> tuple[npt.NDArray[np.integer | np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
+    ...
 
 def extrapolating(
     x: npt.NDArray[np.integer | np.floating],

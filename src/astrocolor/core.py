@@ -162,7 +162,7 @@ class BaseObject:
         self,
         requested_wavelengths: npt.ArrayLike,
         strictly: bool = False
-    ) -> Self | object:
+    ): # -> 'SpectralObject'
         """
         Returns a new SpectralObject, guaranteeing that the specified wavelength range
         has been determined or reconstructed for it.

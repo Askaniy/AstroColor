@@ -58,7 +58,7 @@ class ReconstructedSpectralObject(SpectralObject):
         super().__init__(wavelength_nm, spectral_dist, uncertainty, name)
         self.photospectral_obj = photospectral_obj
 
-    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray):
+    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]):
         """
         Directly uses the provided wavelength grid to create a new object.
         See `determine_at_wavelengths()` for the general case.

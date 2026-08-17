@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from copy import deepcopy
 from functools import lru_cache
-from typing import Self
+from typing import Self, cast, override
 
 import numpy as np
 import numpy.typing as npt
@@ -41,7 +41,9 @@ def _cached_get(filter_id: str) -> 'Filter':
     local_path = next(group_folder.glob(f'{name}.*'), None)
 
     if local_path is not None:
-        wl, sd = np.loadtxt(local_path).T[:2]
+        profile = np.loadtxt(local_path).T
+        wl = cast(npt.NDArray[np.floating], profile[0])
+        sd = cast(npt.NDArray[np.floating], profile[1])
 
         # - Extension parsing
         extension = local_path.suffix[1:]
@@ -128,9 +130,9 @@ class FilterObject(SpectralObject):
     def _init_from_spectral_data(self, data: Spectrum | SpectralSet) -> None:
         """ Initialize the target class from an arbitrary `Spectrum` or `SpectralSet`. """
         data = data.edges_to_zero().normalize()
-        self.wavelength_nm = data.wavelength_nm
-        self.spectral_dist = data.spectral_dist
-        self.name = data.name
+        self.wavelength_nm: npt.NDArray[np.integer] = data.wavelength_nm
+        self.spectral_dist: npt.NDArray[np.floating] = data.spectral_dist
+        self.name: object = data.name
 
     def convert_for_photon_counter(self) -> Self:
         """
@@ -139,14 +141,19 @@ class FilterObject(SpectralObject):
         """
         return (self * self.wavelength_nm).normalize()
 
-    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray) -> Self:
+    @override
+    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]) -> Self:
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!
         See `determine_at_wavelengths()` for the general case.
         """
         obj = deepcopy(self)
-        min_nm = min(self.wavelength_nm[0], requested_wavelengths[0])
-        max_nm = max(self.wavelength_nm[-1], requested_wavelengths[-1])
+        self_nm_0 = cast(int, self.wavelength_nm[0])
+        self_nm_1 = cast(int, self.wavelength_nm[-1])
+        other_nm_0 = cast(int, requested_wavelengths[0])
+        other_nm_1 = cast(int, requested_wavelengths[-1])
+        min_nm = min(self_nm_0, other_nm_0)
+        max_nm = max(self_nm_1, other_nm_1)
         obj.wavelength_nm = self._uniform_grid(min_nm, max_nm)
         obj.spectral_dist = np.zeros((obj.wavelength_nm.size, *self.spatial_shape))
         mask = np.searchsorted(obj.wavelength_nm, self.wavelength_nm)
@@ -155,7 +162,7 @@ class FilterObject(SpectralObject):
 
     def _apply_union(self, other: 'FilterObject') -> 'FilterSet':
         """ Internal logic of the `FilterObject` union. """
-        filters = []
+        filters: list[Filter] = []
         # Populating combined filter list using the base other
         if isinstance(self, Filter):
             filters.append(self)
@@ -281,7 +288,7 @@ class FilterSet(FilterObject, SpectralSet):
         """
         Use Spanish Virtual Observatory filter IDs to create a `FilterSet` object.
         """
-        filters = []
+        filters: list[Filter] = []
         for filter_id in filter_ids:
             filters.append(Filter.get(filter_id))
         return FilterSet.from_filters(filters)
@@ -293,20 +300,24 @@ class FilterSet(FilterObject, SpectralSet):
         Combines spectral axes into a single interval and packs transmissions.
         """
         # Getting the wavelength info and filter names
-        names = []
+        names: list[object] = []
         nm_min = np.inf
         nm_max = 0.
         for profile in filters:
             names.append(profile.name)
-            nm_min = min(nm_min, float(profile.wavelength_nm[0]))
-            nm_max = max(nm_max, float(profile.wavelength_nm[-1]))
+            nm_0 = cast(int, profile.wavelength_nm[0])
+            nm_1 = cast(int, profile.wavelength_nm[-1])
+            nm_min = min(nm_min, nm_0)
+            nm_max = max(nm_max, nm_1)
         # Naming
         name: tuple[object, ...] = tuple(names)
         # Matrix packing
         wavelength_nm = uniform_grid(nm_min, nm_max, nm_step, dtype=wavelength_nm_dtype)
-        spectral_dist = np.zeros((len(wavelength_nm), len(filters)), dtype=np.float64)
+        spectral_dist = cast(npt.NDArray[np.floating], np.zeros((len(wavelength_nm), len(filters)), dtype=np.float64))
         for i, profile in enumerate(filters):
-            mask = (wavelength_nm >= int(profile.wavelength_nm[0])) & (wavelength_nm <= int(profile.wavelength_nm[-1]))
+            nm_0 = cast(int, profile.wavelength_nm[0])
+            nm_1 = cast(int, profile.wavelength_nm[-1])
+            mask = (wavelength_nm >= nm_0) & (wavelength_nm <= nm_1)
             spectral_dist[mask, i] = profile.spectral_dist
         return FilterSet(wavelength_nm, spectral_dist, name=name)
 
@@ -319,6 +330,7 @@ class FilterSet(FilterObject, SpectralSet):
         """
         return self.spectral_dist.T * nm_step
 
+    @override
     def __getitem__(self, index: int | slice) -> Filter:  # TODO: fix it properly! # pyright: ignore[reportIncompatibleMethodOverride]
         """ Returns the filter profile with extra zeros trimmed off. Only `int` indexing is supported."""
         if isinstance(index, slice):
@@ -327,8 +339,8 @@ class FilterSet(FilterObject, SpectralSet):
         # Trimming off the zeros and creating a new Filter object
         profile = self.spectral_dist[:,index]
         non_zero_indices = np.nonzero(profile)[0]
-        start = non_zero_indices[0] - 1
-        end = non_zero_indices[-1] + 2
+        start = cast(int, non_zero_indices[0]) - 1
+        end = cast(int, non_zero_indices[-1]) + 2
         # Looking for the Filter name
         if isinstance(self.name, tuple) and len(self.name) == len(self):
             name = self.name[index]
