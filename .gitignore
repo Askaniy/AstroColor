@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Dictionary
+codebook.toml
+
 # Development local folder
 dev/
 temp/

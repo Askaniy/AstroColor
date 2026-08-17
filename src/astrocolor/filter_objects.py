@@ -127,19 +127,12 @@ class FilterObject(SpectralObject):
     # Class-level sentinel
     #covariance_matrix: Final[None] = None
 
-    def _init_from_spectral_data(self, data: Spectrum | SpectralSet) -> None:
-        """ Initialize the target class from an arbitrary `Spectrum` or `SpectralSet`. """
-        data = data.edges_to_zero().normalize()
-        self.wavelength_nm: npt.NDArray[np.integer] = data.wavelength_nm
-        self.spectral_dist: npt.NDArray[np.floating] = data.spectral_dist
-        self.name: object = data.name
-
     def convert_for_photon_counter(self) -> Self:
         """
         Modifies the filter profile to account for photon-counting observation.
         See "Standard Photometric Systems" by Bessell, Michael S. (2005).
         """
-        return (self * self.wavelength_nm).normalize()
+        return (self * self.wavelength_nm).normalized()
 
     @override
     def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]) -> Self:
@@ -233,8 +226,9 @@ class Filter(FilterObject, Spectrum):
         - `spectral_dist` (ArrayLike): normalized transmission profile
         - `name` (object): human-readable identifier
         """
-        spectrum = Spectrum(wavelength_nm, spectral_dist, name=name)
-        self._init_from_spectral_data(spectrum)
+        super().__init__(wavelength_nm, spectral_dist, name=name)
+        self.edges_to_zero()
+        self.normalize()
 
     @staticmethod
     def get(filter_id: str) -> 'Filter':
@@ -280,8 +274,9 @@ class FilterSet(FilterObject, SpectralSet):
         - `spectral_dist` (ArrayLike): transmission profile
         - `name` (object): list of filter names or a human-readable identifier
         """
-        spectral_set = SpectralSet(wavelength_nm, spectral_dist, name=name)
-        self._init_from_spectral_data(spectral_set)
+        super().__init__(wavelength_nm, spectral_dist, name=name)
+        self.edges_to_zero()
+        self.normalize()
 
     @staticmethod
     def get(*filter_ids: str) -> 'FilterSet':
@@ -342,8 +337,9 @@ class FilterSet(FilterObject, SpectralSet):
         start = cast(int, non_zero_indices[0]) - 1
         end = cast(int, non_zero_indices[-1]) + 2
         # Looking for the Filter name
-        if isinstance(self.name, tuple) and len(self.name) == len(self):
-            name = self.name[index]
-        else:
-            name = None
+        name = None
+        if isinstance(self.name, tuple):
+            self.name: object = cast(tuple[object, ...], self.name)
+            if len(self.name) == len(self):
+                name = self.name[index]
         return Filter(self.wavelength_nm[start:end], profile[start:end], name=name)

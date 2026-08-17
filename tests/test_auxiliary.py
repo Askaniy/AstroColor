@@ -266,8 +266,8 @@ class TestExtrapolation:
     def test_extrapolation_filter(self, v_filter):
         extrapolated = v_filter.determine_at_wavelengths(ac.visible_range, strictly=True)
         assert extrapolated.wavelength_nm.size == ac.visible_range.size
-        zeroed = extrapolated.edges_to_zero()
-        assert v_filter == zeroed
+        extrapolated.edges_to_zero()
+        assert v_filter == extrapolated
 
     def test_extrapolation_filter_set(self, ubv_filterset):
         extrapolated = ubv_filterset.determine_at_wavelengths(ac.visible_range, strictly=True)

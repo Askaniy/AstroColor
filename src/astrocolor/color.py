@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import ClassVar, Self
+from typing import ClassVar, Self, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -53,8 +53,8 @@ class ColorSystem:
         must be among the supported options.
         """
         # Save input names
-        self.color_space_name = color_space
-        self.white_point_name = adaptation_white_point
+        self.color_space_name: str = color_space
+        self.white_point_name: str = adaptation_white_point
         # Reading chromaticity coordinates of the primary colors and the white point
         matrix_M, internal_white_point_name = self.supported_color_spaces[color_space]
         matrix_M = np.array(matrix_M).T
@@ -66,18 +66,18 @@ class ColorSystem:
         # Calculating the inverse chromaticity matrix
         matrix_M_inv = np.linalg.inv(matrix_M)
         # Calculating the scaling vector
-        vector_S = matrix_M_inv.dot(vector_WPi)
+        vector_S = cast(npt.NDArray[np.floating], matrix_M_inv.dot(vector_WPi))
         # RGB -> XYZ transformation matrix
-        self.matrix = matrix_M * vector_S[np.newaxis, :]
+        self.matrix: npt.NDArray[np.floating] = matrix_M * vector_S[np.newaxis, :]
         # XYZ -> RGB transformation matrix
-        self.inv_matrix = matrix_M_inv / vector_S[:, np.newaxis]
+        self.inv_matrix: npt.NDArray[np.floating] = matrix_M_inv / vector_S[:, np.newaxis]
         # Optional chromatic adaptation
         if adaptation_white_point != '' and adaptation_white_point != internal_white_point_name:
             # White point preprocessing
             vector_WPa = self.supported_white_points[adaptation_white_point]
             vector_WPa = np.array((vector_WPa[0], vector_WPa[1], 1 - vector_WPa[0] - vector_WPa[1])) / vector_WPa[1]
             # White scale in cone response domain
-            vector_A = matrix_B.dot(vector_WPi) / matrix_B.dot(vector_WPa)
+            vector_A = cast(npt.NDArray[np.floating], matrix_B.dot(vector_WPi) / matrix_B.dot(vector_WPa))
             # Applying the chromatic adaptation
             self.matrix = (matrix_B / vector_A[np.newaxis, :]) @ matrix_B_inv @ self.matrix
             self.inv_matrix = self.inv_matrix @ matrix_B_inv @ (matrix_B * vector_A[:, np.newaxis])
@@ -87,45 +87,47 @@ class ColorSystem:
 
     def xyz_to_rgb(
         self,
-        value0: npt.NDArray,
-        error0: npt.NDArray | None = None
+        value0: npt.NDArray[np.floating],
+        error0: npt.NDArray[np.floating] | None = None
     ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
         """ Converts XYZ color array into a RGB color space array """
         # 1D implementation: rgb = self.inv_matrix @ xyz
-        value1 = np.einsum('ij, j... -> i...', self.inv_matrix, value0)
+        value1 = cast(npt.NDArray[np.floating], np.einsum('ij, j... -> i...', self.inv_matrix, value0))
         if error0 is None:
             error1 = None
         else:
             # 1D implementation: cov_rgb = self.inv_matrix @ cov_xyz @ self.inv_matrix.T
-            error1 = np.einsum('ij, jk..., kl -> il...', self.inv_matrix, error0, self.inv_matrix)
+            error1 = cast(npt.NDArray[np.floating], np.einsum('ij, jk..., kl -> il...', self.inv_matrix, error0, self.inv_matrix))
         return value1, error1
 
     def rgb_to_xyz(
         self,
-        value0: npt.NDArray,
-        error0: npt.NDArray | None = None
+        value0: npt.NDArray[np.floating],
+        error0: npt.NDArray[np.floating] | None = None
     ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
         """ Converts RGB color array into the XYZ color space array """
         # 1D implementation: rgb = self.matrix @ xyz
-        value1 = np.einsum('ij, j... -> i...', self.matrix, value0)
+        value1 = cast(npt.NDArray[np.floating], np.einsum('ij, j... -> i...', self.matrix, value0))
         if error0 is None:
             error1 = None
         else:
             # 1D implementation: cov_rgb = self.matrix @ cov_xyz @ self.matrix.T
-            error1 = np.einsum('ij, jk..., kl -> il...', self.matrix, error0, self.matrix)
+            error1 = cast(npt.NDArray[np.floating], np.einsum('ij, jk..., kl -> il...', self.matrix, error0, self.matrix))
         return value1, error1
 
     @staticmethod
-    def spectrum_to_white_point(spectrum: Spectrum) -> npt.NDArray:
+    def spectrum_to_white_point(spectrum: Spectrum) -> tuple[float, float]:
         """ Returns (x, y) coordinates of the spectrum on the chromaticity diagram """
         xyz = observe(spectrum, xyz_cmf).spectral_dist
-        return xyz[:2] / xyz.sum()
+        x = cast(float, xyz[0] / xyz.sum())
+        y = cast(float, xyz[1] / xyz.sum())
+        return x, y
 
     # Values are color primaries (red, green, blue) and white points used.
     # See https://en.wikipedia.org/wiki/RGB_color_spaces
     # and http://brucelindbloom.com/index.html?WorkingSpaceInfo.html
-    supported_color_spaces: ClassVar = {
-        'CIE 1931 XYZ': (((1, 0), (0, 1), (0, 0)), 'Illuminant E'),
+    supported_color_spaces: ClassVar[dict[str, tuple[tuple[tuple[float, float], tuple[float, float], tuple[float, float]], str]]] = {
+        'CIE 1931 XYZ': (((1., 0.), (0., 1.), (0., 0.)), 'Illuminant E'),
         'CIE 1931 RGB': (((0.73474284, 0.26525716), (0.27377903, 0.7174777), (0.16655563, 0.00891073)), 'Illuminant E'),
         'sRGB': (((0.64, 0.33), (0.30, 0.60), (0.15, 0.06)), 'Illuminant D65'),
         'Display P3': (((0.68, 0.32), (0.265, 0.69), (0.15, 0.06)), 'Illuminant D65'),
@@ -138,7 +140,7 @@ class ColorSystem:
 
     # Values are (x, y) coordinates.
     # https://en.wikipedia.org/wiki/Standard_illuminant#White_points_of_standard_illuminants
-    supported_white_points: ClassVar = {
+    supported_white_points: ClassVar[dict[str, tuple[float, float]]] = {
         'Illuminant A': (0.44758, 0.40745),
         'Illuminant B': (0.34842, 0.35161),
         'Illuminant C': (0.31006, 0.31616),
@@ -172,23 +174,23 @@ class ColorObject:
     - `scale_factor` multiplies the values of the output by a constant (implemented as property to check the input)
     """
 
-    gamma_correction = False
-    maximize_brightness = False
-    _scale_factor = 1.
+    gamma_correction: bool = False
+    maximize_brightness: bool = False
+    _scale_factor: float = 1.
 
     def __init__(
         self,
-        spectral_dist: npt.NDArray,
-        covariance_matrix: npt.NDArray | None,
+        spectral_dist: npt.NDArray[np.floating],
+        covariance_matrix: npt.NDArray[np.floating] | None,
         color_system: ColorSystem
     ) -> None:
         """
         ColorObject requires a brightness array and corresponding color system.
         Default color space is CIE 1931 XYZ. Covariance matrix is optional.
         """
-        self.spectral_dist = spectral_dist
-        self.covariance_matrix = covariance_matrix
-        self._color_system = color_system
+        self.spectral_dist: npt.NDArray[np.floating] = spectral_dist
+        self.covariance_matrix: npt.NDArray[np.floating] | None = covariance_matrix
+        self._color_system: ColorSystem = color_system
 
     @classmethod
     def from_spectral_data(cls, data: Item | Set | Cube) -> Self:
@@ -207,7 +209,7 @@ class ColorObject:
         if np.any(output.spectral_dist < 0):
             # We're not in the color system gamut: approximate by desaturating
             # 1D implementation: rgb -= np.min(rgb)
-            negative_mask = np.any(output.spectral_dist < 0, axis=0)
+            negative_mask = cast(npt.NDArray[np.bool], np.any(output.spectral_dist < 0, axis=0))
             output.spectral_dist[:, negative_mask] -= output.spectral_dist.min(axis=0)[negative_mask]
         output._color_system = new_color_system
         return output
@@ -216,7 +218,7 @@ class ColorObject:
         """ Implies post-processing functions: gamma correction and brightness maximizing """
         arr = np.nan_to_num(self.spectral_dist, copy=True)
         if self.maximize_brightness and arr.max() != 0:
-            arr /= arr.max()
+            arr /= cast(float, arr.max())
         if self.scale_factor != 1:
             arr *= self.scale_factor
         if self.gamma_correction:
@@ -225,7 +227,8 @@ class ColorObject:
 
     def grayscale(self) -> npt.NDArray[np.floating] | float:
         """ Converts color to grayscale using CIE 1931 luminance (Y in XYZ color space) """
-        y = self.to_color_system(xyz_color_system).spectral_dist[1]
+        sd = self.to_color_system(xyz_color_system).spectral_dist
+        y = cast(npt.NDArray[np.floating] | float, sd[1])
         if self.gamma_correction:
             y = self.apply_gamma_correction(y)
         return y
@@ -271,7 +274,7 @@ class ColorPoint(ColorObject):
 
     def to_bit(self, bit: int, clip: bool = False) -> npt.NDArray[np.floating]:
         """ Returns color array, scaled to the appropriate power of two (not rounded) """
-        factor = 2**bit - 1
+        factor = cast(int, 2**bit) - 1
         arr = self.to_array()
         if clip:
             arr = np.clip(arr, 0, 1)
@@ -279,7 +282,7 @@ class ColorPoint(ColorObject):
 
     def to_html(self) -> str:
         """ Converts fractional rgb values to HTML-styled hexadecimal string """
-        return '#{:02x}{:02x}{:02x}'.format(*self.to_bit(8, clip=True).round().astype('int'))
+        return '#{:02x}{:02x}{:02x}'.format(*self.to_bit(8, clip=True).round().astype('int'))  # pyright: ignore[reportAny]
 
 
 class ColorLine(ColorObject):
@@ -288,14 +291,14 @@ class ColorLine(ColorObject):
     Stores brightness values in the range 0 to 1 in the `spectral_dist` attribute, numpy array of shape (3, X).
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.spectral_dist = np.atleast_2d(self.spectral_dist) # interprets color points as lines
+    def __init__(self, *args, **kwargs):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
+        super().__init__(*args, **kwargs)  # pyright: ignore[reportUnknownArgumentType]
+        self.spectral_dist: npt.NDArray[np.floating] = np.atleast_2d(self.spectral_dist) # interprets color points as lines
 
     @property
     def size(self) -> int:
         """ Returns spatial axis length """
-        return self.spectral_dist.shape[1]
+        return cast(int, self.spectral_dist.shape[1])
 
 
 class ColorImage(ColorObject):
@@ -304,9 +307,9 @@ class ColorImage(ColorObject):
     Stores brightness values in the range 0 to 1 in the `spectral_dist` attribute, numpy array of shape (3, X, Y).
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.spectral_dist = np.atleast_3d(self.spectral_dist) # interprets color points and lines as images
+    def __init__(self, *args, **kwargs):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
+        super().__init__(*args, **kwargs)  # pyright: ignore[reportUnknownArgumentType]
+        self.spectral_dist: npt.NDArray[np.floating] = np.atleast_3d(self.spectral_dist) # interprets color points and lines as images
 
     def upscale(
         self,
@@ -330,12 +333,12 @@ class ColorImage(ColorObject):
     @property
     def width(self) -> int:
         """ Returns horizontal spatial axis length """
-        return self.spectral_dist.shape[1]
+        return cast(int, self.spectral_dist.shape[1])
 
     @property
     def height(self) -> int:
         """ Returns vertical spatial axis length """
-        return self.spectral_dist.shape[2]
+        return cast(int, self.spectral_dist.shape[2])
 
     @property
     def size(self) -> int:

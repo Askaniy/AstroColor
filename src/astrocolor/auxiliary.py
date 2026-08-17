@@ -227,7 +227,7 @@ def spectral_downscaling(
     Args
     - nm0: original spectral axis
     - br0: original spectrum, spectral set or spectral cube
-    - std0: ther standard deviations
+    - std0: their standard deviations
     - nm1: required uniform grid
     - step: resolution of the required uniform grid
 
@@ -240,11 +240,11 @@ def spectral_downscaling(
     cube_flag = br0.ndim == 3 # spectral cube processing
     if br0.min() < 0:
         br0 = np.clip(br0, cast(float, np.nextafter(0, 1)), None) # strange NumPy errors with weights without it
-    notnan = ~np.isnan(br0)
-    nm0 = nm0[notnan]
-    br0 = br0[notnan]
+    not_nan = ~np.isnan(br0)
+    nm0 = nm0[not_nan]
+    br0 = br0[not_nan]
     if std0 is not None:
-        std0 = std0[notnan]
+        std0 = std0[not_nan]
     # Obtaining a graph of standard deviations for a Gaussian
     nm_diff = np.diff(nm0)
     nm_mid = (nm0[1:] + nm0[:-1]) * 0.5

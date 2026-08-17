@@ -260,9 +260,14 @@ class SpectralObject(BaseObject):
         """
         return integrate(self.spectral_dist, nm_step, precisely=False)
 
-    def normalize(self) -> Self:
+    def normalized(self) -> Self:
         """ Returns a new SpectralObject with each spectrum divided by its area """
         return self / self.integrate()
+
+    def normalize(self) -> None:
+        """ Divides SpectralObject by its integral """
+        result = self.normalized()
+        self.spectral_dist = result.spectral_dist
 
     @override
     def convert_from_photon_spectral_density(self) -> Self:
@@ -270,7 +275,7 @@ class SpectralObject(BaseObject):
         Returns a new SpectralObject converted from photon spectral density
         to energy spectral density, using the fact that E = h c / λ.
         """
-        return (self / self.wavelength_nm).normalize()
+        return (self / self.wavelength_nm).normalized()
 
     @override
     def convert_from_energy_spectral_density_per_frequency(self) -> Self:
@@ -279,7 +284,7 @@ class SpectralObject(BaseObject):
         to energy spectral density per wavelength, using the fact that f_λ = f_ν c / λ².
         """
         scale_factors = 1 / self.wavelength_nm**2
-        return (self / scale_factors).normalize()
+        return (self / scale_factors).normalized()
 
     def mean_spectrum(self) -> 'Spectrum':
         """ Returns the mean spectrum along the spatial axes """
@@ -375,9 +380,9 @@ class SpectralObject(BaseObject):
         obj.covariance_matrix = np.diag(std**2) if std is not None else None
         return obj
 
-    def edges_to_zero(self) -> Self:
+    def edges_to_zero(self) -> None:
         """
-        Returns a new SpectralObject with zero brightness at the spectral edges.
+        Ensures that the SpectralObject has zero brightness at the spectral edges.
         Recommended for use with filters: improves the integral and the profile graph.
 
         Works for 1D (Spectrum/Filter), 2D (SpectralSet/FilterSet) and 3D (SpectralCube) objects:
@@ -385,53 +390,51 @@ class SpectralObject(BaseObject):
         - If the first/last two spectral points are all zeros across every spatial pixel,
           those extra leading/trailing zeros are trimmed back to one.
         """
-        obj = deepcopy(self)
-        is_stub = obj.spectral_size == 1  # stub objects have a single spectral point
+        is_stub = self.spectral_size == 1  # stub objects have a single spectral point
         # - Left edge (index 0 along spectral axis)
-        sd_0 = cast(npt.NDArray[np.floating], obj.spectral_dist[0])
+        sd_0 = cast(npt.NDArray[np.floating], self.spectral_dist[0])
         if sd_0.any():
             # No zero on the left edge at some spatial pixel -> prepend a zero point
-            new_wl = np.array([obj.wavelength_nm[0] - nm_step], dtype=wavelength_nm_dtype)
-            obj.wavelength_nm = np.concatenate((new_wl, obj.wavelength_nm))
-            zeros_left = np.zeros(obj.spatial_shape, dtype=wavelength_nm_dtype)
-            obj.spectral_dist = np.concatenate((zeros_left[np.newaxis], obj.spectral_dist), axis=0)
+            new_wl = np.array([self.wavelength_nm[0] - nm_step], dtype=wavelength_nm_dtype)
+            self.wavelength_nm = np.concatenate((new_wl, self.wavelength_nm))
+            zeros_left = np.zeros(self.spatial_shape, dtype=wavelength_nm_dtype)
+            self.spectral_dist = np.concatenate((zeros_left[np.newaxis], self.spectral_dist), axis=0)
         elif not is_stub:
-            sd_1 = cast(npt.NDArray[np.floating], obj.spectral_dist[1])
+            sd_1 = cast(npt.NDArray[np.floating], self.spectral_dist[1])
             if not sd_1.any():
                 # Consecutive zeros on the left -> trim back to exactly one
                 idx = None
-                for i in range(2, obj.spectral_size):
-                    sd_i = cast(npt.NDArray[np.floating], obj.spectral_dist[i])
+                for i in range(2, self.spectral_size):
+                    sd_i = cast(npt.NDArray[np.floating], self.spectral_dist[i])
                     if sd_i.any():
                         idx = i - 1
                         break
                 if idx is not None:
-                    obj.wavelength_nm = obj.wavelength_nm[idx:]
-                    obj.spectral_dist = obj.spectral_dist[idx:]
+                    self.wavelength_nm = self.wavelength_nm[idx:]
+                    self.spectral_dist = self.spectral_dist[idx:]
         # else: exactly one zero on the left — nothing to do
         # - Right edge (index -1 along spectral axis)
-        sd_1 = cast(npt.NDArray[np.floating], obj.spectral_dist[-1])
+        sd_1 = cast(npt.NDArray[np.floating], self.spectral_dist[-1])
         if sd_1.any():
             # No zero on the right edge at some spatial pixel -> append a zero point
-            new_wl = np.array([obj.wavelength_nm[-1] + nm_step], dtype=wavelength_nm_dtype)
-            obj.wavelength_nm = np.concatenate((obj.wavelength_nm, new_wl))
-            zeros_right = np.zeros(obj.spatial_shape, dtype=wavelength_nm_dtype)
-            obj.spectral_dist = np.concatenate((obj.spectral_dist, zeros_right[np.newaxis]), axis=0)
+            new_wl = np.array([self.wavelength_nm[-1] + nm_step], dtype=wavelength_nm_dtype)
+            self.wavelength_nm = np.concatenate((self.wavelength_nm, new_wl))
+            zeros_right = np.zeros(self.spatial_shape, dtype=wavelength_nm_dtype)
+            self.spectral_dist = np.concatenate((self.spectral_dist, zeros_right[np.newaxis]), axis=0)
         elif not is_stub:
-            sd_2 = cast(npt.NDArray[np.floating], obj.spectral_dist[-2])
+            sd_2 = cast(npt.NDArray[np.floating], self.spectral_dist[-2])
             if not sd_2.any():
                 # Consecutive zeros on the right -> trim back to exactly one
                 idx = None
-                for i in range(-3, -obj.spectral_size - 1, -1):
-                    sd_i = cast(npt.NDArray[np.floating], obj.spectral_dist[i])
+                for i in range(-3, -self.spectral_size - 1, -1):
+                    sd_i = cast(npt.NDArray[np.floating], self.spectral_dist[i])
                     if sd_i.any():
                         idx = i + 2
                         break
                 if idx is not None:
-                    obj.wavelength_nm = obj.wavelength_nm[:idx]
-                    obj.spectral_dist = obj.spectral_dist[:idx]
+                    self.wavelength_nm = self.wavelength_nm[:idx]
+                    self.spectral_dist = self.spectral_dist[:idx]
         # else: exactly one zero on the right -> nothing to do
-        return obj
 
     def is_zero_edged(self) -> bool:
         """ Checks that the first and last brightness entries on the spectral axis are zero """

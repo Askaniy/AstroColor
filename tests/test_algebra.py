@@ -69,12 +69,12 @@ def test_division_spectrum_wavelength(ubv_filterset):
 
 def test_normalization(v_filter, ubv_filterset):
     np.testing.assert_allclose(
-        ac.observe(ac.vega_CALSPEC, (v_filter * 2).normalize())[0],
+        ac.observe(ac.vega_CALSPEC, (v_filter * 2).normalized())[0],
         ac.observe(ac.vega_CALSPEC, v_filter)[0],
         rtol=0.01,
     )
     np.testing.assert_allclose(
-        ac.observe(ac.vega_CALSPEC, (ubv_filterset * 2).normalize()).spectral_dist,
+        ac.observe(ac.vega_CALSPEC, (ubv_filterset * 2).normalized()).spectral_dist,
         ac.observe(ac.vega_CALSPEC, ubv_filterset).spectral_dist,
         rtol=0.01,
     )

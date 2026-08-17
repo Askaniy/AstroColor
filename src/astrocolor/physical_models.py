@@ -1,14 +1,16 @@
+from typing import cast
+
 import numpy as np
 import numpy.typing as npt
 
 from .filter_loader import script_folder
 from .spectral_objects import Spectrum
 
-sun_data = np.load(script_folder/'data/Sun_CALSPEC.npz')
+sun_data = cast(np.lib.npyio.NpzFile, np.load(script_folder/'data/Sun_CALSPEC.npz'))
 sun_CALSPEC = Spectrum(sun_data['wavelength_nm'], sun_data['spectral_dist'])
 del sun_data
 
-vega_data = np.load(script_folder/'data/Vega_CALSPEC.npz')
+vega_data = cast(np.lib.npyio.NpzFile, np.load(script_folder/'data/Vega_CALSPEC.npz'))
 vega_CALSPEC = Spectrum(vega_data['wavelength_nm'], vega_data['spectral_dist'])
 del vega_data
 
@@ -27,14 +29,14 @@ const2 = h * c / k
 class BlackBodyModel:
     """ Creates a Spectrum object based on Planck's law and redshift formulas """
 
-    def __init__(self, temperature: float, velocity: float = 0.0, vII: float = 0.0) -> None:
-        self.T = temperature
-        self.v = velocity
-        self.vII = vII
+    def __init__(self, temperature: float, velocity: float = 0., vII: float = 0.) -> None:
+        self.T: float = temperature
+        self.v: float = velocity
+        self.vII: float = vII
 
     def planck_radiance(
         self,
-        nm: float | npt.NDArray
+        nm: float | npt.NDArray[np.integer | np.floating]
     ) -> float | npt.NDArray[np.floating]:
         m = nm * 1e-9
         radiance = const1 / (m**5 * (np.exp(const2 / (m * self.T)) - 1))
@@ -56,12 +58,12 @@ class BlackBodyModel:
             physics = True
             if self.v != 0:
                 if abs(self.v) != 1:
-                    doppler = np.sqrt((1-self.v) / (1+self.v))
+                    doppler = cast(float, np.sqrt((1-self.v) / (1+self.v)))
                 else:
                     physics = False
             if self.vII != 0:
                 if self.vII != 1:
-                    grav = np.exp(-0.5 * self.vII**2)
+                    grav = cast(float, np.exp(-0.5 * self.vII**2))
                 else:
                     physics = False
         if physics:

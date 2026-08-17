@@ -85,7 +85,7 @@ class PhotospectralObject(BaseObject):
         to energy spectral density, using the fact that E = h c / λ.
         """
         if len(self.filter_set) > 1:
-            profiles = self.filter_set.normalize()
+            profiles = self.filter_set.normalized()
             scale_factors = (profiles / profiles.wavelength_nm).integrate()
             scale_factors = cast(npt.NDArray[np.floating], scale_factors) # not a float: len(filter_set) > 1
             scale_factors = cast(npt.NDArray[np.floating], scale_factors / scale_factors.mean())
@@ -100,7 +100,7 @@ class PhotospectralObject(BaseObject):
         to energy spectral density, using the fact that f_λ = f_ν c / λ².
         """
         if len(self.filter_set) > 1:
-            profiles = self.filter_set.normalize()
+            profiles = self.filter_set.normalized()
             scale_factors = (profiles / profiles.wavelength_nm**2).integrate()
             scale_factors = cast(npt.NDArray[np.floating], scale_factors) # not a float: len(filter_set) > 1
             scale_factors = cast(npt.NDArray[np.floating], scale_factors / scale_factors.mean())

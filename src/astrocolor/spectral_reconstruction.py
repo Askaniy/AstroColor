@@ -1,11 +1,15 @@
 from collections.abc import Callable
 from copy import deepcopy
-from typing import Self
+from typing import Self, override
 
 import numpy as np
 import numpy.typing as npt
-from scipy.linalg import solve
-from scipy.optimize import minimize
+from scipy.linalg import (  # pyright: ignore[reportMissingTypeStubs]
+    solve,  # pyright: ignore[reportUnknownVariableType]
+)
+from scipy.optimize import (  # pyright: ignore[reportMissingTypeStubs]
+    minimize,  # pyright: ignore[reportUnknownVariableType]
+)
 
 from .auxiliary import smoothness_matrix
 from .core import Cube, Item, Set
@@ -32,7 +36,7 @@ class ReconstructedSpectralObject(SpectralObject):
     - `photospectral_obj` (PhotospectralObject): optional, a way to store the pre-reconstructed data
     """
 
-    photospectral_obj: PhotospectralObject | None = None  # type: ignore[assignment]
+    photospectral_obj: PhotospectralObject | None = None
 
     def __init__(
         self,
@@ -40,7 +44,7 @@ class ReconstructedSpectralObject(SpectralObject):
         spectral_dist: npt.ArrayLike,
         uncertainty: npt.ArrayLike | None = None,
         name: object = None,
-        photospectral_obj: PhotospectralObject | None = None  # type: ignore[assignment]
+        photospectral_obj: PhotospectralObject | None = None
     ) -> None:
 
         """
@@ -58,6 +62,7 @@ class ReconstructedSpectralObject(SpectralObject):
         super().__init__(wavelength_nm, spectral_dist, uncertainty, name)
         self.photospectral_obj = photospectral_obj
 
+    @override
     def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]):
         """
         Directly uses the provided wavelength grid to create a new object.
@@ -67,9 +72,10 @@ class ReconstructedSpectralObject(SpectralObject):
             extrapolated = super()._determine_at_trusted_wavelengths(requested_wavelengths)
         else:
             # Repeating the spectral reconstruction on the new wavelength range
-            extrapolated = self.photospectral_obj._determine_at_trusted_wavelengths(requested_wavelengths)  # type: ignore[union-attr]
+            extrapolated = self.photospectral_obj._determine_at_trusted_wavelengths(requested_wavelengths)  # pyright: ignore[reportPrivateUsage]
         return extrapolated
 
+    @override
     def _apply_scalar_operation(
         self,
         operand: npt.ArrayLike,
@@ -83,14 +89,14 @@ class ReconstructedSpectralObject(SpectralObject):
         """
         output = super()._apply_scalar_operation(operand, value_handling, error_handling)
         if self.photospectral_obj is not None:
-            output.photospectral_obj = self.photospectral_obj._apply_scalar_operation(  # type: ignore[union-attr]
+            output.photospectral_obj = self.photospectral_obj._apply_scalar_operation(
                 operand, value_handling, error_handling
             )
         return output
 
 
 class ReconstructedSpectrum(ReconstructedSpectralObject, Item):
-    photospectral_obj: Photospectrum | None = None  # type: ignore[assignment]
+    photospectral_obj: Photospectrum | None = None
 
     """
     Class to work with a single reconstructed spectrum (1D SpectralObject).
@@ -105,7 +111,7 @@ class ReconstructedSpectrum(ReconstructedSpectralObject, Item):
 
 
 class ReconstructedSpectralSet(ReconstructedSpectralObject, Set):
-    photospectral_obj: PhotospectralSet | None = None  # type: ignore[assignment]
+    photospectral_obj: PhotospectralSet | None = None
 
     """
     Class to work with a line of continuous spectra (2D SpectralObject).
@@ -121,7 +127,7 @@ class ReconstructedSpectralSet(ReconstructedSpectralObject, Set):
 
 
 class ReconstructedSpectralCube(ReconstructedSpectralObject, Cube):
-    photospectral_obj: PhotospectralCube | None = None  # type: ignore[assignment]
+    photospectral_obj: PhotospectralCube | None = None
 
     """
     Class to work with an image of continuous spectra (3D SpectralObject).
@@ -137,18 +143,19 @@ class ReconstructedSpectralCube(ReconstructedSpectralObject, Cube):
     - `size` (int): number of pixels
     """
 
+    @override
     def flatten(self) -> 'ReconstructedSpectralSet':
         """ Returns a SpectralSet with linearized spatial axis """
-        output = super().flatten()  # type: ignore[return-value]
+        output = super().flatten()
         if self.photospectral_obj is not None:
-            output.photospectral_obj = self.photospectral_obj.flatten()  # type: ignore[union-attr]
+            output.photospectral_obj = self.photospectral_obj.flatten()
         return output  # TODO: fix it properly! # pyright: ignore[reportReturnType]
 
 
 def spectral_reconstruction(
     photospectral_obj: PhotospectralObject,
     requested_wavelengths: npt.ArrayLike,
-    spectral_reconstruction_mode: str = '',
+    spectral_reconstruction_mode: str = '',  # pyright: ignore[reportUnusedParameter]
     attach_photospectral_obj: bool = True
 ) -> SpectralObject | ReconstructedSpectralObject:
     """
