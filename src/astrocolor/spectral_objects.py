@@ -130,13 +130,13 @@ class SpectralObject(BaseObject):
             # The first spectral line
             spectral_lines_sum = self.monochromatic(nm_0, sd_0, std_0)
             if nm.size > 1:
-                from astrocolor.measurements import get_spectrometry
                 # The last spectral line
                 spectral_line = self.monochromatic(nm_1, sd_1, std_1)
                 nm_range = (spectral_lines_sum.wavelength_nm[0], spectral_line.wavelength_nm[-1])
-                get_spectrometry(spectral_lines_sum, nm_range)
-                get_spectrometry(spectral_line, nm_range)
-                spectral_lines_sum += spectral_line
+                nm_min, nm_max = spectral_line.get_extremal_grid_endpoints(nm_range)
+                nm_uniform = spectral_line.uniform_grid(nm_min, nm_max)
+                spectral_lines_sum = spectral_lines_sum.determine_at_trusted_wavelengths(nm_uniform)
+                spectral_lines_sum += spectral_line.determine_at_trusted_wavelengths(nm_uniform)
                 if nm.size > 2:
                     # Adding the remaining spectral lines to the overall wavelength range
                     # Reason for manually loading the boundary lines:
@@ -146,7 +146,7 @@ class SpectralObject(BaseObject):
                         sd_i = cast(float, sd[i])
                         std_i = None if uncertainty is None else cast(float, uncertainty[i])
                         spectral_line = self.monochromatic(nm_i, sd_i, std_i)
-                        spectral_lines_sum += get_spectrometry(spectral_line, nm_range)
+                        spectral_lines_sum += spectral_line.determine_at_trusted_wavelengths(nm_uniform)
             self.wavelength_nm: npt.NDArray[np.integer] = spectral_lines_sum.wavelength_nm
             self.spectral_dist: npt.NDArray[np.floating] = spectral_lines_sum.spectral_dist
             self.covariance_matrix: npt.NDArray[np.floating] | None = spectral_lines_sum.covariance_matrix
@@ -209,50 +209,66 @@ class SpectralObject(BaseObject):
     def monochromatic(
         cls,
         wavelength: float,
-        intensity: float = 1,
-        standard_deviation: float | None = None
-    ) -> 'SpectralObject':
+        intensity: float | npt.ArrayLike = 1.,
+        standard_deviation: float | npt.ArrayLike | None = None
+    ) -> Self:
         """
-        Creates a monochromatic SpectralObject on the 1- or 2-point spectral grid.
-        It is normalized by default and have zeroed edges.
-        Make sure you use the rectangle method for integration, otherwise the intensity would not conserve.
+        Creates a monochromatic SpectralObject, the integral of which matches the intensity.
+        By default, the integral intensity of a spectral line is 1.
+
+        The input intensity must be one dimension lower than the class dimension
+        (float for Spectrum, 1D for SpectralSet, 2D for SpectralCube).
+        If the intensity value is a float, the result will be uniform along the spatial axes.
+
+        Make sure you use the rectangle method for integration,
+        otherwise the intensity would not conserve.
         """
         name = f'{wavelength} nm'
+        # Spatial axis check
+        sd0: npt.NDArray[np.floating] = np.array(intensity, dtype=spectral_dist_dtype)
+        if sd0.ndim == 0:
+            if cls.ndim == 2:
+                sd0 = np.expand_dims(sd0, axis=0)
+            elif cls.ndim == 3:
+                sd0 = np.expand_dims(sd0, axis=(0, 1))
+        if cls.ndim - 1 != sd0.ndim:
+            raise InconsistentDimensionError(cls.ndim - 1, sd0.ndim, name)
+        if np.any(np.isnan(sd0)):
+            sd0 = np.nan_to_num(sd0)
+            nan_values_warning('intensity', name)
+        # Uncertainty check
+        std0 = None
+        if not (cls.ignore_uncertainty_forCubes and cls.ndim == 3) and standard_deviation is not None:
+            std0 = np.array(standard_deviation, dtype=spectral_dist_dtype)
+            if (len_error := len(std0)) != (len_values := len(sd0)):
+                raise InconsistentUncertaintySizeError(len_error, len_values, name)
+        # Calculating position of the spectral line
         nm_point = wavelength / cls.nm_step
         nm_point_int = int(nm_point)
-        nm0 = nm_point_int * cls.nm_step
-        cov_matrix = None
+        nm_ref = nm_point_int * cls.nm_step
+        # Creating spectral distribution
         if nm_point == nm_point_int:
-            nm = (nm0 - cls.nm_step, nm0, nm0 + cls.nm_step)
-            br = (0., intensity, 0.)
-            if standard_deviation is not None:
-                cov_matrix = np.zeros((3, 3))
-                cov_matrix[1,1] = standard_deviation * standard_deviation
+            nm1 = (nm_ref - cls.nm_step, nm_ref, nm_ref + cls.nm_step)
+            sd1 = (0., 1., 0.)
         else:
             proximity_factor = nm_point - nm_point_int
-            nm = (nm0 - cls.nm_step, nm0, nm0 + cls.nm_step, nm0 + 2*cls.nm_step)
-            br = (0., 1.-proximity_factor, proximity_factor, 0.)
-            if standard_deviation is not None:
-                cov_matrix = np.zeros((4, 4))
-                # Problem 1
-                cov_matrix[1,1] = standard_deviation * standard_deviation
-        # Normalization
-        br = np.array(br, dtype=spectral_dist_dtype) / nm_step
-        # Expending spatial dimension if needed (not tested!)
+            nm1 = (nm_ref - cls.nm_step, nm_ref, nm_ref + cls.nm_step, nm_ref + 2 * cls.nm_step)
+            sd1 = (0., 1.-proximity_factor, proximity_factor, 0.)
+        # Scaling spectral distribution
         match cls.ndim:
-            case 1:  # Single spectrum — no spatial expansion
-                pass
+            case 1:
+                sd1 = np.array(sd1)
             case 2:
-                br = np.expand_dims(br, axis=1)
-                if cov_matrix is not None:
-                    cov_matrix = np.expand_dims(cov_matrix, axis=2)
+                sd1 = np.expand_dims(sd1, axis=1)
             case 3:
-                br = np.expand_dims(br, axis=(1, 2))
-                if cov_matrix is not None:
-                    cov_matrix = np.expand_dims(cov_matrix, axis=(2, 3))
+                sd1 = np.expand_dims(sd1, axis=(1, 2))
             case _:
                 raise UnsupportedDimensionError(cls.ndim, name)
-        return cls(nm, br, cov_matrix, name=name)
+        std1 = None
+        if std0 is not None:
+            std1 = sd1 * sd0 / nm_step
+        sd1 = sd1 * sd0 / nm_step
+        return cls(nm1, sd1, std1, name=name)
 
     def integrate(self) -> float | npt.NDArray[np.floating]:
         """
