@@ -23,7 +23,7 @@ from .auxiliary import (
     spatial_downscaling,
     uniform_grid,
 )
-from .errors import InconsistentAxesError, InconsistentUncertaintySizeError
+from .errors import InconsistentAxesError
 
 # For the sake of simplifying work with the spectrum,
 # its discretization step is fixed and frozen.
@@ -102,7 +102,7 @@ class BaseObject:
         """
         raise NotImplementedError('Implemented in the inherited classes.')
 
-    def _get_extremal_grid_endpoints(
+    def get_extremal_grid_endpoints(
         self,
         requested_wavelengths: npt.ArrayLike
     ) -> tuple[int | float, int | float]:
@@ -140,7 +140,7 @@ class BaseObject:
             end += self.nm_step # to include the last point
         return grid_endpoints_preprocessing(start, end, nm_step)
 
-    def _uniform_grid(
+    def uniform_grid(
         self,
         start: float,
         end: float
@@ -157,64 +157,6 @@ class BaseObject:
         - Array of wavelengths as int values on a uniform grid.
         """
         return uniform_grid(start, end, nm_step, dtype=wavelength_nm_dtype)
-
-    def determine_at_wavelengths(
-        self,
-        requested_wavelengths: npt.ArrayLike,
-        strictly: bool = False
-    ): # -> 'SpectralObject'
-        """
-        Returns a new SpectralObject, guaranteeing that the specified wavelength range
-        has been determined or reconstructed for it.
-        If `strictly=True`, then the new object is defined exclusively
-        on the specified wavelength range.
-        Only the minimum and maximum wavelengths are extracted from the specified range,
-        based on which a uniform grid is constructed.
-
-        Args:
-        - requested_wavelengths: Wavelength values to determine at.
-        - strictly: If True, clip the result to the exact requested range.
-
-        Returns:
-        - A new SpectralObject with data determined at the specified wavelengths.
-
-        Example:
-        ```
-        >>> spectrum = photospectrum.determine_at_wavelengths([400, 700])
-        ```
-        """
-        nm_min, nm_max = self._get_extremal_grid_endpoints(requested_wavelengths)
-        requested_wavelengths = self._uniform_grid(nm_min, nm_max)
-        from .spectral_objects import SpectralObject
-        spectral_obj = cast(SpectralObject, self._determine_at_trusted_wavelengths(requested_wavelengths))
-        # Spectral range clipping
-        if strictly and not np.array_equal(spectral_obj.wavelength_nm, requested_wavelengths):
-            spectral_obj.spectral_dist = spectral_obj.get_spectral_dist_at_wavelengths(nm_min, nm_max)
-            spectral_obj.covariance_matrix = spectral_obj.get_covariance_matrix_at_wavelengths(nm_min, nm_max)
-            spectral_obj.wavelength_nm = requested_wavelengths
-        # Sanity checks
-        if (len_nm := spectral_obj.wavelength_nm.size) != (len_values := len(spectral_obj.spectral_dist)):
-            raise InconsistentAxesError(len_nm, len_values, spectral_obj.name)
-        if spectral_obj.covariance_matrix is not None and (len_error := len(spectral_obj.covariance_matrix)) != len_nm:
-            raise InconsistentUncertaintySizeError(len_error, len_values, spectral_obj.name)
-        return spectral_obj
-
-    def _determine_at_trusted_wavelengths(
-        self,
-        requested_wavelengths: npt.NDArray[np.integer]  # pyright: ignore[reportUnusedParameter]
-    ) -> object:
-        """
-        Directly uses the provided wavelength grid to create a new object. Non-strict!
-        See `determine_at_wavelengths()` for the general case.
-        Implemented in the inherited classes.
-
-        Args:
-        - requested_wavelengths: The trusted wavelength array to use.
-
-        Returns:
-        - A new SpectralObject with data determined at the trusted wavelengths.
-        """
-        raise NotImplementedError('Implemented in the inherited classes.')
 
     def convert_from_photon_spectral_density(self) -> Self:
         """

@@ -4,12 +4,13 @@ from typing import ClassVar, Self, cast
 import numpy as np
 import numpy.typing as npt
 
+from astrocolor.photospectral_objects import PhotospectralObject
+
 from .auxiliary import spatial_downscaling
 from .convolution import observe
-from .core import Cube, Item, Set
 from .filter_objects import FilterSet
 from .physical_models import sun_CALSPEC, vega_CALSPEC
-from .spectral_objects import Spectrum
+from .spectral_objects import SpectralObject, Spectrum
 
 # CIE 1931 XYZ color matching functions, 2-deg
 # https://cie.co.at/datatable/cie-1931-colour-matching-functions-2-degree-observer
@@ -193,7 +194,7 @@ class ColorObject:
         self._color_system: ColorSystem = color_system
 
     @classmethod
-    def from_spectral_data(cls, data: Item | Set | Cube) -> Self:
+    def from_spectral_data(cls, data: SpectralObject | PhotospectralObject) -> Self:
         """ Convolves (photo)spectrum with CIE 1931 XYZ color matching functions """
         photospectrum = observe(data, xyz_cmf)
         return cls(photospectrum.spectral_dist, photospectrum.covariance_matrix, xyz_color_system)

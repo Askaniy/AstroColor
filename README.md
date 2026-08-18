@@ -72,7 +72,7 @@ color_html = color_rgb.to_html()
 
 - Model spectra
 ```py
-bb_3000K = ac.BlackBodyModel(3000).determine_at_wavelengths([400, 700])
+bb_3000K = determine_at_wavelengths(ac.BlackBodyModel(3000), [400, 700])
 ```
 
 - Process images via spectral cube reconstruction

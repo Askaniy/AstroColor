@@ -264,24 +264,24 @@ class TestLinearInterp:
 class TestExtrapolation:
 
     def test_extrapolation_filter(self, v_filter):
-        extrapolated = v_filter.determine_at_wavelengths(ac.visible_range, strictly=True)
+        extrapolated = ac.determine_at_wavelengths(v_filter, ac.visible_range, strictly=True)
         assert extrapolated.wavelength_nm.size == ac.visible_range.size
         extrapolated.edges_to_zero()
         assert v_filter == extrapolated
 
     def test_extrapolation_filter_set(self, ubv_filterset):
-        extrapolated = ubv_filterset.determine_at_wavelengths(ac.visible_range, strictly=True)
+        extrapolated = ac.determine_at_wavelengths(ubv_filterset, ac.visible_range, strictly=True)
         assert extrapolated.wavelength_nm.size == ac.visible_range.size
 
     def test_extrapolation_spectrum(self):
         u_filter = ac.Filter.get('Generic/Bessell.U')
         spectrum = ac.Spectrum(u_filter.wavelength_nm, u_filter.spectral_dist)
-        extrapolated = spectrum.determine_at_wavelengths(ac.visible_range, strictly=True)
+        extrapolated = ac.determine_at_wavelengths(spectrum, ac.visible_range, strictly=True)
         assert extrapolated.wavelength_nm.size == ac.visible_range.size
 
     def test_extrapolation_spectral_set(self, ubv_filterset):
         spectral_set = ac.SpectralSet(ubv_filterset.wavelength_nm, ubv_filterset.spectral_dist)
-        extrapolated = spectral_set.determine_at_wavelengths(ac.visible_range, strictly=True)
+        extrapolated = ac.determine_at_wavelengths(spectral_set, ac.visible_range, strictly=True)
         assert extrapolated.wavelength_nm.size == ac.visible_range.size
 
     def test_extrapolation_flat_spectrum(self):
@@ -289,7 +289,7 @@ class TestExtrapolation:
         nm = np.arange(500, 701, 5)
         spectrum = ac.Spectrum(nm, np.ones_like(nm))
         np.testing.assert_equal(
-            spectrum.determine_at_wavelengths(ac.visible_range, strictly=True).spectral_dist,
+            ac.determine_at_wavelengths(spectrum, ac.visible_range, strictly=True).spectral_dist,
             np.ones(ac.visible_range.size),
         )
 

@@ -4,11 +4,14 @@ from typing import cast, overload
 import numpy as np
 import numpy.typing as npt
 
-from astrocolor.errors import UnsupportedDimensionError
+from astrocolor.errors import (
+    InconsistentAxesError,
+    InconsistentUncertaintySizeError,
+    UnsupportedDimensionError,
+)
 
 from .algebra import mul_error, mul_value
 from .auxiliary import integrate
-from .core import Cube, Item, Set
 from .filter_objects import Filter, FilterSet
 from .photospectral_objects import (
     PhotospectralCube,
@@ -16,60 +19,126 @@ from .photospectral_objects import (
     PhotospectralSet,
     Photospectrum,
 )
-from .spectral_objects import SpectralObject, Spectrum
+from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
+
+
+@overload
+def determine_at_wavelengths(
+    target: Spectrum | Photospectrum,
+    requested_wavelengths: npt.ArrayLike,
+    strictly: bool = False
+) -> Spectrum:
+    ...
+
+@overload
+def determine_at_wavelengths(
+    target: SpectralSet | PhotospectralSet,
+    requested_wavelengths: npt.ArrayLike,
+    strictly: bool = False
+) -> SpectralSet:
+    ...
+
+@overload
+def determine_at_wavelengths(
+    target: SpectralCube | PhotospectralCube,
+    requested_wavelengths: npt.ArrayLike,
+    strictly: bool = False
+) -> SpectralCube:
+    ...
+
+@overload
+def determine_at_wavelengths(
+    target: SpectralObject | PhotospectralObject,
+    requested_wavelengths: npt.ArrayLike,
+    strictly: bool = False
+) -> SpectralObject:
+    ...
+
+def determine_at_wavelengths(
+    target: Spectrum | Photospectrum | SpectralSet | PhotospectralSet | SpectralCube | PhotospectralCube | SpectralObject | PhotospectralObject,
+    requested_wavelengths: npt.ArrayLike,
+    strictly: bool = False
+) -> Spectrum | SpectralSet | SpectralCube | SpectralObject:
+    """
+    Returns a new SpectralObject, guaranteeing that the specified wavelength range
+    has been determined or reconstructed for it.
+    If `strictly=True`, then the new object is defined exclusively
+    on the specified wavelength range.
+    Only the minimum and maximum wavelengths are extracted from the specified range,
+    based on which a uniform grid is constructed.
+
+    Args:
+    - requested_wavelengths: Wavelength values to determine at.
+    - strictly: If True, clip the result to the exact requested range.
+
+    Returns:
+    - A new SpectralObject with data determined at the specified wavelengths.
+
+    Example:
+    ```
+    >>> spectrum = determine_at_wavelengths(photospectrum, [400, 700])
+    ```
+    """
+    nm_min, nm_max = target.get_extremal_grid_endpoints(requested_wavelengths)
+    requested_wavelengths = target.uniform_grid(nm_min, nm_max)
+    spectral_obj = target.determine_at_trusted_wavelengths(requested_wavelengths)
+    # Spectral range clipping
+    if strictly and not np.array_equal(spectral_obj.wavelength_nm, requested_wavelengths):
+        spectral_obj.spectral_dist = spectral_obj.get_spectral_dist_at_wavelengths(nm_min, nm_max)
+        spectral_obj.covariance_matrix = spectral_obj.get_covariance_matrix_at_wavelengths(nm_min, nm_max)
+        spectral_obj.wavelength_nm = requested_wavelengths
+    # Sanity checks
+    if (len_nm := spectral_obj.wavelength_nm.size) != (len_values := len(spectral_obj.spectral_dist)):
+        raise InconsistentAxesError(len_nm, len_values, spectral_obj.name)
+    if spectral_obj.covariance_matrix is not None and (len_error := len(spectral_obj.covariance_matrix)) != len_nm:
+        raise InconsistentUncertaintySizeError(len_error, len_values, spectral_obj.name)
+    return spectral_obj
 
 
 @overload
 def observe(
-    target: Item | Set | Cube | SpectralObject | PhotospectralObject,
+    target: Spectrum | Photospectrum | SpectralSet | PhotospectralSet | SpectralCube | PhotospectralCube | SpectralObject | PhotospectralObject,
     bandpass: Filter
 ) -> tuple[float, float | None]:
     ...
 
 @overload
 def observe(
-    target: Item,
+    target: Spectrum | Photospectrum,
     bandpass: FilterSet
 ) -> Photospectrum:
     ...
 
 @overload
 def observe(
-    target: Set,
+    target: SpectralSet | PhotospectralSet,
     bandpass: FilterSet
 ) -> PhotospectralSet:
     ...
 
 @overload
 def observe(
-    target: Cube,
+    target: SpectralCube | PhotospectralCube,
     bandpass: FilterSet
 ) -> PhotospectralCube:
     ...
 
 @overload
 def observe(
-    target: SpectralObject,
-    bandpass: FilterSet
-) -> Photospectrum | PhotospectralSet | PhotospectralCube:
-    ...
-
-@overload
-def observe(
-    target: PhotospectralObject,
+    target: SpectralObject | PhotospectralObject,
     bandpass: FilterSet
 ) -> Photospectrum | PhotospectralSet | PhotospectralCube:
     ...
 
 def observe(
-    target: Item | Set | Cube | SpectralObject | PhotospectralObject,
+    target: Spectrum | Photospectrum | SpectralSet | PhotospectralSet | SpectralCube | PhotospectralCube | SpectralObject | PhotospectralObject,
     bandpass: Filter | FilterSet
 ) -> tuple[float, float | None] | Photospectrum | PhotospectralSet | PhotospectralCube:
     """
     Implementation of convolution between a (photo)spectral object and a filter or a filter set.
     Ignores the uncertainty of filter profiles.
     """
-    target = target.determine_at_wavelengths(bandpass.wavelength_nm, strictly=True)
+    target = determine_at_wavelengths(target, bandpass.wavelength_nm, strictly=True)
     ndim = target.ndim
     sd = target.spectral_dist
     cov = target.covariance_matrix

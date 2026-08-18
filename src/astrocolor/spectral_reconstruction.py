@@ -11,6 +11,8 @@ from scipy.optimize import (  # pyright: ignore[reportMissingTypeStubs]
     minimize,  # pyright: ignore[reportUnknownVariableType]
 )
 
+from astrocolor.convolution import determine_at_wavelengths
+
 from .auxiliary import smoothness_matrix
 from .core import Cube, Item, Set
 from .errors import UnsupportedDimensionError
@@ -63,16 +65,16 @@ class ReconstructedSpectralObject(SpectralObject):
         self.photospectral_obj = photospectral_obj
 
     @override
-    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]):
+    def determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]):
         """
         Directly uses the provided wavelength grid to create a new object.
         See `determine_at_wavelengths()` for the general case.
         """
         if self.photospectral_obj is None:
-            extrapolated = super()._determine_at_trusted_wavelengths(requested_wavelengths)
+            extrapolated = super().determine_at_trusted_wavelengths(requested_wavelengths)
         else:
             # Repeating the spectral reconstruction on the new wavelength range
-            extrapolated = self.photospectral_obj._determine_at_trusted_wavelengths(requested_wavelengths)  # pyright: ignore[reportPrivateUsage]
+            extrapolated = self.photospectral_obj.determine_at_trusted_wavelengths(requested_wavelengths)
         return extrapolated
 
     @override
@@ -171,7 +173,7 @@ def spectral_reconstruction(
     Confidence bands for spectral sets and cubes are not computed by default.
     """
     br0 = photospectral_obj.spectral_dist
-    filter_set = photospectral_obj.filter_set.determine_at_wavelengths(requested_wavelengths, strictly=False)
+    filter_set = determine_at_wavelengths(photospectral_obj.filter_set, requested_wavelengths, strictly=False)
     nm1 = filter_set.wavelength_nm
     if photospectral_obj.ignore_uncertainty_forCubes and photospectral_obj.ndim == 3:
         cov0 = None

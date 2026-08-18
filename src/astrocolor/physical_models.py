@@ -42,7 +42,7 @@ class BlackBodyModel:
         radiance = const1 / (m**5 * (np.exp(const2 / (m * self.T)) - 1))
         return radiance * 1e-9 # per m -> per nm
 
-    def _determine_at_trusted_wavelengths(
+    def determine_at_trusted_wavelengths(
         self,
         requested_wavelengths: npt.NDArray[np.integer]
     ) -> Spectrum:

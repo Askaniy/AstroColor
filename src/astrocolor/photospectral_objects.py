@@ -108,8 +108,7 @@ class PhotospectralObject(BaseObject):
         else:
             return deepcopy(self)
 
-    @override
-    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]):
+    def determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]):
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!
         See `determine_at_wavelengths()` for the general case.

@@ -135,7 +135,7 @@ class FilterObject(SpectralObject):
         return (self * self.wavelength_nm).normalized()
 
     @override
-    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]) -> Self:
+    def determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]) -> Self:
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!
         See `determine_at_wavelengths()` for the general case.
@@ -147,7 +147,7 @@ class FilterObject(SpectralObject):
         other_nm_1 = cast(int, requested_wavelengths[-1])
         min_nm = min(self_nm_0, other_nm_0)
         max_nm = max(self_nm_1, other_nm_1)
-        obj.wavelength_nm = self._uniform_grid(min_nm, max_nm)
+        obj.wavelength_nm = self.uniform_grid(min_nm, max_nm)
         obj.spectral_dist = np.zeros((obj.wavelength_nm.size, *self.spatial_shape))
         mask = np.searchsorted(obj.wavelength_nm, self.wavelength_nm)
         obj.spectral_dist[mask] = self.spectral_dist.copy()

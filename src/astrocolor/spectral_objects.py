@@ -130,11 +130,12 @@ class SpectralObject(BaseObject):
             # The first spectral line
             spectral_lines_sum = self.monochromatic(nm_0, sd_0, std_0)
             if nm.size > 1:
+                from astrocolor.convolution import determine_at_wavelengths
                 # The last spectral line
                 spectral_line = self.monochromatic(nm_1, sd_1, std_1)
                 nm_range = (spectral_lines_sum.wavelength_nm[0], spectral_line.wavelength_nm[-1])
-                spectral_lines_sum.determine_at_wavelengths(nm_range)
-                spectral_line.determine_at_wavelengths(nm_range)
+                determine_at_wavelengths(spectral_lines_sum, nm_range)
+                determine_at_wavelengths(spectral_line, nm_range)
                 spectral_lines_sum += spectral_line
                 if nm.size > 2:
                     # Adding the remaining spectral lines to the overall wavelength range
@@ -145,7 +146,7 @@ class SpectralObject(BaseObject):
                         sd_i = cast(float, sd[i])
                         std_i = None if uncertainty is None else cast(float, uncertainty[i])
                         spectral_line = self.monochromatic(nm_i, sd_i, std_i)
-                        spectral_lines_sum += spectral_line.determine_at_wavelengths(nm_range)
+                        spectral_lines_sum += determine_at_wavelengths(spectral_line, nm_range)
             self.wavelength_nm: npt.NDArray[np.integer] = spectral_lines_sum.wavelength_nm
             self.spectral_dist: npt.NDArray[np.floating] = spectral_lines_sum.spectral_dist
             self.covariance_matrix: npt.NDArray[np.floating] | None = spectral_lines_sum.covariance_matrix
@@ -159,7 +160,7 @@ class SpectralObject(BaseObject):
                     erasing_correlations_warning(name)
                     uncertainty = cast(npt.NDArray[np.floating], np.sqrt(uncertainty.diagonal()))
                     is_cov_matrix = False
-                nm_uniform = self._uniform_grid(nm_0, nm_1)
+                nm_uniform = self.uniform_grid(nm_0, nm_1)
                 if diff.mean() >= self.nm_step:
                     # Option 1: loose spectral grid, increasing resolution
                     sd = interpolate(nm, sd, nm_uniform, nm_step)
@@ -360,8 +361,7 @@ class SpectralObject(BaseObject):
                 empty_spectral_intersection_warning(nm_0, nm_1, start, end)
             return self.covariance_matrix[np.ix_(slice_indices, slice_indices)]
 
-    @override
-    def _determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]) -> Self:
+    def determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]) -> Self:
         """
         Directly uses the provided wavelength grid to create a new object.
         See `determine_at_wavelengths()` for the general case.
@@ -476,7 +476,7 @@ class SpectralObject(BaseObject):
                 value2 = other.get_spectral_dist_at_wavelengths(start, end)
                 value = value_handling(value1, value2)
                 error = error_handling(value1, self.get_covariance_matrix_at_wavelengths(start, end), value2, other.get_covariance_matrix_at_wavelengths(start, end))
-                return higher_dim.__class__(self._uniform_grid(start, end), value, error, name=higher_dim.name)
+                return higher_dim.__class__(self.uniform_grid(start, end), value, error, name=higher_dim.name)
         else:
             return NotImplemented
 
