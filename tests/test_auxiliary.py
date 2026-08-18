@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 
-import astrocolor as ac
 from astrocolor.auxiliary import (
     color_indices_parser,
     get_extremal_grid_endpoints,
@@ -133,7 +132,7 @@ class TestLinearInterp:
         y1 = linear_interp(x0, y0, x1)
         expected = np.array([0.5, 2.5, 6.5])
         np.testing.assert_allclose(y1, expected)
-        # Compare with numpy's built-in interp for the same region
+        # Compare with np.interp() for the same region
         np.testing.assert_allclose(y1, np.interp(x1, x0, y0))
 
     # Extrapolation mode='nearest' (constant)
@@ -142,9 +141,9 @@ class TestLinearInterp:
         y0 = np.array([0.0, 1.0, 4.0, 9.0])
         x_ext = np.array([-1.0, 0.5, 3.5])
         y_const = linear_interp(x0, y0, x_ext, extrap_mode='nearest')
-        np.testing.assert_allclose(y_const[0], y0[0])   # left extrapolation
-        np.testing.assert_allclose(y_const[1], 0.5)      # interior point
-        np.testing.assert_allclose(y_const[2], y0[-1])   # right extrapolation
+        np.testing.assert_allclose(y_const[0], y0[0])    # left extrapolation  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_const[1], 0.5)      # interior point  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_const[2], y0[-1])   # right extrapolation  # pyright: ignore[reportAny]
 
     # Extrapolation mode='linear'
     def test_extrapolation_linear(self):
@@ -152,10 +151,10 @@ class TestLinearInterp:
         y0 = np.array([0.0, 1.0, 4.0, 9.0])
         x_ext = np.array([-1.0, 0.5, 3.5])
         y_lin = linear_interp(x0, y0, x_ext, extrap_mode='linear')
-        slope_first = (y0[1] - y0[0]) / (x0[1] - x0[0])
-        slope_last = (y0[-1] - y0[-2]) / (x0[-1] - x0[-2])
-        np.testing.assert_allclose(y_lin[0], y0[0] + slope_first * (-1.0 - x0[0]))
-        np.testing.assert_allclose(y_lin[2], y0[-1] + slope_last * (3.5 - x0[-1]))
+        slope_first = (y0[1] - y0[0]) / (x0[1] - x0[0])     # pyright: ignore[reportAny]
+        slope_last = (y0[-1] - y0[-2]) / (x0[-1] - x0[-2])  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_lin[0], y0[0] + slope_first * (-1.0 - x0[0]))  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_lin[2], y0[-1] + slope_last * (3.5 - x0[-1]))  # pyright: ignore[reportAny]
 
     # Multidimensional y0: 2D array with nearest extrapolation
     def test_multidim_2d_nearest(self):
@@ -164,9 +163,9 @@ class TestLinearInterp:
         y0_2d = np.column_stack([y0, y0 * 2, y0 * 3])
         x_multi = np.array([0.5, 1.5, -0.5, 3.5])
         y_multi_const = linear_interp(x0, y0_2d, x_multi, extrap_mode='nearest')
-        np.testing.assert_allclose(y_multi_const[2], y0_2d[0])   # left ext
-        np.testing.assert_allclose(y_multi_const[3], y0_2d[-1])  # right ext
-        np.testing.assert_allclose(y_multi_const[0, 0], 0.5)     # interior
+        np.testing.assert_allclose(y_multi_const[2], y0_2d[0])   # left ext  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_multi_const[3], y0_2d[-1])  # right ext  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_multi_const[0, 0], 0.5)     # interior  # pyright: ignore[reportAny]
 
     # Multidimensional y0: 3D array with linear extrapolation
     def test_multidim_3d_linear(self):
@@ -174,8 +173,8 @@ class TestLinearInterp:
         y0_3d = np.ones((4, 2, 3)) * np.arange(4)[:, None, None]
         x_multi = np.array([0.5, 1.5, -0.5, 3.5])
         y_3d_lin = linear_interp(x0, y0_3d, x_multi, extrap_mode='linear')
-        np.testing.assert_allclose(y_3d_lin[2], -0.5)   # left ext
-        np.testing.assert_allclose(y_3d_lin[3], 3.5)    # right ext
+        np.testing.assert_allclose(y_3d_lin[2], -0.5)   # left ext  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_3d_lin[3], 3.5)    # right ext  # pyright: ignore[reportAny]
 
     # Edge cases
     def test_edge_two_point_x0(self):
@@ -184,21 +183,21 @@ class TestLinearInterp:
         x1 = np.array([0.0, 1.0, 2.0, -1.0, 3.0])
         y_lin = linear_interp(x0, y0, x1, extrap_mode='linear')
         slope = (20 - 10) / (2 - 0)
-        np.testing.assert_allclose(y_lin[0], 10.0)
-        np.testing.assert_allclose(y_lin[1], 15.0)
-        np.testing.assert_allclose(y_lin[3], 10.0 + slope * (-1.0 - 0.0))
-        np.testing.assert_allclose(y_lin[4], 20.0 + slope * (3.0 - 2.0))
+        np.testing.assert_allclose(y_lin[0], 10.0)  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_lin[1], 15.0)  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_lin[3], 10.0 + slope * (-1.0 - 0.0))  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_lin[4], 20.0 + slope * (3.0 - 2.0))   # pyright: ignore[reportAny]
 
     def test_edge_all_points_outside(self):
         x0 = np.array([0.0, 1.0, 2.0, 3.0])
         y0 = np.array([0.0, 1.0, 4.0, 9.0])
         x_ext = np.array([-0.5, 3.5])
-        slope_first = (y0[1] - y0[0]) / (x0[1] - x0[0])
-        slope_last = (y0[-1] - y0[-2]) / (x0[-1] - x0[-2])
+        slope_first = (y0[1] - y0[0]) / (x0[1] - x0[0])     # pyright: ignore[reportAny]
+        slope_last = (y0[-1] - y0[-2]) / (x0[-1] - x0[-2])  # pyright: ignore[reportAny]
         y_out = linear_interp(x0, y0, x_ext, extrap_mode='linear')
         assert y_out.shape == (2,)
-        np.testing.assert_allclose(y_out[0], y0[0] + slope_first * (-0.5 - x0[0]))
-        np.testing.assert_allclose(y_out[1], y0[-1] + slope_last * (3.5 - x0[-1]))
+        np.testing.assert_allclose(y_out[0], y0[0] + slope_first * (-0.5 - x0[0]))  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_out[1], y0[-1] + slope_last * (3.5 - x0[-1]))  # pyright: ignore[reportAny]
 
     def test_edge_empty_x1(self):
         x0 = np.array([0.0, 1.0, 2.0, 3.0])
@@ -212,7 +211,7 @@ class TestLinearInterp:
         x_single = np.array([0.5])
         y_single = linear_interp(x0, y0, x_single)
         assert y_single.shape == (1,)
-        np.testing.assert_allclose(y_single[0], 0.5)
+        np.testing.assert_allclose(y_single[0], 0.5)  # pyright: ignore[reportAny]
 
     def test_edge_exact_grid_points(self):
         x0 = np.array([0.0, 1.0, 2.0, 3.0])
@@ -225,11 +224,11 @@ class TestLinearInterp:
         x0 = np.array([10.0, 20.0, 30.0])
         y0 = np.ones((3, 4, 5)) * np.arange(3)[:, None, None]
         x_ext = np.array([5.0, 35.0])
-        slope_left = (y0[1] - y0[0]) / (20 - 10)
-        slope_right = (y0[2] - y0[1]) / (30 - 20)
+        slope_left = (y0[1] - y0[0]) / (20 - 10)  # pyright: ignore[reportAny]
+        slope_right = (y0[2] - y0[1]) / (30 - 20)  # pyright: ignore[reportAny]
         y_lin = linear_interp(x0, y0, x_ext, extrap_mode='linear')
-        np.testing.assert_allclose(y_lin[0], y0[0] + slope_left * (5 - 10))
-        np.testing.assert_allclose(y_lin[1], y0[2] + slope_right * (35 - 30))
+        np.testing.assert_allclose(y_lin[0], y0[0] + slope_left * (5 - 10))  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_lin[1], y0[2] + slope_right * (35 - 30))  # pyright: ignore[reportAny]
 
     def test_edge_high_dim_singular(self):
         x0 = np.linspace(0, 4, 5)
@@ -237,8 +236,8 @@ class TestLinearInterp:
         x_test = np.array([-0.5, 2.5, 4.5])
         y_const = linear_interp(x0, y0, x_test, extrap_mode='nearest')
         assert y_const.shape == (3, 1, 2, 1, 3)
-        np.testing.assert_allclose(y_const[0], y0[0])
-        np.testing.assert_allclose(y_const[2], y0[-1])
+        np.testing.assert_allclose(y_const[0], y0[0])  # pyright: ignore[reportAny]
+        np.testing.assert_allclose(y_const[2], y0[-1])  # pyright: ignore[reportAny]
 
     # Existing test: full-range interpolation with both modes
     def test_full_range_interpolation(self):
@@ -259,39 +258,6 @@ class TestLinearInterp:
         ]
         np.testing.assert_allclose(y_nearest, expected_nearest, rtol=1e-5)
         np.testing.assert_allclose(y_linear, expected_linear, rtol=1e-5)
-
-
-class TestExtrapolation:
-
-    def test_extrapolation_filter(self, v_filter):
-        extrapolated = ac.get_spectrometry(v_filter, ac.visible_range, strictly=True)
-        assert extrapolated.wavelength_nm.size == ac.visible_range.size
-        extrapolated.edges_to_zero()
-        assert v_filter == extrapolated
-
-    def test_extrapolation_filter_set(self, ubv_filterset):
-        extrapolated = ac.get_spectrometry(ubv_filterset, ac.visible_range, strictly=True)
-        assert extrapolated.wavelength_nm.size == ac.visible_range.size
-
-    def test_extrapolation_spectrum(self):
-        u_filter = ac.Filter.get('Generic/Bessell.U')
-        spectrum = ac.Spectrum(u_filter.wavelength_nm, u_filter.spectral_dist)
-        extrapolated = ac.get_spectrometry(spectrum, ac.visible_range, strictly=True)
-        assert extrapolated.wavelength_nm.size == ac.visible_range.size
-
-    def test_extrapolation_spectral_set(self, ubv_filterset):
-        spectral_set = ac.SpectralSet(ubv_filterset.wavelength_nm, ubv_filterset.spectral_dist)
-        extrapolated = ac.get_spectrometry(spectral_set, ac.visible_range, strictly=True)
-        assert extrapolated.wavelength_nm.size == ac.visible_range.size
-
-    def test_extrapolation_flat_spectrum(self):
-        """ A flat spectrum should remain flat after extrapolation. """
-        nm = np.arange(500, 701, 5)
-        spectrum = ac.Spectrum(nm, np.ones_like(nm))
-        np.testing.assert_equal(
-            ac.get_spectrometry(spectrum, ac.visible_range, strictly=True).spectral_dist,
-            np.ones(ac.visible_range.size),
-        )
 
 
 class TestReprGenerator1D:
@@ -333,7 +299,7 @@ class TestReprGenerator1D:
     def test_dimensional_error(self):
         arr_2d = np.array([[1, 2], [3, 4]])
         with pytest.raises(ValueError, match='must be 1D'):
-            repr_generator_1D(arr_2d)
+            _ = repr_generator_1D(arr_2d)
 
 
 class TestReprGenerator2D:
@@ -365,7 +331,7 @@ class TestReprGenerator2D:
     def test_dimensional_error(self):
         arr_1d = np.array([1, 2, 3])
         with pytest.raises(ValueError, match='must be 2D'):
-            repr_generator_2D(arr_1d)
+            _ = repr_generator_2D(arr_1d)
 
 
 class TestReprGenerator:

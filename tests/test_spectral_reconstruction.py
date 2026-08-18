@@ -5,7 +5,7 @@ import astrocolor as ac
 #import matplotlib.pyplot as plt
 
 
-def test_flat_photospectrum_reconstruction(ubv_filterset):
+def test_flat_photospectrum_reconstruction(ubv_filterset: ac.FilterSet):
     photospectrum = ac.Photospectrum(ubv_filterset, (1, 1, 1), name='test photospectrum')
     reconstructed = ac.get_spectrometry(photospectrum, ac.visible_range, strictly=True)
     # for band in ubv_filterset:

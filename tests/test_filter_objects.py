@@ -39,7 +39,7 @@ def test_mean_nm_bessell_filters():
     np.testing.assert_allclose(v_filter.mean_nm(), 551.210, rtol=0.001)
     np.testing.assert_allclose(r_filter.mean_nm(), 658.592, rtol=0.001)
 
-def test_mean_nm_bessell_filter_set(ubv_filterset):
+def test_mean_nm_bessell_filter_set(ubv_filterset: ac.FilterSet):
     # Reference for effective wavelengths: Bessell 2005, Table 1
     np.testing.assert_allclose(
         (ubv_filterset * ac.vega_CALSPEC).mean_nm(), [366.3, 436.1, 544.8], rtol=0.01
@@ -58,10 +58,10 @@ def test_std_of_nm_spectra():
     np.testing.assert_allclose(ac.sun_CALSPEC.std_of_nm(), 468.978657, rtol=0.01)
     np.testing.assert_allclose(ac.vega_CALSPEC.std_of_nm(), 466.044761, rtol=0.01)
 
-def test_std_of_nm_filter(v_filter):
+def test_std_of_nm_filter(v_filter: ac.Filter):
     np.testing.assert_allclose(v_filter.std_of_nm(), 36.354015, rtol=0.01)
 
-def test_std_of_nm_filter_set(ubv_filterset):
+def test_std_of_nm_filter_set(ubv_filterset: ac.FilterSet):
     np.testing.assert_allclose(
         ubv_filterset.std_of_nm(), [21.932217, 35.816641, 36.354015], rtol=0.01
     )

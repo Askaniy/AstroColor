@@ -103,9 +103,9 @@ def spectral_binning(
     nm0: npt.NDArray[np.integer | np.floating],
     br0: npt.NDArray[np.floating],
     std0: npt.NDArray[np.floating] | None,
-    nm1: npt.NDArray[np.integer],
+    nm1: npt.NDArray[np.integer | np.floating],
     step: float,
-    nm0_diff: npt.NDArray[np.integer]
+    nm0_diff: npt.NDArray[np.integer | np.floating]
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """
     Cumulative-integral binning method for a uniform grid. Fast (O(N) complexity), vectorized.

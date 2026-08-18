@@ -1,6 +1,7 @@
 import urllib.error as urle
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -39,8 +40,8 @@ class TestGetProfile:
         """ First data point should match the XML """
         xml_content = ET.fromstring(SAMPLE_XML_PATH.read_bytes())
         nm, sd = get_profile(xml_content, 'NonExistent/Filter')
-        np.testing.assert_equal(nm[0], 7200.0, f'First wavelength: {nm[0]} != 7200.0')
-        np.testing.assert_equal(sd[0], 0.002494, f'First transmission: {sd[0]} != 0.002494')
+        np.testing.assert_equal(cast(float, nm[0]), 7200.0, f'First wavelength: {nm[0]} != 7200.0')
+        np.testing.assert_equal(cast(float, sd[0]), 0.002494, f'First transmission: {sd[0]} != 0.002494')
 
     def test_invalid_xml(self):
         """ Invalid XML should raise FilterNetworkError """
@@ -99,22 +100,22 @@ class TestFetchFPS:
     """ Tests for the fetch_from_fps_raw() functions. All use mocking. """
 
     @patch('astrocolor.filter_loader.urlopen')
-    def test_fetch_raw_success(self, mock_urlopen):
+    def test_fetch_raw_success(self, mock_urlopen: MagicMock):
         """ Successful raw fetch should return the XML bytes content """
         # Mock the response to simulate SVO FPS returning our sample XML
         mock_response = MagicMock()
-        mock_response.read.return_value = SAMPLE_XML_PATH.read_bytes()
-        mock_urlopen.return_value.__enter__ = MagicMock(return_value=mock_response)
-        mock_urlopen.return_value.__exit__ = MagicMock(return_value=None)
+        mock_response.read.return_value = SAMPLE_XML_PATH.read_bytes()  # pyright: ignore[reportAny]
+        mock_urlopen.return_value.__enter__ = MagicMock(return_value=mock_response)  # pyright: ignore[reportAny]
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=None)  # pyright: ignore[reportAny]
         xml_content = fetch_from_fps_raw('Galileo/SSI.7270A')
         assert isinstance(xml_content, ET.Element), 'Should return an XML element.'
         # Verify it contains the expected data by parsing it
         nm, _sd = get_profile(xml_content, 'NonExistent/Filter')
         assert len(nm) == EXPECTED_N_POINTS
-        np.testing.assert_equal(nm[0], 7200.0)
+        np.testing.assert_equal(cast(float, nm[0]), 7200.0)
 
     @patch('astrocolor.filter_loader.urlopen')
-    def test_fetch_http_error(self, mock_urlopen):
+    def test_fetch_http_error(self, mock_urlopen: MagicMock):
         """ HTTP error should raise FilterNetworkError """
         from email.message import Message as EmailMessage
         http_err = urle.HTTPError(
@@ -127,7 +128,7 @@ class TestFetchFPS:
         assert 'HTTP error' in str(exc_info.value)
 
     @patch('astrocolor.filter_loader.urlopen')
-    def test_fetch_url_error(self, mock_urlopen):
+    def test_fetch_url_error(self, mock_urlopen: MagicMock):
         """ URL error should raise FilterNetworkError """
         url_err = urle.URLError('Connection refused')
         mock_urlopen.side_effect = url_err
@@ -137,16 +138,16 @@ class TestFetchFPS:
         assert 'Request failed' in str(exc_info.value)
 
     @patch('astrocolor.filter_loader.urlopen')
-    def test_fetch_bad_status(self, mock_urlopen):
+    def test_fetch_bad_status(self, mock_urlopen: MagicMock):
         """ SVO FPS returning bad status should raise FilterNetworkError """
         xml_string = b'''<?xml version="1.0"?>
 <VOTABLE version="1.1">
   <INFO name="QUERY_STATUS" value="ERROR"/>
 </VOTABLE>'''
         mock_response = MagicMock()
-        mock_response.read.return_value = xml_string
-        mock_urlopen.return_value.__enter__ = MagicMock(return_value=mock_response)
-        mock_urlopen.return_value.__exit__ = MagicMock(return_value=None)
+        mock_response.read.return_value = xml_string  # pyright: ignore[reportAny]
+        mock_urlopen.return_value.__enter__ = MagicMock(return_value=mock_response)  # pyright: ignore[reportAny]
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=None)  # pyright: ignore[reportAny]
         with pytest.raises(FilterNetworkError) as exc_info:
             _ = fetch_from_fps_raw('NonExistent/Filter')
         assert 'status' in str(exc_info.value).lower() or 'ERROR' in str(exc_info.value)
