@@ -48,7 +48,7 @@ class BlackBodyModel:
     ) -> Spectrum:
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!
-        See `determine_at_wavelengths()` for the general case.
+        See `get_spectrometry()` for the general case.
         """
         doppler = 1
         grav = 1

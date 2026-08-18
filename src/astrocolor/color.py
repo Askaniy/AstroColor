@@ -7,8 +7,8 @@ import numpy.typing as npt
 from astrocolor.photospectral_objects import PhotospectralObject
 
 from .auxiliary import spatial_downscaling
-from .convolution import observe
 from .filter_objects import FilterSet
+from .measurements import get_photometry
 from .physical_models import sun_CALSPEC, vega_CALSPEC
 from .spectral_objects import SpectralObject, Spectrum
 
@@ -119,7 +119,7 @@ class ColorSystem:
     @staticmethod
     def spectrum_to_white_point(spectrum: Spectrum) -> tuple[float, float]:
         """ Returns (x, y) coordinates of the spectrum on the chromaticity diagram """
-        xyz = observe(spectrum, xyz_cmf).spectral_dist
+        xyz = get_photometry(spectrum, xyz_cmf).spectral_dist
         x = cast(float, xyz[0] / xyz.sum())
         y = cast(float, xyz[1] / xyz.sum())
         return x, y
@@ -196,7 +196,7 @@ class ColorObject:
     @classmethod
     def from_spectral_data(cls, data: SpectralObject | PhotospectralObject) -> Self:
         """ Convolves (photo)spectrum with CIE 1931 XYZ color matching functions """
-        photospectrum = observe(data, xyz_cmf)
+        photospectrum = get_photometry(data, xyz_cmf)
         return cls(photospectrum.spectral_dist, photospectrum.covariance_matrix, xyz_color_system)
 
     def to_color_system(self, new_color_system: ColorSystem) -> Self:

@@ -130,12 +130,12 @@ class SpectralObject(BaseObject):
             # The first spectral line
             spectral_lines_sum = self.monochromatic(nm_0, sd_0, std_0)
             if nm.size > 1:
-                from astrocolor.convolution import determine_at_wavelengths
+                from astrocolor.measurements import get_spectrometry
                 # The last spectral line
                 spectral_line = self.monochromatic(nm_1, sd_1, std_1)
                 nm_range = (spectral_lines_sum.wavelength_nm[0], spectral_line.wavelength_nm[-1])
-                determine_at_wavelengths(spectral_lines_sum, nm_range)
-                determine_at_wavelengths(spectral_line, nm_range)
+                get_spectrometry(spectral_lines_sum, nm_range)
+                get_spectrometry(spectral_line, nm_range)
                 spectral_lines_sum += spectral_line
                 if nm.size > 2:
                     # Adding the remaining spectral lines to the overall wavelength range
@@ -146,7 +146,7 @@ class SpectralObject(BaseObject):
                         sd_i = cast(float, sd[i])
                         std_i = None if uncertainty is None else cast(float, uncertainty[i])
                         spectral_line = self.monochromatic(nm_i, sd_i, std_i)
-                        spectral_lines_sum += determine_at_wavelengths(spectral_line, nm_range)
+                        spectral_lines_sum += get_spectrometry(spectral_line, nm_range)
             self.wavelength_nm: npt.NDArray[np.integer] = spectral_lines_sum.wavelength_nm
             self.spectral_dist: npt.NDArray[np.floating] = spectral_lines_sum.spectral_dist
             self.covariance_matrix: npt.NDArray[np.floating] | None = spectral_lines_sum.covariance_matrix
@@ -364,7 +364,7 @@ class SpectralObject(BaseObject):
     def determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]) -> Self:
         """
         Directly uses the provided wavelength grid to create a new object.
-        See `determine_at_wavelengths()` for the general case.
+        See `get_spectrometry()` for the general case.
         """
         # Preparing standard deviation
         std = None
@@ -454,7 +454,7 @@ class SpectralObject(BaseObject):
         of the same nature or with a Spectrum.
 
         Only works at the intersection of the spectral axes! If you need to extrapolate one axis
-        to the range of another, use the `determine_at_wavelengths()` method.
+        to the range of another, use the `get_spectrometry()` method.
         """
         if isinstance(other, SpectralObject):
             higher_dim = (self, other)[self.ndim < other.ndim]

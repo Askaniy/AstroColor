@@ -23,7 +23,7 @@ from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectru
 
 
 @overload
-def determine_at_wavelengths(
+def get_spectrometry(
     target: Spectrum | Photospectrum,
     requested_wavelengths: npt.ArrayLike,
     strictly: bool = False
@@ -31,7 +31,7 @@ def determine_at_wavelengths(
     ...
 
 @overload
-def determine_at_wavelengths(
+def get_spectrometry(
     target: SpectralSet | PhotospectralSet,
     requested_wavelengths: npt.ArrayLike,
     strictly: bool = False
@@ -39,7 +39,7 @@ def determine_at_wavelengths(
     ...
 
 @overload
-def determine_at_wavelengths(
+def get_spectrometry(
     target: SpectralCube | PhotospectralCube,
     requested_wavelengths: npt.ArrayLike,
     strictly: bool = False
@@ -47,14 +47,14 @@ def determine_at_wavelengths(
     ...
 
 @overload
-def determine_at_wavelengths(
+def get_spectrometry(
     target: SpectralObject | PhotospectralObject,
     requested_wavelengths: npt.ArrayLike,
     strictly: bool = False
 ) -> SpectralObject:
     ...
 
-def determine_at_wavelengths(
+def get_spectrometry(
     target: Spectrum | Photospectrum | SpectralSet | PhotospectralSet | SpectralCube | PhotospectralCube | SpectralObject | PhotospectralObject,
     requested_wavelengths: npt.ArrayLike,
     strictly: bool = False
@@ -76,7 +76,7 @@ def determine_at_wavelengths(
 
     Example:
     ```
-    >>> spectrum = determine_at_wavelengths(photospectrum, [400, 700])
+    >>> spectrum = get_spectrometry(photospectrum, [400, 700])
     ```
     """
     nm_min, nm_max = target.get_extremal_grid_endpoints(requested_wavelengths)
@@ -96,41 +96,41 @@ def determine_at_wavelengths(
 
 
 @overload
-def observe(
+def get_photometry(
     target: Spectrum | Photospectrum | SpectralSet | PhotospectralSet | SpectralCube | PhotospectralCube | SpectralObject | PhotospectralObject,
     bandpass: Filter
 ) -> tuple[float, float | None]:
     ...
 
 @overload
-def observe(
+def get_photometry(
     target: Spectrum | Photospectrum,
     bandpass: FilterSet
 ) -> Photospectrum:
     ...
 
 @overload
-def observe(
+def get_photometry(
     target: SpectralSet | PhotospectralSet,
     bandpass: FilterSet
 ) -> PhotospectralSet:
     ...
 
 @overload
-def observe(
+def get_photometry(
     target: SpectralCube | PhotospectralCube,
     bandpass: FilterSet
 ) -> PhotospectralCube:
     ...
 
 @overload
-def observe(
+def get_photometry(
     target: SpectralObject | PhotospectralObject,
     bandpass: FilterSet
 ) -> Photospectrum | PhotospectralSet | PhotospectralCube:
     ...
 
-def observe(
+def get_photometry(
     target: Spectrum | Photospectrum | SpectralSet | PhotospectralSet | SpectralCube | PhotospectralCube | SpectralObject | PhotospectralObject,
     bandpass: Filter | FilterSet
 ) -> tuple[float, float | None] | Photospectrum | PhotospectralSet | PhotospectralCube:
@@ -138,7 +138,7 @@ def observe(
     Implementation of convolution between a (photo)spectral object and a filter or a filter set.
     Ignores the uncertainty of filter profiles.
     """
-    target = determine_at_wavelengths(target, bandpass.wavelength_nm, strictly=True)
+    target = get_spectrometry(target, bandpass.wavelength_nm, strictly=True)
     ndim = target.ndim
     sd = target.spectral_dist
     cov = target.covariance_matrix
@@ -180,7 +180,7 @@ def scale_spectrum(
     Returns a new spectrum that matches the query brightness value (1 by default)
     at the specified filter.
     """
-    current_value, _ = observe(target, bandpass)
+    current_value, _ = get_photometry(target, bandpass)
     if current_value <= 0:
         # Prevents errors of dividing by zero and inversion
         return target

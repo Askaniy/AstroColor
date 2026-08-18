@@ -13,7 +13,7 @@ def test_filter_edges():
 
 def test_filter_edges_extrapolated():
     v_filter = ac.Filter.get('Generic/Bessell.V')
-    extrapolated_v = ac.determine_at_wavelengths(v_filter, ac.visible_range)
+    extrapolated_v = ac.get_spectrometry(v_filter, ac.visible_range)
     assert extrapolated_v.spectral_dist[0] == 0.
     assert extrapolated_v.spectral_dist[-1] == 0.
 

@@ -111,7 +111,7 @@ class PhotospectralObject(BaseObject):
     def determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]):
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!
-        See `determine_at_wavelengths()` for the general case.
+        See `get_spectrometry()` for the general case.
         """
         from .spectral_reconstruction import spectral_reconstruction
         obj = spectral_reconstruction(self, requested_wavelengths)
@@ -136,8 +136,8 @@ class PhotospectralObject(BaseObject):
         from .spectral_objects import SpectralObject
         if isinstance(other, SpectralObject) or (isinstance(other, PhotospectralObject) and other.filter_set != filter_set):
             # Converting to a PhotospectralObject of the same filter system
-            from .convolution import observe
-            other = observe(other, filter_set)
+            from .measurements import get_photometry
+            other = get_photometry(other, filter_set)
         else:
             return NotImplemented
         value = value_handling(self.spectral_dist, other.spectral_dist)

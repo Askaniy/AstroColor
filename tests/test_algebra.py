@@ -27,13 +27,13 @@ def test_multiplication_filter_spectrum_mean(v_filter, ubv_filterset):
 
 def test_multiplication_observation(v_filter, ubv_filterset):
     np.testing.assert_allclose(
-        ac.observe(ac.vega_CALSPEC * 2, v_filter)[0],
-        ac.observe(ac.vega_CALSPEC, v_filter)[0] * 2,
+        ac.get_photometry(ac.vega_CALSPEC * 2, v_filter)[0],
+        ac.get_photometry(ac.vega_CALSPEC, v_filter)[0] * 2,
         rtol=0.01,
     )
     np.testing.assert_allclose(
-        ac.observe(ac.vega_CALSPEC * 2, ubv_filterset).spectral_dist,
-        ac.observe(ac.vega_CALSPEC, ubv_filterset * 2).spectral_dist,
+        ac.get_photometry(ac.vega_CALSPEC * 2, ubv_filterset).spectral_dist,
+        ac.get_photometry(ac.vega_CALSPEC, ubv_filterset * 2).spectral_dist,
         rtol=0.01,
     )
 
@@ -69,12 +69,12 @@ def test_division_spectrum_wavelength(ubv_filterset):
 
 def test_normalization(v_filter, ubv_filterset):
     np.testing.assert_allclose(
-        ac.observe(ac.vega_CALSPEC, (v_filter * 2).normalized())[0],
-        ac.observe(ac.vega_CALSPEC, v_filter)[0],
+        ac.get_photometry(ac.vega_CALSPEC, (v_filter * 2).normalized())[0],
+        ac.get_photometry(ac.vega_CALSPEC, v_filter)[0],
         rtol=0.01,
     )
     np.testing.assert_allclose(
-        ac.observe(ac.vega_CALSPEC, (ubv_filterset * 2).normalized()).spectral_dist,
-        ac.observe(ac.vega_CALSPEC, ubv_filterset).spectral_dist,
+        ac.get_photometry(ac.vega_CALSPEC, (ubv_filterset * 2).normalized()).spectral_dist,
+        ac.get_photometry(ac.vega_CALSPEC, ubv_filterset).spectral_dist,
         rtol=0.01,
     )

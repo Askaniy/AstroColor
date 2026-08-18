@@ -138,7 +138,7 @@ class FilterObject(SpectralObject):
     def determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]) -> Self:
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!
-        See `determine_at_wavelengths()` for the general case.
+        See `get_spectrometry()` for the general case.
         """
         obj = deepcopy(self)
         self_nm_0 = cast(int, self.wavelength_nm[0])

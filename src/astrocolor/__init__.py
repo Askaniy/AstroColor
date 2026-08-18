@@ -7,8 +7,8 @@ from .color import (
     xyz_cmf,
     xyz_color_system,
 )
-from .convolution import determine_at_wavelengths, observe, scale_spectrum
 from .filter_objects import Filter, FilterSet
+from .measurements import get_photometry, get_spectrometry, scale_spectrum
 from .photospectral_objects import PhotospectralCube, PhotospectralSet, Photospectrum
 from .physical_models import BlackBodyModel, sun_CALSPEC, vega_CALSPEC
 from .spectral_objects import SpectralCube, SpectralSet, Spectrum
@@ -37,8 +37,8 @@ __all__ = (
     'SpectralCube',
     'SpectralSet',
     'Spectrum',
-    'determine_at_wavelengths',
-    'observe',
+    'get_photometry',
+    'get_spectrometry',
     'scale_spectrum',
     'spectral_reconstruction',
     'sun_CALSPEC',

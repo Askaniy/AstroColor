@@ -7,7 +7,7 @@ import astrocolor as ac
 
 def test_flat_photospectrum_reconstruction(ubv_filterset):
     photospectrum = ac.Photospectrum(ubv_filterset, (1, 1, 1), name='test photospectrum')
-    reconstructed = ac.determine_at_wavelengths(photospectrum, ac.visible_range, strictly=True)
+    reconstructed = ac.get_spectrometry(photospectrum, ac.visible_range, strictly=True)
     # for band in ubv_filterset:
     #     plt.plot(band.wavelength_nm, band.spectral_dist / band.spectral_dist.max(), '-', color='gray')
     # plt.plot(photospectrum.filter_set.mean_nm(), photospectrum.spectral_dist, 'o')

@@ -32,7 +32,7 @@ spectrum = ac.Spectrum(
     spectral_dist=[1, 2, 2, 1]
 )
 v_band = ac.Filter.get('Generic/Bessell.V')
-flux_value, flux_error = ac.observe(spectrum, v_band)
+flux_value, flux_error = ac.get_photometry(spectrum, v_band)
 ```
 
 - Create a filter system
@@ -42,7 +42,7 @@ johnson_system = ac.FilterSet.get(
     'Generic/Bessell.V',
     'Generic/Bessell.R'
 )
-photospectrum_BVR = ac.observe(spectrum, johnson_system)
+photospectrum_BVR = ac.get_photometry(spectrum, johnson_system)
 ```
 
 - Reconstruct photometry measurements into a smooth spectrum
@@ -53,7 +53,7 @@ reconstructed = ac.spectral_reconstruction(photospectrum_BVR, requested_waveleng
 - Convert measurements directly between photometric systems
 ```py
 sloan_system = ac.FilterSet.get('SLOAN/SDSS.g', 'SLOAN/SDSS.r')
-photospectrum_gr = ac.observe(photospectrum_BVR, sloan_system)
+photospectrum_gr = ac.get_photometry(photospectrum_BVR, sloan_system)
 ```
 
 - Work on your wavelengths
@@ -72,7 +72,7 @@ color_html = color_rgb.to_html()
 
 - Model spectra
 ```py
-bb_3000K = determine_at_wavelengths(ac.BlackBodyModel(3000), [400, 700])
+bb_3000K = get_spectrometry(ac.BlackBodyModel(3000), [400, 700])
 ```
 
 - Process images via spectral cube reconstruction
