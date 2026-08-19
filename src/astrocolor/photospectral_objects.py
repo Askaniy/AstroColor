@@ -24,9 +24,9 @@ class PhotospectralObject(BaseObject):
 
     Attributes:
     - `filter_set` (FilterSet): instance of the class storing filter profiles
-    - `wavelength_nm` (npt.NDArray): shortcut for filter_set.wavelength_nm, the definition range
-    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `wavelength_nm` (NDArray): shortcut for filter_set.wavelength_nm, the definition range
+    - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (object): human-readable identifier
     """
 
@@ -168,9 +168,9 @@ class Photospectrum(PhotospectralObject, Item):
 
     Attributes:
     - `filter_set` (FilterSet): instance of the class storing filter profiles
-    - `wavelength_nm` (npt.NDArray): shortcut for filter_set.wavelength_nm, the definition range
-    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `wavelength_nm` (NDArray): shortcut for filter_set.wavelength_nm, the definition range
+    - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (object): human-readable identifier
     """
 
@@ -181,9 +181,9 @@ class PhotospectralSet(PhotospectralObject, Set):
 
     Attributes:
     - `filter_set` (FilterSet): instance of the class storing filter profiles
-    - `wavelength_nm` (npt.NDArray): shortcut for filter_set.wavelength_nm, the definition range
-    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `wavelength_nm` (NDArray): shortcut for filter_set.wavelength_nm, the definition range
+    - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (object): human-readable identifier
     - `size` (int): spatial axis length
     """
@@ -195,9 +195,9 @@ class PhotospectralCube(PhotospectralObject, Cube):
 
     Attributes:
     - `filter_set` (FilterSet): instance of the class storing filter profiles
-    - `wavelength_nm` (npt.NDArray): shortcut for filter_set.wavelength_nm, the definition range
-    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `wavelength_nm` (NDArray): shortcut for filter_set.wavelength_nm, the definition range
+    - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (object): human-readable identifier
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length

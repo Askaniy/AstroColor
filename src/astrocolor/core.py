@@ -176,7 +176,7 @@ class BaseObject:
 
     def _apply_element_wise_operation(
         self,
-        other: Self,  # pyright: ignore[reportUnusedParameter]
+        other: 'BaseObject',  # pyright: ignore[reportUnusedParameter]
         value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray[np.floating]],  # pyright: ignore[reportUnusedParameter]
         error_handling: Callable[[npt.ArrayLike, npt.ArrayLike | None, npt.ArrayLike, npt.ArrayLike | None], npt.NDArray[np.floating] | None]  # pyright: ignore[reportUnusedParameter]
     ) -> Self:
@@ -216,7 +216,7 @@ class BaseObject:
         output.covariance_matrix = error_handling(self.spectral_dist, self.covariance_matrix, operand, None)
         return output
 
-    def __add__(self, other: Self | npt.ArrayLike) -> Self:
+    def __add__(self, other: 'BaseObject | npt.ArrayLike') -> Self:
         """
         Implements the addition operator.
 
@@ -228,7 +228,7 @@ class BaseObject:
         else:
             return self._apply_scalar_operation(other, add_value, add_error)
 
-    def __sub__(self, other: Self | npt.ArrayLike) -> Self:
+    def __sub__(self, other: 'BaseObject | npt.ArrayLike') -> Self:
         """
         Implements the subtraction operator.
 
@@ -240,7 +240,7 @@ class BaseObject:
         else:
             return self._apply_scalar_operation(other, sub_value, sub_error)
 
-    def __mul__(self, other: Self | npt.ArrayLike) -> Self:
+    def __mul__(self, other: 'BaseObject | npt.ArrayLike') -> Self:
         """
         Implements the multiplication operator.
 
@@ -252,7 +252,7 @@ class BaseObject:
         else:
             return self._apply_scalar_operation(other, mul_value, mul_error)
 
-    def __truediv__(self, other: Self | npt.ArrayLike) -> Self:
+    def __truediv__(self, other: 'BaseObject | npt.ArrayLike') -> Self:
         """
         Implements the division operator.
 

@@ -46,10 +46,10 @@ class SpectralObject(BaseObject):
     The first index of the "brightness" array iterates over the spectral axis.
 
     Attributes:
-    - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
-    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `standard_deviation` (npt.NDArray): optional array of standard deviations
-    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `wavelength_nm` (NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
+    - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `standard_deviation` (NDArray): optional array of standard deviations
+    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (object): human-readable identifier
     """
 
@@ -502,9 +502,9 @@ class Spectrum(SpectralObject, Item):
     Class to work with a single spectrum (1D SpectralObject).
 
     Attributes:
-    - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
-    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `wavelength_nm` (NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
+    - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (object): human-readable identifier
     """
 
@@ -514,9 +514,9 @@ class SpectralSet(SpectralObject, Set):
     Class to work with a line of continuous spectra (2D SpectralObject).
 
     Attributes:
-    - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
-    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `wavelength_nm` (NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
+    - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (object): human-readable identifier
     - `size` (int): spatial axis length
     """
@@ -527,9 +527,9 @@ class SpectralCube(SpectralObject, Cube):
     Class to work with an image of continuous spectra (3D SpectralObject).
 
     Attributes:
-    - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
-    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `wavelength_nm` (NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
+    - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (object): human-readable identifier
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length

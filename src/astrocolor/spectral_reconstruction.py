@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from copy import deepcopy
-from typing import Self, override
+from typing import Self, TypeVar, cast, override
 
 import numpy as np
 import numpy.typing as npt
@@ -8,6 +8,7 @@ from scipy.linalg import (  # pyright: ignore[reportMissingTypeStubs]
     solve,  # pyright: ignore[reportUnknownVariableType]
 )
 from scipy.optimize import (  # pyright: ignore[reportMissingTypeStubs]
+    OptimizeResult,
     minimize,  # pyright: ignore[reportUnknownVariableType]
 )
 
@@ -24,21 +25,24 @@ from .photospectral_objects import (
 )
 from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
 
+# For type checkers, this type specifies that each reconstructed class
+# can only store hyperspectral objects of its own dimension.
+PhotospectralType = TypeVar('PhotospectralType', bound='PhotospectralObject')
 
-class ReconstructedSpectralObject(SpectralObject):
+class ReconstructedSpectralObject[PhotospectralType: PhotospectralObject](SpectralObject):
     """
     Internal parent class for reconstructed spectral objects.
     The first index of the `spectral_dist` array iterates over the spectral axis.
 
     Attributes:
-    - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
-    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `wavelength_nm` (NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
+    - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (object): human-readable identifier
     - `photospectral_obj` (PhotospectralObject): optional, a way to store the pre-reconstructed data
     """
 
-    photospectral_obj: PhotospectralObject | None = None
+    photospectral_obj: PhotospectralType | None = None
 
     def __init__(
         self,
@@ -46,7 +50,7 @@ class ReconstructedSpectralObject(SpectralObject):
         spectral_dist: npt.ArrayLike,
         uncertainty: npt.ArrayLike | None = None,
         name: object = None,
-        photospectral_obj: PhotospectralObject | None = None
+        photospectral_obj: PhotospectralType | None = None
     ) -> None:
 
         """
@@ -97,47 +101,41 @@ class ReconstructedSpectralObject(SpectralObject):
         return output
 
 
-class ReconstructedSpectrum(ReconstructedSpectralObject, Item):
-    photospectral_obj: Photospectrum | None = None
-
+class ReconstructedSpectrum(ReconstructedSpectralObject[Photospectrum], Item):
     """
     Class to work with a single reconstructed spectrum (1D SpectralObject).
 
     Attributes:
-    - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
-    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `wavelength_nm` (NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
+    - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (object): human-readable identifier
     - `photospectral_obj` (Photospectrum): optional, a way to store the pre-reconstructed data
     """
 
 
-class ReconstructedSpectralSet(ReconstructedSpectralObject, Set):
-    photospectral_obj: PhotospectralSet | None = None
-
+class ReconstructedSpectralSet(ReconstructedSpectralObject[PhotospectralSet], Set):
     """
     Class to work with a line of continuous spectra (2D SpectralObject).
 
     Attributes:
-    - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
-    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `wavelength_nm` (NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
+    - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (object): human-readable identifier
     - `photospectral_obj` (PhotospectralSet): optional, a way to store the pre-reconstructed data
     - `size` (int): spatial axis length
     """
 
 
-class ReconstructedSpectralCube(ReconstructedSpectralObject, Cube):
-    photospectral_obj: PhotospectralCube | None = None
-
+class ReconstructedSpectralCube(ReconstructedSpectralObject[PhotospectralCube], Cube):
     """
     Class to work with an image of continuous spectra (3D SpectralObject).
 
     Attributes:
-    - `wavelength_nm` (npt.NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
-    - `spectral_dist` (npt.NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix`: (npt.NDArray): optional matrix that stores uncertainty and its correlations
+    - `wavelength_nm` (NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
+    - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
     - `name` (object): human-readable identifier
     - `photospectral_obj` (PhotospectralCube): optional, a way to store the pre-reconstructed data
     - `width` (int): horizontal spatial axis length
@@ -151,7 +149,7 @@ class ReconstructedSpectralCube(ReconstructedSpectralObject, Cube):
         output = super().flatten()
         if self.photospectral_obj is not None:
             output.photospectral_obj = self.photospectral_obj.flatten()
-        return output  # TODO: fix it properly! # pyright: ignore[reportReturnType]
+        return output
 
 
 def spectral_reconstruction(
@@ -159,7 +157,7 @@ def spectral_reconstruction(
     requested_wavelengths: npt.ArrayLike,
     spectral_reconstruction_mode: str = '',  # pyright: ignore[reportUnusedParameter]
     attach_photospectral_obj: bool = True
-) -> SpectralObject | ReconstructedSpectralObject:
+) -> SpectralObject | ReconstructedSpectralObject[PhotospectralObject]:
     """
     Reconstructs a SpectralObject from photospectral data on the wavelength array.
 
@@ -185,8 +183,10 @@ def spectral_reconstruction(
         br1 = np.full((nm1.size, 1, 1)[:photospectral_obj.ndim], br0) # not tested
     else:
         filter_matrix = filter_set.matrix
-        order1_matrix = smoothness_matrix(filter_matrix.shape[1], order=1, step=filter_set.nm_step)
-        order2_matrix = smoothness_matrix(filter_matrix.shape[1], order=2, step=filter_set.nm_step)
+        m_size = cast(int, filter_matrix.shape[0])
+        n_size = cast(int, filter_matrix.shape[1])
+        order1_matrix = smoothness_matrix(n_size, order=1, step=filter_set.nm_step)
+        order2_matrix = smoothness_matrix(n_size, order=2, step=filter_set.nm_step)
         # TODO: research on some known spectra to find which alpha and beta fit best
         alpha = 1/8
         beta = 5000
@@ -194,9 +194,9 @@ def spectral_reconstruction(
         right_matrix = filter_matrix.T @ filter_matrix + tikhonov_matrix
         if photospectral_obj.ndim == 3:
             # scipy supports batch mode for 2d arrays, but not for 3D arrays
-            br0 = br0.reshape(filter_matrix.shape[0], -1)
+            br0 = br0.reshape(m_size, -1)
         left_vector = filter_matrix.T @ br0
-        br1 = solve(right_matrix, left_vector) # x1.5 faster than np.linalg.inv(A) @ b
+        br1 = cast(npt.NDArray[np.floating], solve(right_matrix, left_vector)) # x1.5 faster than np.linalg.inv(A) @ b
         if photospectral_obj.ndim == 3:
             # Reshape spectral cube back from square
             br1 = br1.reshape(-1, *photospectral_obj.spatial_shape)
@@ -207,23 +207,24 @@ def spectral_reconstruction(
             # so the use is blocked for spectral squares and cubes:
             # background noise near zero can be most of the pixels.
             # TODO: RECHECK! MAY CONTAIN ERRORS!
-            def objective(vector):
+            def objective(vector: npt.NDArray[np.floating]):
                 # Tikhonov-regularized quadratic objective: 0.5 * Y^T A Y - b^T Y
                 return 0.5 * vector @ right_matrix @ vector - left_vector @ vector
-            def gradient(vector):
+            def gradient(vector: npt.NDArray[np.floating]):
                 # Gradient of the objective
                 return right_matrix @ vector - left_vector
-            bounds = ((0, None) for _ in range(right_matrix.shape[1]))
-            result = minimize(
+            k_size = cast(int, right_matrix.shape[1])
+            bounds = ((0, None) for _ in range(k_size))
+            result = cast(OptimizeResult, minimize(
                 fun=objective,
                 x0=np.maximum(br1, 0),
                 jac=gradient,
                 bounds=bounds,
                 method='L-BFGS-B',
-            )
-            if not result.success:
-                raise ValueError(f'Optimization failed: {result.message}')
-            br1 = result.x
+            ))
+            if not result.success:  # pyright: ignore[reportUnknownMemberType]
+                raise ValueError(f'Optimization failed: {result.message}')  # pyright: ignore[reportUnknownMemberType]
+            br1 = cast(npt.NDArray[np.floating], result.x)
         if photospectral_obj.ndim == 1 and cov0 is not None:
             # Measurement confidence band calculation
             # Confidence bands for spectral squares and cubes are not computed to save computational resources

@@ -24,10 +24,26 @@ from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectru
 
 @overload
 def get_spectrometry(
+    target: Filter,
+    requested_wavelengths: npt.ArrayLike,
+    strictly: bool = False
+) -> Filter:
+    ...
+
+@overload
+def get_spectrometry(
     target: Spectrum | Photospectrum,
     requested_wavelengths: npt.ArrayLike,
     strictly: bool = False
 ) -> Spectrum:
+    ...
+
+@overload
+def get_spectrometry(
+    target: FilterSet,
+    requested_wavelengths: npt.ArrayLike,
+    strictly: bool = False
+) -> FilterSet:
     ...
 
 @overload
@@ -55,10 +71,10 @@ def get_spectrometry(
     ...
 
 def get_spectrometry(
-    target: Spectrum | Photospectrum | SpectralSet | PhotospectralSet | SpectralCube | PhotospectralCube | SpectralObject | PhotospectralObject,
+    target: SpectralObject | PhotospectralObject,
     requested_wavelengths: npt.ArrayLike,
     strictly: bool = False
-) -> Spectrum | SpectralSet | SpectralCube | SpectralObject:
+) -> SpectralObject:
     """
     Returns a new SpectralObject, guaranteeing that the specified wavelength range
     has been determined or reconstructed for it.
@@ -131,9 +147,9 @@ def get_photometry(
     ...
 
 def get_photometry(
-    target: Spectrum | Photospectrum | SpectralSet | PhotospectralSet | SpectralCube | PhotospectralCube | SpectralObject | PhotospectralObject,
+    target: SpectralObject | PhotospectralObject,
     bandpass: Filter | FilterSet
-) -> tuple[float, float | None] | Photospectrum | PhotospectralSet | PhotospectralCube:
+) -> tuple[float, float | None] | PhotospectralObject:
     """
     Implementation of convolution between a (photo)spectral object and a filter or a filter set.
     Ignores the uncertainty of filter profiles.

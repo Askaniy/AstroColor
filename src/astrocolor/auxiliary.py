@@ -364,7 +364,7 @@ def custom_interp(
     Optimal in terms of speed to quality ratio: around 2 times faster than splines in scipy.
 
     Args:
-    - `array0` (npt.NDArray): values to be interpolated in shape (2, N)
+    - `array0` (NDArray): values to be interpolated in shape (2, N)
     - `k` (int): lower -> more chaotic, higher -> more linear, best results around 10-20
     """
     array1 = subdivide2x(array0)
