@@ -15,6 +15,7 @@ from scipy.optimize import (  # pyright: ignore[reportMissingTypeStubs]
 from astrocolor.measurements import get_spectrometry
 
 from .auxiliary import smoothness_matrix
+from .config import Config
 from .core import Cube, Item, Set
 from .errors import UnsupportedDimensionError
 from .photospectral_objects import (
@@ -173,7 +174,7 @@ def spectral_reconstruction(
     br0 = photospectral_obj.spectral_dist
     filter_set = get_spectrometry(photospectral_obj.filter_set, requested_wavelengths, strictly=False)
     nm1 = filter_set.wavelength_nm
-    if photospectral_obj.ignore_uncertainty_forCubes and photospectral_obj.ndim == 3:
+    if Config.ignore_uncertainty_for_cubes and photospectral_obj.ndim == 3:
         cov0 = None
     else:
         cov0 = photospectral_obj.covariance_matrix

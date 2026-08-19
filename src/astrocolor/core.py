@@ -57,10 +57,6 @@ class BaseObject:
     spectral_dist_dtype: Final[npt.DTypeLike] = spectral_dist_dtype
     nm_red_limit: Final[int] = nm_red_limit
 
-    # When processing images through spectral cubes, performance is prioritized,
-    # and uncertainty is not saved (yet). Therefore it is disabled by default.
-    ignore_uncertainty_forCubes: bool = True
-
     @property
     def spectral_size(self) -> int:
         """ Returns the spectral axis length. """

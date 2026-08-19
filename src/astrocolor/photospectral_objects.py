@@ -5,6 +5,7 @@ from typing import Self, cast, override
 import numpy as np
 import numpy.typing as npt
 
+from .config import Config
 from .core import BaseObject, Cube, Item, Set, spectral_dist_dtype
 from .errors import (
     InconsistentAxesError,
@@ -58,7 +59,7 @@ class PhotospectralObject(BaseObject):
             raise InconsistentAxesError(len_filters, len_values, self.name)
         # Uncertainty check
         self.covariance_matrix: npt.NDArray[np.floating] | None = None
-        if self.ignore_uncertainty_forCubes and self.ndim == 3:
+        if Config.ignore_uncertainty_for_cubes and self.ndim == 3:
             uncertainty = None
         if uncertainty is not None:
             uncertainty = np.array(uncertainty, dtype=spectral_dist_dtype)

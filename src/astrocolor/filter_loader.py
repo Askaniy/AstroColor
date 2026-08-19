@@ -13,8 +13,6 @@ filters_folder = script_folder/'filters'
 
 SVO_FPS_URL: str = 'https://svo2.cab.inta-csic.es/svo/theory/fps3/fps.php'
 
-allow_internet_access = True
-
 
 def fetch_from_fps_raw(filter_id: str) -> ET.Element:
     """

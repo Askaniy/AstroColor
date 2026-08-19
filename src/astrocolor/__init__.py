@@ -7,6 +7,7 @@ from .color import (
     xyz_cmf,
     xyz_color_system,
 )
+from .config import Config
 from .filter_objects import Filter, FilterSet
 from .measurements import get_photometry, get_spectrometry, scale_spectrum
 from .photospectral_objects import PhotospectralCube, PhotospectralSet, Photospectrum
@@ -26,6 +27,7 @@ __all__ = (
     'ColorLine',
     'ColorPoint',
     'ColorSystem',
+    'Config',
     'Filter',
     'FilterSet',
     'PhotospectralCube',

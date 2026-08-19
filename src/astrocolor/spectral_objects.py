@@ -14,6 +14,7 @@ from .auxiliary import (
     spectral_downscaling,
     stretch,
 )
+from .config import Config
 from .core import (
     BaseObject,
     Cube,
@@ -85,7 +86,7 @@ class SpectralObject(BaseObject):
         if (len_nm := nm.size) != (len_values := len(sd)):
             raise InconsistentAxesError(len_nm, len_values, name)
         # Uncertainty check
-        if self.ignore_uncertainty_forCubes and self.ndim == 3:
+        if Config.ignore_uncertainty_for_cubes and self.ndim == 3:
             uncertainty = None
         if uncertainty is not None:
             uncertainty = np.array(uncertainty, dtype=spectral_dist_dtype)
@@ -238,7 +239,7 @@ class SpectralObject(BaseObject):
             nan_values_warning('intensity', name)
         # Uncertainty check
         std0 = None
-        if not (cls.ignore_uncertainty_forCubes and cls.ndim == 3) and standard_deviation is not None:
+        if not (Config.ignore_uncertainty_for_cubes and cls.ndim == 3) and standard_deviation is not None:
             std0 = np.array(standard_deviation, dtype=spectral_dist_dtype)
             if (len_error := len(std0)) != (len_values := len(sd0)):
                 raise InconsistentUncertaintySizeError(len_error, len_values, name)

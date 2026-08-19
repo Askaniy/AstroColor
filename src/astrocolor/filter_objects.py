@@ -7,10 +7,10 @@ import numpy as np
 import numpy.typing as npt
 
 from .auxiliary import uniform_grid
+from .config import Config
 from .core import nm_step, wavelength_nm_dtype
 from .errors import FilterNetworkError, FilterNotFoundError
 from .filter_loader import (
-    allow_internet_access,
     fetch_from_fps_raw,
     filters_folder,
     get_parameter,
@@ -26,7 +26,7 @@ def _cached_get(filter_id: str) -> 'Filter':
     Search order:
       1. Cached in lru_cache (handled by decorator)
       2. Local file (.txt) in filters_folder
-      3. SVO FPS network fetch (if allow_internet_access is True)
+      3. SVO FPS network fetch (if Config.allow_internet_access is True)
     This has been separated out to create copies of the results and avoid mutations.
     """
 
@@ -70,7 +70,7 @@ def _cached_get(filter_id: str) -> 'Filter':
 
     else:
         # Local file not found: fetch from SVO FPS and save locally if allowed
-        if not allow_internet_access:
+        if not Config.allow_internet_access:
             raise FilterNotFoundError(filter_id)
 
         try:
