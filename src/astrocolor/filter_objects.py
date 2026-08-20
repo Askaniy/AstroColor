@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from copy import deepcopy
 from functools import lru_cache
+from pathlib import Path
 from typing import Self, cast, override
 
 import numpy as np
@@ -12,7 +13,6 @@ from .core import nm_step, wavelength_nm_dtype
 from .errors import FilterNetworkError, FilterNotFoundError
 from .filter_loader import (
     fetch_from_fps_raw,
-    filters_folder,
     get_parameter,
     get_profile,
 )
@@ -25,8 +25,10 @@ def _cached_get(filter_id: str) -> 'Filter':
     Returns a cached filter object.
     Search order:
       1. Cached in lru_cache (handled by decorator)
-      2. Local file (.txt) in filters_folder
-      3. SVO FPS network fetch (if Config.allow_internet_access is True)
+      2. Bundled filters shipped with the library
+      3. Local cache (downloaded from SVO FPS, saved locally if allowed)
+      4. Custom user-provided folder (if Config.get_custom_filters_folder is set)
+      5. SVO FPS network fetch (if Config.allow_internet_access is True)
     This has been separated out to create copies of the results and avoid mutations.
     """
 
@@ -35,10 +37,23 @@ def _cached_get(filter_id: str) -> 'Filter':
     except ValueError as e:
         raise FilterNotFoundError(filter_id) from e
 
-    group_folder = filters_folder/group
+    # Search order: bundled → cached (downloaded) → custom user folder
+    search_folders: list[Path] = [
+        Config.get_bundled_filters_folder() / group,
+        Config.get_cached_filters_folder() / group,
+    ]
 
-    # Try to find the local file
-    local_path = next(group_folder.glob(f'{name}.*'), None)
+    # Add custom filters folder only if the user has specified one
+    custom_path = Config.get_custom_filters_folder()
+    if custom_path is not None and custom_path.exists():
+        search_folders.append(custom_path / group)
+
+    local_path: Path | None = None
+    for folder in search_folders:
+        candidate = next(folder.glob(f'{name}.*'), None)
+        if candidate is not None:
+            local_path = candidate
+            break
 
     if local_path is not None:
         profile = np.loadtxt(local_path).T
@@ -80,18 +95,19 @@ def _cached_get(filter_id: str) -> 'Filter':
             detector_type = int(get_parameter(xml_content, 'DetectorType', default='0'))
 
             # Extension generation
-            extension = '.txt'
+            extension = 'txt'
             if wavelength_unit == 'Angstrom':
                 extension += 'A'
             if detector_type == 1:
                 extension += 'P'
 
-            # Save to local folder for future use
-            group_folder.mkdir(parents=True, exist_ok=True)
+            # Save to cache folder for future use
+            cached_group = Config.get_cached_filters_folder() / group
+            cached_group.mkdir(parents=True, exist_ok=True)
             np.savetxt(
-                f'{group_folder}/{name}',
+                f'{cached_group}/{name}.{extension}',
                 np.column_stack([wl, sd]),
-                fmt='%.6f',
+                fmt='%.3f\t%.6g',
             )
         except FilterNetworkError:
             raise FilterNotFoundError(filter_id)
@@ -234,7 +250,8 @@ class Filter(FilterObject, Spectrum):
     def get(filter_id: str) -> 'Filter':
         """
         Use Spanish Virtual Observatory filter ID to create a `Filter` object.
-        Searches cache → local files → SVO FPS network fetch (if enabled).
+        Searches: bundled filters → cached downloads → custom folder → SVO FPS
+        (network fetch if Config.allow_internet_access is True).
         """
         return deepcopy(_cached_get(filter_id))
 

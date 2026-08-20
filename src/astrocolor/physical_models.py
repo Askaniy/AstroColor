@@ -3,14 +3,14 @@ from typing import cast
 import numpy as np
 import numpy.typing as npt
 
-from .filter_loader import script_folder
+from .config import Config
 from .spectral_objects import Spectrum
 
-sun_data = cast(np.lib.npyio.NpzFile, np.load(script_folder/'data/Sun_CALSPEC.npz'))
+sun_data = cast(np.lib.npyio.NpzFile, np.load(Config.library_folder/'data/Sun_CALSPEC.npz'))
 sun_CALSPEC = Spectrum(sun_data['wavelength_nm'], sun_data['spectral_dist'], name='Sun [CALSPEC]')
 del sun_data
 
-vega_data = cast(np.lib.npyio.NpzFile, np.load(script_folder/'data/Vega_CALSPEC.npz'))
+vega_data = cast(np.lib.npyio.NpzFile, np.load(Config.library_folder/'data/Vega_CALSPEC.npz'))
 vega_CALSPEC = Spectrum(vega_data['wavelength_nm'], vega_data['spectral_dist'], name='Vega [CALSPEC]')
 del vega_data
 

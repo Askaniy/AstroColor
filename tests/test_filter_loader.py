@@ -1,3 +1,4 @@
+import os
 import urllib.error as urle
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -7,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from astrocolor.config import Config
 from astrocolor.errors import FilterNetworkError
 from astrocolor.filter_loader import (
     fetch_from_fps_raw,
@@ -16,7 +18,7 @@ from astrocolor.filter_loader import (
 
 # === FilterObjects Statistics Tests ===
 
-# Local file loading, SVO FPS fetching, caching.
+# Local file loading and SVO FPS fetching.
 # All network-dependent tests use unittest.mock to avoid real HTTP requests.
 
 # A narrow filter for testing
@@ -97,7 +99,12 @@ class TestGetParams:
 
 
 class TestFetchFPS:
-    """ Tests for the fetch_from_fps_raw() functions. All use mocking. """
+    """
+    Tests for the fetch_from_fps_raw() functions. All use mocking to avoid real HTTP requests.
+
+    Note: This class directly calls fetch_from_fps_raw(), which bypasses _cached_get entirely,
+    so Config.allow_internet_access has no effect here — we must patch urlopen at the module level.
+    """
 
     @patch('astrocolor.filter_loader.urlopen')
     def test_fetch_raw_success(self, mock_urlopen: MagicMock):
@@ -151,3 +158,93 @@ class TestFetchFPS:
         with pytest.raises(FilterNetworkError) as exc_info:
             _ = fetch_from_fps_raw('NonExistent/Filter')
         assert 'status' in str(exc_info.value).lower() or 'ERROR' in str(exc_info.value)
+
+
+# === Config Filter Folder Tests ===
+
+class TestCustomFiltersFolder:
+    """ Tests for the get_custom_filters_folder() method. """
+
+    def test_returns_none_when_unset(self):
+        """ When no custom path is set, it should return None. """
+        # Reset directly to bypass the setter's guard (which silently ignores non-Path values)
+        Config._custom_filters_path = None  # pyright: ignore[reportPrivateUsage]
+        assert Config.get_custom_filters_folder() is None
+
+    def test_returns_path_from_path(self, tmp_filters_folder: Path):
+        """ When a Path is set, it should return that path. """
+        Config.set_custom_filters_folder(tmp_filters_folder)
+        result = Config.get_custom_filters_folder()
+        assert isinstance(result, Path)
+        assert result == tmp_filters_folder
+
+    def test_returns_path_from_str(self, tmp_filters_folder: Path):
+        """ When a str is set, it should return the Path instance. """
+        Config.set_custom_filters_folder(str(tmp_filters_folder))
+        result = Config.get_custom_filters_folder()
+        assert isinstance(result, Path)
+        assert result == tmp_filters_folder
+
+    def test_raises_for_nonexistent_directory(self):
+        """ When a nonexistent directory path is set, it should raise FileNotFoundError. """
+        with pytest.raises(FileNotFoundError, match='Custom filters folder does not exist'):
+            Config.set_custom_filters_folder('/some/string/path')
+
+
+class TestCachedFiltersFolder:
+    """ Tests for the get_cached_filters_folder() method. """
+
+    @patch.object(Config, '_default_cached_filters_folder', return_value=Path('/fake/cache/astrocolor/filters'))
+    def test_returns_default_path(self, mock_default: MagicMock):  # pyright: ignore[reportUnusedParameter]
+        """ Simulate an environment without creating real directories on disk. """
+        Config._cached_filters_path = None  # pyright: ignore[reportPrivateUsage]
+        result = Config.get_cached_filters_folder()
+        assert isinstance(result, Path)
+        expected_default = Path('/fake/cache/astrocolor/filters')
+        assert str(result) == str(expected_default)
+
+    def test_returns_custom_path_from_path(self, tmp_filters_folder: Path):
+        """ When a custom Path is set, it should return that path. """
+        # Reset directly to bypass the setter's guard and conftest fixture
+        Config._cached_filters_path = None  # pyright: ignore[reportPrivateUsage]
+        Config.set_cached_filters_folder(tmp_filters_folder)
+        result = Config.get_cached_filters_folder()
+        assert isinstance(result, Path)
+        assert result == tmp_filters_folder
+
+    def test_returns_path_from_str(self, tmp_filters_folder: Path):
+        """ When a str is set, it should return the Path instance. """
+        Config.set_cached_filters_folder(str(tmp_filters_folder))
+        result = Config.get_cached_filters_folder()
+        assert isinstance(result, Path)
+        assert result == tmp_filters_folder
+
+    @patch('astrocolor.config.platform.system', return_value='Linux')
+    def test_restores_default_when_set_none(self, mock_system: MagicMock):  # pyright: ignore[reportUnusedParameter]
+        """ Setting None should restore the platform-specific default path. """
+        # Reset directly to bypass the setter's guard and conftest fixture
+        Config._cached_filters_path = None  # pyright: ignore[reportPrivateUsage]
+        Config.set_cached_filters_folder(None)
+        result = Config.get_cached_filters_folder()
+        assert isinstance(result, Path)
+        xdg_cache = os.environ.get('XDG_CACHE_HOME') or (Path.home() / '.cache')
+        expected_default = Path(xdg_cache) / 'astrocolor' / 'filters'
+        assert str(result) == str(expected_default)
+
+    def test_raises_for_nonexistent_directory(self):
+        """ When a nonexistent directory path is set, it should raise FileNotFoundError. """
+        with pytest.raises(FileNotFoundError, match='Cached filters folder does not exist'):
+            Config.set_cached_filters_folder('/some/string/path')
+
+
+class TestBundledFiltersFolder:
+    """ Tests for the get_bundled_filters_folder() method. """
+
+    def test_returns_bundled_filters_directory(self):
+        """ Should always return a path inside the AstroColor package directory. """
+        result = Config.get_bundled_filters_folder()
+        assert isinstance(result, Path)
+        # The bundled folder should be under library_folder (the astrocolor package dir).
+        script_dir = Config.library_folder
+        assert str(result).startswith(str(script_dir))
+        assert 'filters' in result.parts
