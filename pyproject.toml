@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "astrocolor"
-version = "0.1.0"
+version = "0.1.0-beta"
 description = "Library to perform spectral reconstruction, calculate synthetic photometry and colors."
 readme = "README.md"
 license = "MIT"
@@ -15,7 +15,7 @@ authors = [
 requires-python = ">=3.12"
 
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
