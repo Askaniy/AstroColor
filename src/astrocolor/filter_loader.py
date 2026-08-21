@@ -1,14 +1,16 @@
+import ssl
 import xml.etree.ElementTree as ET
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+import certifi
 import numpy as np
 import numpy.typing as npt
 
 from .errors import FilterNetworkError
 
 SVO_FPS_URL: str = 'https://svo2.cab.inta-csic.es/svo/theory/fps3/fps.php'
-
+ssl_ctx = ssl.create_default_context(cafile=certifi.where())
 
 def fetch_from_fps_raw(filter_id: str) -> ET.Element:
     """
@@ -19,7 +21,7 @@ def fetch_from_fps_raw(filter_id: str) -> ET.Element:
 
     try:
         req = Request(url)
-        with urlopen(req, timeout=30) as resp:  # pyright: ignore[reportAny]
+        with urlopen(req, timeout=30, context=ssl_ctx) as resp:  # pyright: ignore[reportAny]
             xml_content = resp.read()  # pyright: ignore[reportAny]
     except HTTPError as e:
         raise FilterNetworkError(filter_id, f'HTTP error: {e.code} {e.reason}')
@@ -33,7 +35,7 @@ def fetch_from_fps_raw(filter_id: str) -> ET.Element:
         if elem.tag == 'INFO' and elem.get('name', '').lower() == 'query_status' and elem.get('value', '') != 'OK':
             raise FilterNetworkError(filter_id, f'SVO FPS returned status: {elem.get("value")}')
 
-    return ET.fromstring(xml_content)
+    return root
 
 def get_profile(xml_content: ET.Element, filter_id: str) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """ Parse SVO FPS VOTable response and return (wavelength_angstrom, transmission) """
