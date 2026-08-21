@@ -1,16 +1,23 @@
 from copy import deepcopy
-from typing import ClassVar, Self, cast
+from math import ceil
+from time import monotonic
+from typing import ClassVar, Self, TypeVar, cast, override
 
 import numpy as np
 import numpy.typing as npt
 
-from astrocolor.photospectral_objects import PhotospectralObject
-
 from .auxiliary import spatial_downscaling
+from .config import Config
 from .filter_objects import FilterSet
 from .measurements import get_photometry
+from .photospectral_objects import (
+    PhotospectralCube,
+    PhotospectralObject,
+    PhotospectralSet,
+    Photospectrum,
+)
 from .physical_models import sun_CALSPEC, vega_CALSPEC
-from .spectral_objects import SpectralObject, Spectrum
+from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
 
 # CIE 1931 XYZ color matching functions, 2-deg
 # https://cie.co.at/datatable/cie-1931-colour-matching-functions-2-degree-observer
@@ -159,7 +166,11 @@ class ColorSystem:
 xyz_color_system = ColorSystem('CIE 1931 XYZ', 'Illuminant E')
 
 
-class ColorObject:
+# For type checkers, this type specifies that each color class
+# can only store hyperspectral objects of its own dimension.
+DimensionallyCorrectType = TypeVar('DimensionallyCorrectType', bound='SpectralObject | PhotospectralObject')
+
+class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject]:
     """
     This class stores a color brightness array (`self.spectral_dist`) with values
     in the 0-1 range, its uncertainty (`covariance_matrix`),
@@ -182,8 +193,8 @@ class ColorObject:
     def __init__(
         self,
         spectral_dist: npt.NDArray[np.floating],
-        covariance_matrix: npt.NDArray[np.floating] | None,
-        color_system: ColorSystem
+        covariance_matrix: npt.NDArray[np.floating] | None = None,
+        color_system: ColorSystem = xyz_color_system
     ) -> None:
         """
         ColorObject requires a brightness array and corresponding color system.
@@ -194,10 +205,10 @@ class ColorObject:
         self._color_system: ColorSystem = color_system
 
     @classmethod
-    def from_spectral_data(cls, data: SpectralObject | PhotospectralObject) -> Self:
-        """ Convolves (photo)spectrum with CIE 1931 XYZ color matching functions """
-        photospectrum = get_photometry(data, xyz_cmf)
-        return cls(photospectrum.spectral_dist, photospectrum.covariance_matrix, xyz_color_system)
+    def from_spectral_data(cls, data: DimensionallyCorrectType) -> Self:
+        """ Convolves a (photo)spectral object with the CIE 1931 XYZ color matching functions """
+        photometry = get_photometry(data, xyz_cmf)
+        return cls(photometry.spectral_dist, photometry.covariance_matrix, xyz_color_system)
 
     def to_color_system(self, new_color_system: ColorSystem) -> Self:
         """
@@ -267,7 +278,7 @@ class ColorObject:
         return arr
 
 
-class ColorPoint(ColorObject):
+class ColorPoint(ColorObject[Spectrum | Photospectrum]):
     """
     Class to work with an array of red, green and blue values.
     Stores brightness values in the range 0 to 1 in the `spectral_dist` attribute, numpy array of shape (3).
@@ -286,7 +297,7 @@ class ColorPoint(ColorObject):
         return '#{:02x}{:02x}{:02x}'.format(*self.to_bit(8, clip=True).round().astype('int'))  # pyright: ignore[reportAny]
 
 
-class ColorLine(ColorObject):
+class ColorLine(ColorObject[SpectralSet | PhotospectralSet]):
     """
     Class to work with a line of red, green and blue channels.
     Stores brightness values in the range 0 to 1 in the `spectral_dist` attribute, numpy array of shape (3, X).
@@ -302,7 +313,7 @@ class ColorLine(ColorObject):
         return cast(int, self.spectral_dist.shape[1])
 
 
-class ColorImage(ColorObject):
+class ColorImage(ColorObject[SpectralCube | PhotospectralCube]):
     """
     Class to work with an image of red, green and blue channels.
     Stores brightness values in the range 0 to 1 in the `spectral_dist` attribute, numpy array of shape (3, X, Y).
@@ -311,6 +322,40 @@ class ColorImage(ColorObject):
     def __init__(self, *args, **kwargs):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
         super().__init__(*args, **kwargs)  # pyright: ignore[reportUnknownArgumentType]
         self.spectral_dist: npt.NDArray[np.floating] = np.atleast_3d(self.spectral_dist) # interprets color points and lines as images
+
+    @override
+    @classmethod
+    def from_spectral_data(cls, data: SpectralCube | PhotospectralCube) -> Self:
+        """ Convolves a (photo)spectral cube with the CIE 1931 XYZ color matching functions """
+        px_num = data.spatial_size
+        px_limit = Config.pixel_upper_limit
+        if px_num <= px_limit:
+            # The image size does not exceed the size of the batch
+            return super().from_spectral_data(data)
+        # Processing by dividing into batches
+        message = f'Processing {px_num} pixels'
+        if data.name is not None:
+            message += f' of "{data.name}"'
+        print(message + '...')
+        start_time = monotonic()
+        flatten_cube = data.flatten()
+        flatten_img = np.empty((3, px_num))
+        batch_num = ceil(px_num / px_limit)
+        for i in range(batch_num):
+            j = i + 1
+            x0 = i * px_limit
+            x1 = j * px_limit
+            try:
+                batch = flatten_cube[x0:x1]
+            except IndexError:
+                batch = flatten_cube[x0:]
+            flatten_img[:, x0:x1] = ColorLine.from_spectral_data(batch).spectral_dist
+            print(f'Progress: {j} / {batch_num}')
+        # End of processing, summarizing
+        time = monotonic() - start_time
+        speed = px_num / time
+        print(f'Processing took {time:.1f} seconds, average speed is {speed:.1f} px/sec')
+        return cls(flatten_img.reshape(3, data.width, data.height), color_system=xyz_color_system)
 
     def upscale(
         self,

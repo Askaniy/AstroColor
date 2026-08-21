@@ -23,7 +23,6 @@ from .auxiliary import (
     spatial_downscaling,
     uniform_grid,
 )
-from .errors import InconsistentAxesError
 
 # For the sake of simplifying work with the spectrum,
 # its discretization step is fixed and frozen.
@@ -60,11 +59,8 @@ class BaseObject:
     @property
     def spectral_size(self) -> int:
         """ Returns the spectral axis length. """
-        len_nm = self.wavelength_nm.size
-        len_values = cast(int, self.spectral_dist.shape[0])
-        if len_nm != len_values:
-            raise InconsistentAxesError(len_nm, len_values, self.name)
-        return len_values
+        # Alternative `self.wavelength_nm.size` is not used because `wavelength_nm` is not always implemented
+        return cast(int, self.spectral_dist.shape[0])
 
     @property
     def spatial_size(self) -> int:
@@ -293,6 +289,7 @@ class BaseObject:
             else:
                 spatial_info = str(self.spatial_shape).replace(', ', ' × ')
             size_str += f' × {spatial_info} spatial'
+        size_str += ' data points'
         # Create configuration
         repr_config |= {
             'size': size_str,

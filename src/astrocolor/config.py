@@ -6,6 +6,12 @@ from pathlib import Path
 class Config:
     """ Centralized global settings for the AstroColor library. """
 
+    # Processing spectral cubes to generate images requires a significant amount of RAM.
+    # If the pixel limit is exceeded, the image will be split into batches and then reassembled.
+    # For example, 11K image processing and 1 megapixel chunk requires ~10 Gb of free RAM.
+    # Value to optimize based on the computer specifications and Task Manager readings.
+    pixel_upper_limit: int = 1_000_000 # 1 megapixel
+
     # Performance is prioritized for image processing through (photo)spectral cubes,
     # and uncertainty processing is disabled by default.
     ignore_uncertainty_for_cubes: bool = True
