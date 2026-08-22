@@ -114,7 +114,7 @@ class PhotospectralObject(BaseObject):
         Directly uses the provided wavelength grid to create a new object. Non-strict!
         See `get_spectrometry()` for the general case.
         """
-        from .spectral_reconstruction import spectral_reconstruction
+        from .reconstructed_objects import spectral_reconstruction
         obj = spectral_reconstruction(self, requested_wavelengths)
         return obj
 

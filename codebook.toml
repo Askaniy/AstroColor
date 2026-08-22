@@ -60,6 +60,7 @@ words = [
     "ror",
     "rtol",
     "scipy",
+    "srgb",
     "stds",
     "truediv",
     "urle",

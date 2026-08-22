@@ -78,7 +78,7 @@ class BaseObject:
         Calculates an array of standard deviations from the covariance matrix.
 
         Returns:
-            Array of standard deviations, or None if no covariance matrix exists.
+        - Array of standard deviations, or None if no covariance matrix exists.
         """
         if self.covariance_matrix is None:
             return None
@@ -201,7 +201,7 @@ class BaseObject:
         - error_handling: Function to handle the uncertainty propagation.
 
         Returns:
-            A new SpectralObject with the scalar operation applied.
+        - A new SpectralObject with the scalar operation applied.
         """
         output = deepcopy(self)
         output.spectral_dist = value_handling(self.spectral_dist, operand)

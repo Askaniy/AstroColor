@@ -32,20 +32,20 @@ class TestWavelengthGrids:
 
 class TestParsing:
 
-    def test_sd_parsing_scalar(self):
+    def test_sd_scalar(self):
         np.testing.assert_equal(parse_value_std(0.202), (0.202, None))
 
-    def test_sd_parsing_two_values(self):
+    def test_sd_two_values(self):
         np.testing.assert_equal(
             parse_value_std([0.202, 0.0665]), (0.202, 0.0665)
         )
 
-    def test_sd_parsing_three_positive(self):
+    def test_sd_three_positive(self):
         np.testing.assert_equal(
             parse_value_std([0.202, 0.084, 0.049]), (0.202, 0.0665)
         )
 
-    def test_sd_parsing_mixed_sign(self):
+    def test_sd_mixed_sign(self):
         np.testing.assert_equal(
             parse_value_std([0.202, +0.084, -0.049]), (0.202, 0.0665)
         )
