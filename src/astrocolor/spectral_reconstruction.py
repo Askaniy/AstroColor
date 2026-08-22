@@ -102,7 +102,7 @@ class ReconstructedSpectralObject[PhotospectralType: PhotospectralObject](Spectr
         return output
 
 
-class ReconstructedSpectrum(ReconstructedSpectralObject[Photospectrum], Item):
+class ReconstructedSpectrum(ReconstructedSpectralObject[Photospectrum], Item['ReconstructedSpectralSet']):
     """
     Class to work with a single reconstructed spectrum (1D SpectralObject).
 
@@ -115,7 +115,7 @@ class ReconstructedSpectrum(ReconstructedSpectralObject[Photospectrum], Item):
     """
 
 
-class ReconstructedSpectralSet(ReconstructedSpectralObject[PhotospectralSet], Set):
+class ReconstructedSpectralSet(ReconstructedSpectralObject[PhotospectralSet], Set['ReconstructedSpectrum', 'ReconstructedSpectralCube']):
     """
     Class to work with a line of continuous spectra (2D SpectralObject).
 
@@ -129,7 +129,7 @@ class ReconstructedSpectralSet(ReconstructedSpectralObject[PhotospectralSet], Se
     """
 
 
-class ReconstructedSpectralCube(ReconstructedSpectralObject[PhotospectralCube], Cube):
+class ReconstructedSpectralCube(ReconstructedSpectralObject[PhotospectralCube], Cube['ReconstructedSpectralSet']):
     """
     Class to work with an image of continuous spectra (3D SpectralObject).
 
@@ -145,7 +145,7 @@ class ReconstructedSpectralCube(ReconstructedSpectralObject[PhotospectralCube], 
     """
 
     @override
-    def flatten(self) -> 'ReconstructedSpectralSet':
+    def flatten(self) -> ReconstructedSpectralSet:
         """ Returns a SpectralSet with linearized spatial axis """
         output = super().flatten()
         if self.photospectral_obj is not None:

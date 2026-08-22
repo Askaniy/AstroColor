@@ -498,7 +498,7 @@ class SpectralObject(BaseObject):
             return NotImplemented
 
 
-class Spectrum(SpectralObject, Item):
+class Spectrum(SpectralObject, Item['SpectralSet']):
     """
     Class to work with a single spectrum (1D SpectralObject).
 
@@ -510,7 +510,7 @@ class Spectrum(SpectralObject, Item):
     """
 
 
-class SpectralSet(SpectralObject, Set):
+class SpectralSet(SpectralObject, Set['Spectrum', 'SpectralCube']):
     """
     Class to work with a line of continuous spectra (2D SpectralObject).
 
@@ -523,7 +523,7 @@ class SpectralSet(SpectralObject, Set):
     """
 
 
-class SpectralCube(SpectralObject, Cube):
+class SpectralCube(SpectralObject, Cube['SpectralSet']):
     """
     Class to work with an image of continuous spectra (3D SpectralObject).
 
@@ -538,8 +538,10 @@ class SpectralCube(SpectralObject, Cube):
     """
 
     @override
-    def flatten(self) -> 'SpectralSet':
+    def flatten(self) -> SpectralSet:
         """ Returns a SpectralSet with linearized spatial axis """
         value = self.spectral_dist.reshape(self.spectral_size, self.spatial_size)
-        error = None if self.covariance_matrix is None else self.covariance_matrix.reshape(self.spectral_size, self.spatial_size)
+        error = None
+        if self.covariance_matrix is not None:
+            error = self.covariance_matrix.reshape(self.spectral_size, self.spectral_size, self.spatial_size)
         return SpectralSet(self.wavelength_nm, value, error, self.name)

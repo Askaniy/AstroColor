@@ -163,7 +163,7 @@ class PhotospectralObject(BaseObject):
 
 
 
-class Photospectrum(PhotospectralObject, Item):
+class Photospectrum(PhotospectralObject, Item['PhotospectralSet']):
     """
     Class to work with set of filters measurements (1D PhotospectralObject).
 
@@ -176,7 +176,7 @@ class Photospectrum(PhotospectralObject, Item):
     """
 
 
-class PhotospectralSet(PhotospectralObject, Set):
+class PhotospectralSet(PhotospectralObject, Set['Photospectrum', 'PhotospectralCube']):
     """
     Class to work with set of filters measurements (2D PhotospectralObject).
 
@@ -190,7 +190,7 @@ class PhotospectralSet(PhotospectralObject, Set):
     """
 
 
-class PhotospectralCube(PhotospectralObject, Cube):
+class PhotospectralCube(PhotospectralObject, Cube['PhotospectralSet']):
     """
     Class to work with set of filters measurements (3D PhotospectralObject).
 
@@ -206,8 +206,10 @@ class PhotospectralCube(PhotospectralObject, Cube):
     """
 
     @override
-    def flatten(self) -> 'PhotospectralSet':
+    def flatten(self) -> PhotospectralSet:
         """ Returns a PhotospectralSet with linearized spatial axis """
         value = self.spectral_dist.reshape(self.spectral_size, self.spatial_size)
-        error = None if self.covariance_matrix is None else self.covariance_matrix.reshape(self.spectral_size, self.spatial_size)
+        error = None
+        if self.covariance_matrix is not None:
+            error = self.covariance_matrix.reshape(self.spectral_size, self.spectral_size, self.spatial_size)
         return PhotospectralSet(self.filter_set, value, error, self.name)

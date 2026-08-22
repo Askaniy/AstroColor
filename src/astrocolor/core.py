@@ -1,7 +1,7 @@
 from collections.abc import Callable, Iterator
 from copy import deepcopy
 from math import prod
-from typing import ClassVar, Final, Self, cast, override
+from typing import ClassVar, Final, Self, TypeVar, cast, override
 
 import numpy as np
 import numpy.typing as npt
@@ -317,7 +317,12 @@ class BaseObject:
         return output
 
 
-class Item(BaseObject):
+# For type checkers, this structure needed to set a dimensional hierarchy between classes
+LowerDimensionalType = TypeVar('LowerDimensionalType', bound='BaseObject')
+HigherDimensionalType = TypeVar('HigherDimensionalType', bound='BaseObject')
+
+
+class Item[HigherDimensionalType: BaseObject](BaseObject):
     """
     Internal class for inheriting spatial data properties (1D).
     Represents a single spectrum.
@@ -326,7 +331,7 @@ class Item(BaseObject):
     ndim: ClassVar[int] = 1
 
 
-class Set(BaseObject):
+class Set[HigherDimensionalType: BaseObject, LowerDimensionalType: BaseObject](BaseObject):
     """
     Internal class for inheriting spatial data properties (2D).
     Represents a set of spectra.
@@ -352,7 +357,7 @@ class Set(BaseObject):
         return output
 
 
-class Cube(BaseObject):
+class Cube[LowerDimensionalType: BaseObject](BaseObject):
     """
     Internal class for inheriting spatial data properties (3D).
     Represents a cube of spectra.
@@ -375,7 +380,7 @@ class Cube(BaseObject):
             spatial_downscaling(output.spectral_dist, output.covariance_matrix, pixels_limit)
         return output
 
-    def flatten(self) -> 'Set':
+    def flatten(self) -> LowerDimensionalType:
         """
         Returns a (photo)spectral set with linearized spatial axis.
         Implemented in the inherited classes.
