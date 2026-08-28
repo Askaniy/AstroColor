@@ -1,6 +1,6 @@
 # AstroColor
 
-A Python library for photometry-to-photometry transformations, image processing and color calculation.
+A Python library for general-purpose photometric conversions, image processing and color calculation.
 
 Key features:
 - classes for data of different dimensions (1D/2D/3D, up to spectral cubes)
