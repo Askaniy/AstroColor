@@ -1,9 +1,10 @@
-from typing import cast
+from typing import Final, cast, override
 
 import numpy as np
 import numpy.typing as npt
 
 from .config import Config
+from .core import UniformSpectralGrid
 from .spectral_objects import Spectrum
 
 sun_data = cast(np.lib.npyio.NpzFile, np.load(Config.library_folder/'data/Sun_CALSPEC.npz'))
@@ -18,16 +19,32 @@ del vega_data
 
 # TODO: StellarModel, RayleighModel, SynchrotronModel, ...
 
+class PhysicalModel(UniformSpectralGrid):
+    """
+    Internal class for inheriting common physical model methods.
+    """
+
+    def determine_at_trusted_wavelengths(
+        self,
+        requested_wavelengths: npt.NDArray[np.integer]  # pyright: ignore[reportUnusedParameter]
+    ) -> Spectrum:
+        """
+        Directly uses the provided wavelength grid to create a new object. Non-strict!
+        See `get_spectrometry()` for the general case.
+        Implemented in the inherited classes.
+        """
+        raise NotImplementedError('Implemented in the inherited classes.')
+
 
 h = 6.626e-34 # Planck constant
 c = 299792458 # Speed of light
 k = 1.381e-23 # Boltzmann constant
-const1 = 2 * h * c * c # * np.pi to get exitance (W/m2) in the assumption of Lambertian surface
-const2 = h * c / k
 
+class BlackBodyModel(PhysicalModel):
+    """ Creates a PhysicalModel object based on Planck's law and redshift formulas """
 
-class BlackBodyModel:
-    """ Creates a Spectrum object based on Planck's law and redshift formulas """
+    const1: Final[float] = 2 * h * c * c # * np.pi to get exitance (W/m2) in the assumption of Lambertian surface
+    const2: Final[float] = h * c / k
 
     def __init__(self, temperature: float, velocity: float = 0., vII: float = 0.) -> None:
         self.T: float = temperature
@@ -39,9 +56,10 @@ class BlackBodyModel:
         nm: float | npt.NDArray[np.integer | np.floating]
     ) -> float | npt.NDArray[np.floating]:
         m = nm * 1e-9
-        radiance = const1 / (m**5 * (np.exp(const2 / (m * self.T)) - 1))
+        radiance = self.const1 / (m**5 * (np.exp(self.const2 / (m * self.T)) - 1))
         return radiance * 1e-9 # per m -> per nm
 
+    @override
     def determine_at_trusted_wavelengths(
         self,
         requested_wavelengths: npt.NDArray[np.integer]

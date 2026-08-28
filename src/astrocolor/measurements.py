@@ -19,6 +19,7 @@ from .photospectral_objects import (
     PhotospectralSet,
     Photospectrum,
 )
+from .physical_models import PhysicalModel
 from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
 
 
@@ -32,7 +33,7 @@ def get_spectrometry(
 
 @overload
 def get_spectrometry(
-    target: Spectrum | Photospectrum,
+    target: Spectrum | Photospectrum | PhysicalModel,
     requested_wavelengths: npt.ArrayLike,
     strictly: bool = False
 ) -> Spectrum:
@@ -71,7 +72,7 @@ def get_spectrometry(
     ...
 
 def get_spectrometry(
-    target: SpectralObject | PhotospectralObject,
+    target: SpectralObject | PhotospectralObject | PhysicalModel,
     requested_wavelengths: npt.ArrayLike,
     strictly: bool = False
 ) -> SpectralObject:

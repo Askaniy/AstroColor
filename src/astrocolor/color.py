@@ -354,7 +354,7 @@ class ColorImage(ColorObject[SpectralCube | PhotospectralCube]):
         # End of processing, summarizing
         time = monotonic() - start_time
         speed = px_num / time
-        print(f'Processing took {time:.1f} seconds, average speed is {speed:.1f} px/sec')
+        print(f'Processing took {time:.1f} seconds ({speed:.1f} px/sec)')
         return cls(flatten_img.reshape(3, data.width, data.height), color_system=xyz_color_system)
 
     def upscale(

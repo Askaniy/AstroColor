@@ -38,61 +38,13 @@ spectral_dist_dtype: Final[npt.DTypeLike] = np.float64
 nm_red_limit: Final[int] = int(cast(float, np.sqrt(np.iinfo(wavelength_nm_dtype).max))) # 46340 nm
 
 
-class BaseObject:
+class UniformSpectralGrid:
     """
-    Internal class for inheriting spectral data properties.
-    Provides common attributes and methods for all (photo)spectral objects.
+    Internal class for inheriting spectral grid processing methods.
     """
-    wavelength_nm: npt.NDArray[np.integer] = NotImplemented  # the own spectral axis or the wavelength range of the filter set
-    spectral_dist: npt.NDArray[np.floating] = NotImplemented
-    covariance_matrix: npt.NDArray[np.floating] | None = None
-    name: object = None
 
-    ndim: ClassVar[int] = NotImplemented
-
-    # Storing important class properties within the class
     nm_step: Final[int] = nm_step
-    wavelength_nm_dtype: Final[npt.DTypeLike] = wavelength_nm_dtype
-    spectral_dist_dtype: Final[npt.DTypeLike] = spectral_dist_dtype
     nm_red_limit: Final[int] = nm_red_limit
-
-    @property
-    def spectral_size(self) -> int:
-        """ Returns the spectral axis length. """
-        # Alternative `self.wavelength_nm.size` is not used because `wavelength_nm` is not always implemented
-        return cast(int, self.spectral_dist.shape[0])
-
-    @property
-    def spatial_size(self) -> int:
-        """ Returns the total number of (photo)spectra stored in the object. """
-        return prod(self.spatial_shape)
-
-    @property
-    def spatial_shape(self) -> tuple[int, ...]:
-        """ Returns the spatial axes shape: length of the set or (width, height). """
-        return self.spectral_dist.shape[1:]
-
-    @property
-    def standard_deviation(self) -> npt.NDArray[np.floating] | None:
-        """
-        Calculates an array of standard deviations from the covariance matrix.
-
-        Returns:
-        - Array of standard deviations, or None if no covariance matrix exists.
-        """
-        if self.covariance_matrix is None:
-            return None
-        else:
-            # TODO: support for sets and cubes
-            return np.sqrt(np.diag(self.covariance_matrix))
-
-    @classmethod
-    def stub(cls, name: object = None) -> Self:  # pyright: ignore[reportUnusedParameter]
-        """
-        Initializes a stub object in case of data problems.
-        Implemented in the inherited classes.
-        """
-        raise NotImplementedError('Implemented in the inherited classes.')
 
     def get_extremal_grid_endpoints(
         self,
@@ -149,6 +101,60 @@ class BaseObject:
         - Array of wavelengths as int values on a uniform grid.
         """
         return uniform_grid(start, end, nm_step, dtype=wavelength_nm_dtype)
+
+
+class BaseObject(UniformSpectralGrid):
+    """
+    Internal class for inheriting spectral data properties.
+    Provides common attributes and methods for all (photo)spectral objects.
+    """
+    wavelength_nm: npt.NDArray[np.integer] = NotImplemented  # the own spectral axis or the wavelength range of the filter set
+    spectral_dist: npt.NDArray[np.floating] = NotImplemented
+    covariance_matrix: npt.NDArray[np.floating] | None = None
+    name: object = None
+
+    ndim: ClassVar[int] = NotImplemented
+
+    wavelength_nm_dtype: Final[npt.DTypeLike] = wavelength_nm_dtype
+    spectral_dist_dtype: Final[npt.DTypeLike] = spectral_dist_dtype
+
+    @property
+    def spectral_size(self) -> int:
+        """ Returns the spectral axis length. """
+        # Alternative `self.wavelength_nm.size` is not used because `wavelength_nm` is not always implemented
+        return cast(int, self.spectral_dist.shape[0])
+
+    @property
+    def spatial_size(self) -> int:
+        """ Returns the total number of (photo)spectra stored in the object. """
+        return prod(self.spatial_shape)
+
+    @property
+    def spatial_shape(self) -> tuple[int, ...]:
+        """ Returns the spatial axes shape: length of the set or (width, height). """
+        return self.spectral_dist.shape[1:]
+
+    @property
+    def standard_deviation(self) -> npt.NDArray[np.floating] | None:
+        """
+        Calculates an array of standard deviations from the covariance matrix.
+
+        Returns:
+        - Array of standard deviations, or None if no covariance matrix exists.
+        """
+        if self.covariance_matrix is None:
+            return None
+        else:
+            # TODO: support for sets and cubes
+            return np.sqrt(np.diag(self.covariance_matrix))
+
+    @classmethod
+    def stub(cls, name: object = None) -> Self:  # pyright: ignore[reportUnusedParameter]
+        """
+        Initializes a stub object in case of data problems.
+        Implemented in the inherited classes.
+        """
+        raise NotImplementedError('Implemented in the inherited classes.')
 
     def convert_from_photon_spectral_density(self) -> Self:
         """
