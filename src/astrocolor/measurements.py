@@ -188,20 +188,29 @@ def get_photometry(
                     raise UnsupportedDimensionError(ndim, name=target.name)
 
 
-def scale_spectrum(
-    target: Spectrum,
-    bandpass: Filter,
-    requested_value: float | tuple[float, float] = 1
-) -> Spectrum:
+def scale_to_match_value(
+    spectral_data: Spectrum | Photospectrum,
+    filter_or_nm: Filter | str | float,
+    requested_value: float | tuple[float, float | None] = 1
+) -> Spectrum | Photospectrum:
     """
-    Returns a new spectrum that matches the query brightness value (1 by default)
-    at the specified filter.
+    Returns a new object that matches the query brightness value (1 by default)
+    at the specified filter or wavelength.
     """
-    current_value, _ = get_photometry(target, bandpass)
+    # Input data preparation
+    match filter_or_nm:
+        case Filter():
+            pass
+        case str():
+            filter_or_nm = Filter.get(filter_or_nm)
+        case int() | float():
+            filter_or_nm = Filter.monochromatic(filter_or_nm)
+    # Synthetic measurement
+    current_value, _ = get_photometry(spectral_data, filter_or_nm)
     if current_value <= 0:
         # Prevents errors of dividing by zero and inversion
-        return target
+        return spectral_data
     if isinstance(requested_value, Sequence):
         requested_value = requested_value[0] # likely a [value, std]
     # TODO: process std?
-    return target * (requested_value / current_value)
+    return spectral_data * (requested_value / current_value)

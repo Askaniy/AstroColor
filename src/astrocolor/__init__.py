@@ -9,7 +9,7 @@ from .color import (
 )
 from .config import Config
 from .filter_objects import Filter, FilterSet
-from .measurements import get_photometry, get_spectrometry, scale_spectrum
+from .measurements import get_photometry, get_spectrometry, scale_to_match_value
 from .photospectral_objects import PhotospectralCube, PhotospectralSet, Photospectrum
 from .physical_models import BlackBodyModel, sun_CALSPEC, vega_CALSPEC
 from .reconstructed_objects import (
@@ -41,7 +41,7 @@ __all__ = (
     'Spectrum',
     'get_photometry',
     'get_spectrometry',
-    'scale_spectrum',
+    'scale_to_match_value',
     'spectral_reconstruction',
     'sun_CALSPEC',
     'vega_CALSPEC',
