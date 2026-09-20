@@ -70,23 +70,37 @@ def nan_values_warning(input: str, name: object = None):
         msg += f' for "{name}"'
     warnings.warn(msg + '.', NanValuesWarning, stacklevel=2)
 
-class ZeroBrightnessWarning(UserWarning):
+class SpatialAxisWarning(UserWarning):
     pass
+
+def empty_spatial_axis_warning(name: object = None):
+    msg = 'No spectral distribution data'
+    if name is not None:
+        msg += f' for "{name}"'
+    msg += '. Spectrum stub object was created.'
+    warnings.warn(msg + '.', SpatialAxisWarning, stacklevel=2)
 
 def zero_brightness_warning(name: object = None):
     msg = 'A division-by-zero error occurred in the calculations due to the zero brightness'
     if name is not None:
         msg += f' of object "{name}"'
-    warnings.warn(msg + '.', ZeroBrightnessWarning, stacklevel=2)
+    warnings.warn(msg + '.', SpatialAxisWarning, stacklevel=2)
 
-class EmptySpectralIntersectionWarning(UserWarning):
+class SpectralAxisWarning(UserWarning):
     pass
+
+def empty_spectral_axis_warning(name: object = None):
+    msg = 'No wavelength data'
+    if name is not None:
+        msg += f' for "{name}"'
+    msg += '. Spectrum stub object was created.'
+    warnings.warn(msg + '.', SpectralAxisWarning, stacklevel=2)
 
 def empty_spectral_intersection_warning(nm0: int, nm1: int, start: int, end: int, name: object = None):
     msg = f'The requested wavelength range [{start} ... {end}] lies outside the range [{nm0} ... {nm1}]! An empty result returned'
     if name is not None:
         msg += f' for "{name}"'
-    warnings.warn(msg + '.', EmptySpectralIntersectionWarning, stacklevel=2)
+    warnings.warn(msg + '.', SpectralAxisWarning, stacklevel=2)
 
 def empty_spectral_intersection_operator_warning(
     operation_name: str,
@@ -104,6 +118,6 @@ def empty_spectral_intersection_operator_warning(
         There is no intersection between the spectra for the element-wise operation "{operation_name}":
         "{name1}" ends on {end} nm and "{name2}" starts on {start} nm. Stub object was created.
         ''',
-        EmptySpectralIntersectionWarning,
+        SpectralAxisWarning,
         stacklevel=2
     )
