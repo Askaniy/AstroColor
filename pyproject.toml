@@ -25,6 +25,7 @@ dependencies = [
     "certifi>=2026.7.22",
     "numpy>=2.4.4",
     "scipy>=1.17.1",
+    "scipy-stubs>=1.18.1.0",
 ]
 
 [project.urls]

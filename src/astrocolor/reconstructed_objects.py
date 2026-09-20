@@ -4,12 +4,12 @@ from typing import Self, TypeVar, cast, override
 
 import numpy as np
 import numpy.typing as npt
-from scipy.linalg import (  # pyright: ignore[reportMissingTypeStubs]
-    solve,  # pyright: ignore[reportUnknownVariableType]
+from scipy.linalg import (
+    solve,
 )
-from scipy.optimize import (  # pyright: ignore[reportMissingTypeStubs]
+from scipy.optimize import (
     OptimizeResult,
-    minimize,  # pyright: ignore[reportUnknownVariableType]
+    minimize,
 )
 
 from astrocolor.measurements import get_spectrometry
