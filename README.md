@@ -15,6 +15,9 @@ Spectral reconstruction is performed using Tikhonov regularization under the ass
 It works for planets, moons, small bodies, and any other objects with continuum-dominated spectra that differ from the standard stars usually used in photometric transformations.
 Further improvements to the method are planned.
 
+Experimental features:
+- photometric models (`HG`, `HG1G2`, `Exponentials`, `Hapke`, `PhaseCoefficient`)
+
 
 ## Installation
 
