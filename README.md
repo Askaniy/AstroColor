@@ -17,6 +17,7 @@ Further improvements to the method are planned.
 
 Experimental features:
 - photometric models (`HG`, `HG1G2`, `Exponentials`, `Hapke`, `PhaseCoefficient`)
+- spectral database parsing ([TCT](https://github.com/Askaniy/TrueColorTools) formatting, `json5` extension)
 
 
 ## Installation
