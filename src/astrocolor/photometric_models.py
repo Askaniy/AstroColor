@@ -26,8 +26,8 @@ class PhotometricModel:
     phase_integral: tuple[float, float | None] | None = None
 
     def __init__(self,
-        params: dict[str, float | tuple[float]],
-        filter_or_nm: str | float
+        params: dict[str, float | tuple[float]] = {},
+        filter_or_nm: str | float = ''
     ) -> None:
         self.params: dict[str, float | tuple[float]] = params
         self.filter_or_nm: str | float = filter_or_nm
@@ -79,6 +79,12 @@ class PhotometricModel:
             spherical_in_V = geometric_in_V[0] * (0.359 + 0.47 * geometric_in_V[0])
             return spherical_in_V, True
 
+class DefaultModel(PhotometricModel):
+    """ Class for objects with unknown phase function """
+
+    @override
+    def _integrate(self) -> None:
+        pass
 
 class PhaseCoefficient(PhotometricModel):
     """

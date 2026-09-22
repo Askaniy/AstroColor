@@ -21,6 +21,7 @@ from .measurements import get_photometry, scale_to_match_value
 from .photometric_models import (
     HG,
     HG1G2,
+    DefaultModel,
     Exponentials,
     Hapke,
     PhaseCoefficient,
@@ -195,7 +196,7 @@ def parse_json5_object(name: object, content: dict[str, object]) -> EmittingBody
     is_emission = 'is_emission_spectrum' in content and content['is_emission_spectrum']
     if 'file' in content:
         file_name: str = content['file']
-        extension = file_name.split('.')[-1].lower()
+        extension = file_name.split('.')[-1]
         if 'A' in extension:
             to_nm_factor = 0.1
         elif 'U' in extension:
@@ -292,9 +293,9 @@ def parse_json5_object(name: object, content: dict[str, object]) -> EmittingBody
             case _:
                 print(f'# Note for the database object "{name}"')
                 print(f'- Phase function model "{model_name}" is not supported.')
-                photometric_model = None
+                photometric_model = DefaultModel()
     else:
-        photometric_model = None
+        photometric_model = DefaultModel()
     if 'phase_integral' in content:
         photometric_model.phase_integral = parse_value_std(content['phase_integral'])
     # Albedo reading
@@ -375,4 +376,4 @@ def parse_json5_object(name: object, content: dict[str, object]) -> EmittingBody
     if content.get('is_emissive') or is_emission:
         return EmittingBody(name, base_object)
     else:
-        return ReflectingBody(name, base_object, geometric, spherical, photometric_model)
+        return ReflectingBody(name, base_object, photometric_model, geometric, spherical)
