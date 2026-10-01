@@ -1,6 +1,7 @@
 from collections.abc import Callable, Iterator
 from copy import deepcopy
 from math import prod
+from types import NotImplementedType
 from typing import ClassVar, Final, Self, TypeVar, cast, override
 
 import numpy as np
@@ -299,8 +300,14 @@ class BaseObject(UniformSpectralGrid):
         # Create configuration
         repr_config |= {
             'size': size_str,
-            'wavelength_nm': repr_generator(self.wavelength_nm),
-            'spectral_dist': repr_generator(self.spectral_dist),
+        }
+        if self.wavelength_nm is NotImplemented:
+            nm_str = 'NotImplemented'
+        else:
+            nm_str = repr_generator(self.wavelength_nm)
+        repr_config |= {
+            'wavelength_nm': nm_str,
+            'spectral_dist': repr_generator(self.spectral_dist)
         }
         if self.covariance_matrix is not None:
             repr_config |= {
