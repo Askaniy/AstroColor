@@ -298,6 +298,15 @@ def spatial_downscaling(
     else:
         return spectral_dist[:,::factor,::factor], covariance_matrix[:,:,::factor,::factor]
 
+def is_diagonal(arr: npt.NDArray[np.floating], atol=1e-8):
+    """ Checks if array is diagonal along the first two axes """
+    if arr.ndim < 2:
+        return False
+    axis0 = cast(int, arr.shape[0])
+    axis1 = cast(int, arr.shape[1])
+    mask = ~np.eye(axis0, axis1, dtype=bool)  # a mask for non-diagonal elements
+    return np.allclose(arr[mask], 0, atol=atol)
+
 def smoothness_matrix(
     n: int,
     order: int = 1,

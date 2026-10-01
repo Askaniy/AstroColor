@@ -10,6 +10,7 @@ from .auxiliary import (
     grid_endpoints_preprocessing,
     integrate,
     interpolate,
+    is_diagonal,
     spectral_binning,
     spectral_downscaling,
     stretch,
@@ -386,7 +387,8 @@ class SpectralObject(BaseObject):
         # Preparing standard deviation
         std = None
         if self.covariance_matrix is not None:
-            erasing_correlations_warning(self.name)
+            if not is_diagonal(self.covariance_matrix):
+                erasing_correlations_warning(self.name)
             std = np.sqrt(self.covariance_matrix.diagonal())
         # Extrapolating
         nm, br, std = extrapolating(self.wavelength_nm, self.spectral_dist, std, requested_wavelengths, nm_step)
