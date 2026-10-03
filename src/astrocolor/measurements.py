@@ -198,15 +198,18 @@ def scale_to_match_value(
     at the specified filter or wavelength.
     """
     # Input data preparation
+    bandpass = None
     match filter_or_nm:
         case Filter():
-            pass
+            bandpass = filter_or_nm
         case str():
-            filter_or_nm = Filter.get(filter_or_nm)
+            bandpass = Filter.get(filter_or_nm)
         case int() | float():
-            filter_or_nm = Filter.monochromatic(filter_or_nm)
+            bandpass = Filter.monochromatic(filter_or_nm)
+    if not isinstance(bandpass, Filter):  # pyright: ignore[reportUnnecessaryIsInstance]
+        raise TypeError('The input cannot be used to set a filter object!')
     # Synthetic measurement
-    current_value, _ = get_photometry(spectral_data, filter_or_nm)
+    current_value, _ = get_photometry(spectral_data, bandpass)
     if current_value <= 0:
         # Prevents errors of dividing by zero and inversion
         return spectral_data

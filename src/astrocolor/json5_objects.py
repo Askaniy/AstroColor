@@ -14,7 +14,7 @@ from .auxiliary import (
     std_mag2std_irradiance,
     uniform_grid,
 )
-from .core import wavelength_nm_dtype
+from .core import nm_step, wavelength_nm_dtype
 from .errors import empty_spatial_axis_warning, empty_spectral_axis_warning
 from .filter_objects import Filter, FilterSet
 from .measurements import get_photometry, scale_to_match_value
@@ -121,8 +121,8 @@ vega_norm = scale_to_match_value(vega_CALSPEC, Filter.get('Generic/Bessell.V'))
 
 def create_base_object(
         name: object,
-        nm: Sequence[int|float],
-        filters: Sequence[str],
+        nm: Sequence[int | float],
+        filters: Sequence[str | int | float],
         br: npt.ArrayLike,
         std: npt.ArrayLike | None = None,
         filter_group_name: str | None = None,
@@ -137,7 +137,17 @@ def create_base_object(
     if len(nm) > 0:
         base_obj = Spectrum(nm, br, std, name=name, is_emission_spectrum=is_emission_spectrum)
     elif len(filters) > 0:
-        filter_set = FilterSet.get(*filters)
+        filter_objects: list[Filter] = []
+        for filter_name in filters:
+            filter_obj = None
+            if isinstance(filter_name, str):
+                filter_obj = Filter.get(filter_name)
+            elif isinstance(filter_name, int | float):  # pyright: ignore[reportUnnecessaryIsInstance]
+                filter_obj = Filter.monochromatic(filter_name)
+            else:
+                raise TypeError(f'Unsupported filter name type: {filter_name}')
+            filter_objects.append(filter_obj)
+        filter_set = FilterSet.from_filters(filter_objects)
         filter_set.name = filter_group_name
         base_obj = Photospectrum(filter_set, br, std, name=name)
     else:
@@ -190,8 +200,8 @@ def parse_json5_object(name: object, content: dict[str, object]) -> EmittingBody
     """
     br = []
     std = None
-    nm = [] # Spectrum object indicator
-    filters = [] # Photospectrum object indicator
+    nm: list[int | float] = [] # Spectrum object trigger
+    filters: list[str | int | float] = [] # Photospectrum object trigger
     filter_group_name = None
     is_emission = 'is_emission_spectrum' in content and content['is_emission_spectrum']
     if 'file' in content:
@@ -266,7 +276,7 @@ def parse_json5_object(name: object, content: dict[str, object]) -> EmittingBody
         if 'filter_set' in content:
             # regular filter if name is string, else "delta-filter" (wavelength)
             filter_group_name = content['filter_set']
-            filters = [f'{filter_group_name}.{short_name}' if isinstance(short_name, str) else short_name for short_name in filters]
+            filters = [f'{filter_group_name}.{filter_name}' if isinstance(filter_name, str) else filter_name for filter_name in filters]
     # Phase function reading
     if 'phase_function' in content:
         phase_func = content['phase_function']

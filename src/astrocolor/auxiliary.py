@@ -1,6 +1,6 @@
 from collections.abc import Iterable, Mapping, Sequence
 from math import ceil, sqrt
-from typing import Literal, SupportsFloat, cast, overload
+from typing import Literal, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -298,14 +298,14 @@ def spatial_downscaling(
     else:
         return spectral_dist[:,::factor,::factor], covariance_matrix[:,:,::factor,::factor]
 
-def is_diagonal(arr: npt.NDArray[np.floating], atol=1e-8):
+def is_diagonal(arr: npt.NDArray[np.floating]):
     """ Checks if array is diagonal along the first two axes """
     if arr.ndim < 2:
         return False
     axis0 = cast(int, arr.shape[0])
     axis1 = cast(int, arr.shape[1])
     mask = ~np.eye(axis0, axis1, dtype=bool)  # a mask for non-diagonal elements
-    return np.allclose(arr[mask], 0, atol=atol)
+    return np.allclose(arr[mask], 0, atol=1e-8)
 
 def smoothness_matrix(
     n: int,
@@ -597,7 +597,7 @@ def extrapolating(
 # ------------ Database Processing Section ------------
 
 def parse_value_std(
-    data: float | Sequence[float]
+    data: float | Sequence[float] | npt.NDArray[np.floating]
 ) -> tuple[float, float | None]:
     """
     Guarantees the output of the value and its standard deviation.
@@ -608,10 +608,10 @@ def parse_value_std(
     - [value, +std1, -std2]
     - [value, -std1, +std2]
     """
-    if isinstance(data, SupportsFloat):
+    if isinstance(data, int | float):
         # no standard deviation
         return float(data), None
-    elif isinstance(data, Sequence):  # pyright: ignore[reportUnnecessaryIsInstance]
+    else:
         match len(data):
             case 2:
                 # regular standard deviation
