@@ -54,7 +54,7 @@ class TestGetPhotometry:
 
     def test_convolution_filter_integral(self, v_filter: ac.Filter):
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_CALSPEC, v_filter)[0], (ac.vega_CALSPEC * v_filter).integrate(), rtol=0.01
+            ac.get_photometry(ac.vega_CALSPEC, v_filter)[0], (ac.vega_CALSPEC * v_filter).integrate(), rtol=0.001
         )
 
     def test_convolution_filter_set_integral(self, ubv_filterset: ac.FilterSet):
@@ -64,15 +64,14 @@ class TestGetPhotometry:
         np.testing.assert_allclose(
             ac.get_photometry(ac.vega_CALSPEC, ubv_filterset).spectral_dist,
             (ac.vega_CALSPEC * ubv_spectral_set).integrate(),
-            rtol=0.01,
+            rtol=0.001,
         )
 
     def test_vega_system_zero_points(self, v_filter: ac.Filter, ubv_filterset: ac.FilterSet):
         """ Zero-point calibration against Spanish Virtual Observatory """
-        # TODO: check the agreement percent
-        np.testing.assert_allclose(ac.get_photometry(ac.vega_CALSPEC, v_filter)[0], 3.62708e-9, rtol=0.0025)
+        np.testing.assert_allclose(ac.get_photometry(ac.vega_CALSPEC, v_filter)[0], 3.623954e-11, rtol=0.001)
         np.testing.assert_allclose(
             ac.get_photometry(ac.vega_CALSPEC, ubv_filterset).spectral_dist,
-            [4.089744e-9, 6.365467e-9, 3.623954e-9],
-            rtol=0.035,
+            [4.089744e-11, 6.365467e-11, 3.623954e-11],
+            rtol=0.001,
         )

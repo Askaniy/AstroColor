@@ -1,7 +1,6 @@
 from collections.abc import Callable, Iterator
 from copy import deepcopy
 from math import prod
-from types import NotImplementedType
 from typing import ClassVar, Final, Self, TypeVar, cast, override
 
 import numpy as np
@@ -30,13 +29,13 @@ from .auxiliary import (
 nm_step: Final[int] = 5  # nm
 
 # Wavelength and brightness axis storage data type
-wavelength_nm_dtype: Final[npt.DTypeLike] = np.int32
+wavelength_nm_dtype: Final[npt.DTypeLike] = np.int64
 spectral_dist_dtype: Final[npt.DTypeLike] = np.float64
 
 # Maximum wavelength, the clipping level
 # It is important that there be no overflow when raising a number to the second power
 # See convert_from_energy_spectral_density_per_frequency()
-nm_red_limit: Final[int] = int(cast(float, np.sqrt(np.iinfo(wavelength_nm_dtype).max))) # 46340 nm
+nm_red_limit: Final[int] = int(cast(float, np.sqrt(np.iinfo(wavelength_nm_dtype).max))) # 3037000499 nm ~ 3 meters
 
 
 class UniformSpectralGrid:

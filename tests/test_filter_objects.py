@@ -55,8 +55,8 @@ def test_mean_nm_sloan_filters():
 # - tests for standard deviations
 
 def test_std_of_nm_spectra():
-    np.testing.assert_allclose(ac.sun_CALSPEC.std_of_nm(), 468.978657, rtol=0.01)
-    np.testing.assert_allclose(ac.vega_CALSPEC.std_of_nm(), 466.044761, rtol=0.01)
+    np.testing.assert_allclose(ac.sun_CALSPEC.std_of_nm(), 469.40510, rtol=0.01)
+    np.testing.assert_allclose(ac.vega_CALSPEC.std_of_nm(), 473.17811, rtol=0.01)
 
 def test_std_of_nm_filter(v_filter: ac.Filter):
     np.testing.assert_allclose(v_filter.std_of_nm(), 36.354015, rtol=0.01)
