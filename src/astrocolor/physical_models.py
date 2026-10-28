@@ -3,19 +3,8 @@ from typing import Final, cast, override
 import numpy as np
 import numpy.typing as npt
 
-from .config import Config
 from .core import UniformSpectralGrid
 from .spectral_objects import Spectrum
-
-sun_data = cast(np.lib.npyio.NpzFile, np.load(Config.library_folder/'data/Sun_CALSPEC.npz'))
-sun_CALSPEC = Spectrum(sun_data['wavelength_nm'], sun_data['spectral_dist'], name='Sun [CALSPEC]')
-del sun_data
-
-vega_data = cast(np.lib.npyio.NpzFile, np.load(Config.library_folder/'data/Vega_CALSPEC.npz'))
-vega_CALSPEC = Spectrum(vega_data['wavelength_nm'], vega_data['spectral_dist'], name='Vega [CALSPEC]')
-del vega_data
-
-
 
 # TODO: StellarModel, RayleighModel, SynchrotronModel, ...
 

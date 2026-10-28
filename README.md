@@ -77,12 +77,12 @@ spectrum = ac.get_spectrometry(photospectrum_BVR, requested_wavelengths=[400, 70
 
 - Color calculations
 ```py
-color_xyz = ac.ColorPoint.from_spectral_data(ac.sun_CALSPEC)
+color_xyz = ac.ColorPoint.from_spectral_data(ac.sun_tsis1_hsrs)
 color_system = ac.ColorSystem('sRGB', 'Illuminant E') # recommended
 color_rgb = color_xyz.to_color_system(color_system)
 color_rgb.gamma_correction = True
 color_rgb.maximize_brightness = True
-color_html = color_rgb.to_html()
+color_html = color_rgb.to_html() # '#ecfeff'
 ```
 
 - Models

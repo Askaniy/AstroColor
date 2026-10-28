@@ -16,7 +16,7 @@ from .photospectral_objects import (
     PhotospectralSet,
     Photospectrum,
 )
-from .physical_models import sun_CALSPEC, vega_CALSPEC
+from .reference_spectra import sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
 
 # CIE 1931 XYZ color matching functions, 2-deg
@@ -158,8 +158,8 @@ class ColorSystem:
         'Illuminant D75': (0.29902, 0.31485),
         'Illuminant D93': (0.28315, 0.29711),
         'Illuminant E': (1/3, 1/3),
-        'Vega': spectrum_to_white_point(vega_CALSPEC),
-        'Sun': spectrum_to_white_point(sun_CALSPEC),
+        'Vega': spectrum_to_white_point(vega_calspec),
+        'Sun': spectrum_to_white_point(sun_tsis1_hsrs),
     }
 
 

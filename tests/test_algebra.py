@@ -11,8 +11,8 @@ class TestAddiction:
 
     def test_spectrum(self):
         np.testing.assert_allclose(
-            (ac.vega_CALSPEC + ac.vega_CALSPEC).spectral_dist,
-            (ac.vega_CALSPEC * 2).spectral_dist,
+            (ac.vega_calspec + ac.vega_calspec).spectral_dist,
+            (ac.vega_calspec * 2).spectral_dist,
             rtol=0.01,
         )
 
@@ -164,23 +164,23 @@ class TestMultiplication:
 
     def test_multiplication_filter_spectrum_mean(self, v_filter: ac.Filter, ubv_filterset: ac.FilterSet):
         np.testing.assert_allclose(
-            (v_filter * ac.vega_CALSPEC).mean_nm(), 544.601418, rtol=0.01
+            (v_filter * ac.vega_calspec).mean_nm(), 544.601418, rtol=0.01
         )  # 544.543 in SVO Filter Profile Service
         np.testing.assert_allclose(
-            (ubv_filterset * ac.vega_CALSPEC).mean_nm(),
+            (ubv_filterset * ac.vega_calspec).mean_nm(),
             [366.764603, 435.741381, 544.601418],
             rtol=0.01,
         )
 
     def test_multiplication_observation(self, v_filter: ac.Filter, ubv_filterset: ac.FilterSet):
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_CALSPEC * 2, v_filter)[0],
-            ac.get_photometry(ac.vega_CALSPEC, v_filter)[0] * 2,
+            ac.get_photometry(ac.vega_calspec * 2, v_filter)[0],
+            ac.get_photometry(ac.vega_calspec, v_filter)[0] * 2,
             rtol=0.01,
         )
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_CALSPEC * 2, ubv_filterset).spectral_dist,
-            ac.get_photometry(ac.vega_CALSPEC, ubv_filterset * 2).spectral_dist,
+            ac.get_photometry(ac.vega_calspec * 2, ubv_filterset).spectral_dist,
+            ac.get_photometry(ac.vega_calspec, ubv_filterset * 2).spectral_dist,
             rtol=0.01,
         )
 
@@ -195,17 +195,17 @@ class TestDivision:
 
     def test_filter_spectrum_mean(self, v_filter: ac.Filter, ubv_filterset: ac.FilterSet):
         np.testing.assert_allclose(
-            (v_filter / ac.vega_CALSPEC).mean_nm(), 558.681024, rtol=0.01
+            (v_filter / ac.vega_calspec).mean_nm(), 558.681024, rtol=0.001
         )
         np.testing.assert_allclose(
-            (ubv_filterset / ac.vega_CALSPEC).mean_nm(),
+            (ubv_filterset / ac.vega_calspec).mean_nm(),
             [356.283866, 447.589411, 558.681024],
             rtol=0.01,
         )
 
     def test_spectrum_wavelength(self, ubv_filterset: ac.FilterSet):
         np.testing.assert_allclose(
-            (ac.sun_CALSPEC / ac.sun_CALSPEC.wavelength_nm).mean_nm(), 670.9781529, rtol=0.01
+            (ac.sun_tsis1_hsrs / ac.sun_tsis1_hsrs.wavelength_nm).mean_nm(), 687.336338, rtol=0.001
         )
         np.testing.assert_allclose(
             (ubv_filterset / ubv_filterset.wavelength_nm).mean_nm(),
@@ -218,14 +218,14 @@ class TestNormalization:
 
     def test_filter(self, v_filter: ac.Filter):
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_CALSPEC, (v_filter * 2).normalized())[0],
-            ac.get_photometry(ac.vega_CALSPEC, v_filter)[0],
+            ac.get_photometry(ac.vega_calspec, (v_filter * 2).normalized())[0],
+            ac.get_photometry(ac.vega_calspec, v_filter)[0],
             rtol=0.01,
         )
 
     def test_filter_set(self, ubv_filterset: ac.FilterSet):
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_CALSPEC, (ubv_filterset * 2).normalized()).spectral_dist,
-            ac.get_photometry(ac.vega_CALSPEC, ubv_filterset).spectral_dist,
+            ac.get_photometry(ac.vega_calspec, (ubv_filterset * 2).normalized()).spectral_dist,
+            ac.get_photometry(ac.vega_calspec, ubv_filterset).spectral_dist,
             rtol=0.01,
         )

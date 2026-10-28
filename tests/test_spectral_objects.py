@@ -4,7 +4,7 @@ import astrocolor as ac
 
 # === Spectral Objects Creation & Properties Tests ===
 
-class TestMonochromatic:
+class TestMonochromaticSpectrum:
 
     def test_spectrum_int(self):
         spectrum = ac.Spectrum.monochromatic(555)
@@ -67,3 +67,11 @@ class TestMonochromatic:
         assert cube.wavelength_nm[0] == 495
         assert cube.wavelength_nm[-1] == 610
         np.testing.assert_allclose(cube.integrate(), np.ones((1, 1)), rtol=1e-10)
+
+
+class TestSpectrum:
+
+    def test_spectrum_integrate(self):
+        np.testing.assert_allclose(ac.sun_calspec.integrate(), 1326.2373, rtol=0.001)
+        np.testing.assert_allclose(ac.sun_tsis1_hsrs.integrate(), 1361.4892, rtol=0.001)
+        np.testing.assert_allclose(ac.vega_calspec.integrate(), 3.0417e-08, rtol=0.001)

@@ -28,7 +28,7 @@ from .photometric_models import (
     PhotometricModel,
 )
 from .photospectral_objects import Photospectrum
-from .physical_models import sun_CALSPEC, vega_CALSPEC
+from .reference_spectra import sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import Spectrum
 
 
@@ -111,12 +111,12 @@ class ReflectingBody:
                 raise ValueError('The `mode` argument of `get_spectrum()` must be `"geometric"` or `"spherical"`')
 
 
-sun_in_V, _ = get_photometry(sun_CALSPEC, Filter.get('Generic/Bessell.V'))
-sun_norm = scale_to_match_value(sun_CALSPEC, Filter.get('Generic/Bessell.V'))
-sun_filter = Filter(sun_CALSPEC.wavelength_nm, sun_CALSPEC.spectral_dist, name='Sun filter')
+sun_in_V, _ = get_photometry(sun_tsis1_hsrs, Filter.get('Generic/Bessell.V'))
+sun_norm = scale_to_match_value(sun_tsis1_hsrs, Filter.get('Generic/Bessell.V'))
+sun_filter = Filter(sun_tsis1_hsrs.wavelength_nm, sun_tsis1_hsrs.spectral_dist, name='Sun filter')
 
-vega_in_V, _ = get_photometry(vega_CALSPEC, Filter.get('Generic/Bessell.V'))
-vega_norm = scale_to_match_value(vega_CALSPEC, Filter.get('Generic/Bessell.V'))
+vega_in_V, _ = get_photometry(vega_calspec, Filter.get('Generic/Bessell.V'))
+vega_norm = scale_to_match_value(vega_calspec, Filter.get('Generic/Bessell.V'))
 
 
 def create_base_object(

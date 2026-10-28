@@ -19,13 +19,14 @@ from .photometric_models import (
     PhaseCoefficient,
 )
 from .photospectral_objects import PhotospectralCube, PhotospectralSet, Photospectrum
-from .physical_models import BlackBodyModel, sun_CALSPEC, vega_CALSPEC
+from .physical_models import BlackBodyModel
 from .reconstructed_objects import (
     ReconstructedSpectralCube,
     ReconstructedSpectralSet,
     ReconstructedSpectrum,
     spectral_reconstruction,
 )
+from .reference_spectra import sun_calspec, sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import SpectralCube, SpectralSet, Spectrum
 
 # API namespace
@@ -59,8 +60,9 @@ __all__ = (
     'parse_json5_object',
     'scale_to_match_value',
     'spectral_reconstruction',
-    'sun_CALSPEC',
-    'vega_CALSPEC',
+    'sun_calspec',
+    'sun_tsis1_hsrs',
+    'vega_calspec',
     'visible_range',
     'xyz_cmf',
     'xyz_color_system',

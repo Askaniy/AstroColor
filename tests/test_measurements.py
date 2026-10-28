@@ -54,7 +54,7 @@ class TestGetPhotometry:
 
     def test_convolution_filter_integral(self, v_filter: ac.Filter):
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_CALSPEC, v_filter)[0], (ac.vega_CALSPEC * v_filter).integrate(), rtol=0.001
+            ac.get_photometry(ac.vega_calspec, v_filter)[0], (ac.vega_calspec * v_filter).integrate(), rtol=0.001
         )
 
     def test_convolution_filter_set_integral(self, ubv_filterset: ac.FilterSet):
@@ -62,16 +62,16 @@ class TestGetPhotometry:
         # SpectralSet could be normalized instead
         ubv_spectral_set = ac.SpectralSet(ubv_filterset.wavelength_nm, ubv_filterset.spectral_dist)
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_CALSPEC, ubv_filterset).spectral_dist,
-            (ac.vega_CALSPEC * ubv_spectral_set).integrate(),
+            ac.get_photometry(ac.vega_calspec, ubv_filterset).spectral_dist,
+            (ac.vega_calspec * ubv_spectral_set).integrate(),
             rtol=0.001,
         )
 
     def test_vega_system_zero_points(self, v_filter: ac.Filter, ubv_filterset: ac.FilterSet):
         """ Zero-point calibration against Spanish Virtual Observatory """
-        np.testing.assert_allclose(ac.get_photometry(ac.vega_CALSPEC, v_filter)[0], 3.623954e-11, rtol=0.001)
+        np.testing.assert_allclose(ac.get_photometry(ac.vega_calspec, v_filter)[0], 3.623954e-11, rtol=0.001)
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_CALSPEC, ubv_filterset).spectral_dist,
-            [4.089744e-11, 6.365467e-11, 3.623954e-11],
+            ac.get_photometry(ac.vega_calspec, ubv_filterset).spectral_dist,
+            [4.094111e-11, 6.374534e-11, 3.626637e-11],
             rtol=0.001,
         )

@@ -26,7 +26,7 @@ def tmp_filters_folder(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture(autouse=True, scope='session')
-def _clean_tmp_dir(tmp_filters_folder: Path):  # pyright: ignore[reportUnusedFunction]
+def _clean_tmp_dir(tmp_filters_folder: Path):
     """
     Remove any leftover files from previous test runs so tests always start with a clean slate.
 
@@ -44,7 +44,7 @@ def _clean_tmp_dir(tmp_filters_folder: Path):  # pyright: ignore[reportUnusedFun
     yield
 
 @pytest.fixture(scope='session', autouse=True)
-def _isolate_filters(tmp_filters_folder: Path):  # pyright: ignore[reportUnusedFunction]
+def _isolate_filters(tmp_filters_folder: Path):
     """
     Isolate tests from the network and real XDG cache directory.
 
