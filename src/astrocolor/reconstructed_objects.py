@@ -216,15 +216,15 @@ def spectral_reconstruction(
                 return right_matrix @ vector - left_vector
             k_size = cast(int, right_matrix.shape[1])
             bounds = ((0, None) for _ in range(k_size))
-            result = cast(OptimizeResult, minimize(
+            result = cast(OptimizeResult, minimize(  # pyright: ignore[reportCallIssue]
                 fun=objective,
-                x0=np.maximum(br1, 0),
+                x0=np.maximum(br1, 0),  # pyright: ignore[reportArgumentType]
                 jac=gradient,
-                bounds=bounds,
+                bounds=bounds,  # pyright: ignore[reportArgumentType]
                 method='L-BFGS-B',
             ))
-            if not result.success:  # pyright: ignore[reportUnknownMemberType]
-                raise ValueError(f'Optimization failed: {result.message}')  # pyright: ignore[reportUnknownMemberType]
+            if not result.success:  # pyright: ignore[reportAny]
+                raise ValueError(f'Optimization failed: {result.message}')  # pyright: ignore[reportAny]
             br1 = cast(npt.NDArray[np.floating], result.x)
         if photospectral_obj.ndim == 1 and cov0 is not None:
             # Measurement confidence band calculation

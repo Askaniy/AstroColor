@@ -90,7 +90,7 @@ def mul_error(
     cov_x: npt.ArrayLike | None,
     mean_y: npt.ArrayLike,
     cov_y: npt.ArrayLike | None
-) -> npt.NDArray[np.floating] | float | None:
+) -> npt.NDArray[np.floating] | None:
     """
     Computes the covariance matrix of the product z = x * y
 

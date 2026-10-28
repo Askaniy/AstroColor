@@ -72,6 +72,10 @@ class TestMonochromaticSpectrum:
 class TestSpectrum:
 
     def test_spectrum_integrate(self):
+        # Nominal total solar irradiance = 1361 W/m², according to IAU 2015 Resolution B3
+        # https://en.wikipedia.org/wiki/Solar_constant
         np.testing.assert_allclose(ac.sun_calspec.integrate(), 1326.2373, rtol=0.001)
         np.testing.assert_allclose(ac.sun_tsis1_hsrs.integrate(), 1361.4892, rtol=0.001)
+        # Apparent bolometric magnitude zero point = 2.518021002e-8 W/m², according to IAU 2015 Resolution B2
+        # https://arxiv.org/abs/1510.06262
         np.testing.assert_allclose(ac.vega_calspec.integrate(), 3.0417e-08, rtol=0.001)
