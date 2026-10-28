@@ -354,7 +354,7 @@ class SpectralObject(BaseObject):
     ) -> npt.NDArray[np.floating]:
         """ Returns standard deviation values over a range of wavelengths (endpoints included) """
         start, end = grid_endpoints_preprocessing(start, end, nm_step)
-        mask = (self.wavelength_nm >= start) & (self.wavelength_nm < end)
+        mask = (self.wavelength_nm >= start) & (self.wavelength_nm <= end)
         intersection = self.spectral_dist[mask]
         if len(intersection) == 0:
             nm_0 = cast(int, self.wavelength_nm[0])
@@ -372,7 +372,7 @@ class SpectralObject(BaseObject):
             return None
         else:
             start, end = grid_endpoints_preprocessing(start, end, nm_step)
-            slice_indices = np.where((self.wavelength_nm >= start) & (self.wavelength_nm < end))[0]
+            slice_indices = np.where((self.wavelength_nm >= start) & (self.wavelength_nm <= end))[0]
             if len(slice_indices) == 0:
                 nm_0 = cast(int, self.wavelength_nm[0])
                 nm_1 = cast(int, self.wavelength_nm[-1])

@@ -4,6 +4,7 @@ import pytest
 from astrocolor.auxiliary import (
     color_indices_parser,
     get_extremal_grid_endpoints,
+    grid_endpoints_preprocessing,
     linear_interp,
     mag2irradiance,
     parse_value_std,
@@ -22,6 +23,54 @@ np.random.seed(42)
 
 
 class TestWavelengthGrids:
+
+    # (start, end, expected_first, expected_last)
+    INT_CASES: tuple[tuple[int, int, int, int], ...] = (
+        (0, 10, 0, 10),
+        (0, 9, 0, 10),
+        (1, 10, 0, 10),
+        (1, 9, 0, 10),
+        (2, 13, 0, 15),
+        (3, 17, 0, 20),
+        (0, 5, 0, 5),
+        (5, 5, 5, 5),
+        (115, 200000, 115, 200000),
+    )
+
+    FLOAT_CASES: tuple[tuple[float, float, int, int], ...] = (
+        (0.0, 10.0, 0, 10),
+        (0.0, 9.0, 0, 10),
+        (1.0, 10.0, 0, 10),
+        (1.0, 9.0, 0, 10),
+        (2.0, 13.0, 0, 15),
+        (3.0, 17.0, 0, 20),
+        (0.0, 5.0, 0, 5),
+        (5.0, 5.0, 5, 5),
+        (2.5, 12.5, 0, 15),
+        (0.5, 9.5, 0, 10),
+        (0.1, 10.1, 0, 15),
+        (115.5, 199999.5, 115, 200000),
+        (115.5, 200000.0, 115, 200000),
+    )
+
+    @staticmethod
+    def check_case(start: float, end: float, expected_first: int, expected_last: int):
+        actual = grid_endpoints_preprocessing(start, end, nm_step)
+        assert actual == (expected_first, expected_last)
+
+    @pytest.mark.parametrize(
+        'start, end, expected_first, expected_last',
+        INT_CASES,
+    )
+    def test_old_int_inputs(self, start: float, end: float, expected_first: int, expected_last: int):
+        self.check_case(start, end, expected_first, expected_last)
+
+    @pytest.mark.parametrize(
+        "start, end, expected_first, expected_last",
+        FLOAT_CASES,
+    )
+    def test_old_float_inputs(self, start: float, end: float, expected_first: int, expected_last: int):
+        self.check_case(start, end, expected_first, expected_last)
 
     def test_grid_reversibility(self):
         old_grid = uniform_grid(400, 600, nm_step, wavelength_nm_dtype)

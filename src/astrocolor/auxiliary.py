@@ -40,20 +40,18 @@ def grid_endpoints_preprocessing(
     step: int
 ) -> tuple[int, int]:
     """
-    Maps the endpoints to a standard grid.
+    Expand [start, end] outward to the enclosing multiples of the grid step (endpoints included).
 
     Args:
     - start: Start value.
     - end: End value.
 
     Returns:
-    - Tuple of (start, end) as integers after preprocessing.
+    - Tuple of integer values (start, end) on a uniform grid.
     """
-    if (shift := start % step) != 0:
-        start += step - shift
-    if end % step == 0:
-        end += step # to include the last point
-    return int(start), int(end)
+    first = int(cast(float, np.floor(start / step) * step))
+    last = int(cast(float, np.ceil(end / step) * step))
+    return first, last
 
 def uniform_grid(
     start: float,
@@ -69,10 +67,10 @@ def uniform_grid(
     - end: End value.
 
     Returns:
-    - Array of int values on a uniform grid.
+    - Array of integer values on a uniform grid.
     """
     start, end = grid_endpoints_preprocessing(start, end, step)
-    return np.arange(start, end, step, dtype=dtype)
+    return np.arange(start, end + step, step, dtype=dtype)
 
 def integrate(
     array: npt.NDArray[np.floating],

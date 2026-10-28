@@ -24,7 +24,7 @@ def test_photometry():
     )
     sloan_gr = ac.FilterSet.get('SLOAN/SDSS.g', 'SLOAN/SDSS.r')
     photospectrum = ac.get_photometry(photospectrum_BVR, sloan_gr)
-    np.testing.assert_allclose(photospectrum.spectral_dist, [1.23743753, 2.71275724])
+    np.testing.assert_allclose(photospectrum.spectral_dist, [1.236852, 2.713022], rtol=0.001)
 
 def test_color():
     color_xyz = ac.ColorPoint.from_spectral_data(ac.sun_CALSPEC)

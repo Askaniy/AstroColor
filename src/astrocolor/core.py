@@ -78,10 +78,6 @@ class UniformSpectralGrid:
         Returns:
         - Tuple of (start, end) as integers after preprocessing.
         """
-        if (shift := start % self.nm_step) != 0:
-            start += self.nm_step - shift
-        if end % self.nm_step == 0:
-            end += self.nm_step # to include the last point
         return grid_endpoints_preprocessing(start, end, nm_step)
 
     def uniform_grid(
