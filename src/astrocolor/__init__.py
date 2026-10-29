@@ -25,6 +25,7 @@ from .reconstructed_objects import (
     ReconstructedSpectralSet,
     ReconstructedSpectrum,
     spectral_reconstruction,
+    spectral_reconstruction_experimental,
 )
 from .reference_spectra import sun_calspec, sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import SpectralCube, SpectralSet, Spectrum
@@ -60,6 +61,7 @@ __all__ = (
     'parse_json5_object',
     'scale_to_match_value',
     'spectral_reconstruction',
+    'spectral_reconstruction_experimental',
     'sun_calspec',
     'sun_tsis1_hsrs',
     'vega_calspec',

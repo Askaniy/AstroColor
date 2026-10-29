@@ -262,3 +262,117 @@ def spectral_reconstruction(
             raise UnsupportedDimensionError(photospectral_obj.ndim, photospectral_obj.name)
         spectral_obj = target_class(nm1, br1, cov1, name=photospectral_obj.name)
     return spectral_obj
+
+
+def spectral_reconstruction_experimental(
+    photospectral_obj: PhotospectralObject,
+    requested_wavelengths: npt.ArrayLike,
+    spectral_reconstruction_mode: str = '',  # pyright: ignore[reportUnusedParameter]
+    attach_photospectral_obj: bool = True
+) -> SpectralObject | ReconstructedSpectralObject[PhotospectralObject]:
+    """
+    Reconstructs a SpectralObject from photospectral data on the wavelength array.
+
+    Interpolation is not used because it is not a solution to the inverse ill-posed problem
+    (i.e., looking at the spectrum through the filters does not give exactly the original photospectral_obj).
+
+    The function uses the Tikhonov regularization method, with a combination of first-order
+    and second-order differential operators for the Tikhonov matrix.
+    That is, it tries to minimize height variations and curvature in the spectrum.
+
+    Confidence bands for spectral sets and cubes are not computed by default.
+    """
+    br0 = photospectral_obj.spectral_dist
+    filter_set = get_spectrometry(photospectral_obj.filter_set, requested_wavelengths, strictly=False)
+    nm1 = filter_set.wavelength_nm
+    if Config.ignore_uncertainty_for_cubes and photospectral_obj.ndim == 3:
+        cov0 = None
+    else:
+        cov0 = photospectral_obj.covariance_matrix
+    cov1: npt.NDArray[np.floating] | None = None
+    if len(filter_set) == 1:
+        # single-point PhotospectralObject support
+        br1 = np.full((nm1.size, 1, 1)[:photospectral_obj.ndim], br0) # not tested
+    else:
+        filter_matrix = filter_set.matrix
+        m_size = cast(int, filter_matrix.shape[0])
+        n_size = cast(int, filter_matrix.shape[1])
+        if cov0 is not None:
+            cov0_inv = np.linalg.inv(cov0)
+        else:
+            cov0_inv = np.diag(np.ones(m_size))
+        order1_matrix = smoothness_matrix(n_size, order=1, step=filter_set.nm_step)
+        order2_matrix = smoothness_matrix(n_size, order=2, step=filter_set.nm_step)
+        # TODO: research on some known spectra to find which alpha and beta fit best
+        alpha = 1/8
+        beta = 5000
+        tikhonov_matrix = alpha * (order1_matrix.T @ order1_matrix + beta * order2_matrix.T @ order2_matrix)
+        right_matrix = filter_matrix.T @ cov0_inv @ filter_matrix + tikhonov_matrix
+        if photospectral_obj.ndim == 3:
+            # scipy supports batch mode for 2d arrays, but not for 3D arrays
+            br0 = br0.reshape(m_size, -1)
+        left_vector = filter_matrix.T @ cov0_inv @ br0
+        br1 = cast(npt.NDArray[np.floating], solve(right_matrix, left_vector)) # x1.5 faster than np.linalg.inv(A) @ b
+        if photospectral_obj.ndim == 3:
+            # Reshape spectral cube back from square
+            br1 = br1.reshape(-1, *photospectral_obj.spatial_shape)
+        if photospectral_obj.ndim == 1 and br1.min() < 0:
+            # To avoid negative spectra, a lower bound is set and iterative
+            # optimization is performed using quadratic programming methods.
+            # The processing speed drops by a factor of about five,
+            # so the use is blocked for spectral squares and cubes:
+            # background noise near zero can be most of the pixels.
+            # TODO: RECHECK! MAY CONTAIN ERRORS!
+            def objective(vector: npt.NDArray[np.floating]):
+                # Tikhonov-regularized quadratic objective: 0.5 * Y^T A Y - b^T Y
+                return 0.5 * vector @ right_matrix @ vector - left_vector @ vector
+            def gradient(vector: npt.NDArray[np.floating]):
+                # Gradient of the objective
+                return right_matrix @ vector - left_vector
+            k_size = cast(int, right_matrix.shape[1])
+            bounds = ((0, None) for _ in range(k_size))
+            result = cast(OptimizeResult, minimize(  # pyright: ignore[reportCallIssue]
+                fun=objective,
+                x0=np.maximum(br1, 0),  # pyright: ignore[reportArgumentType]
+                jac=gradient,
+                bounds=bounds,  # pyright: ignore[reportArgumentType]
+                method='L-BFGS-B',
+            ))
+            if not result.success:  # pyright: ignore[reportAny]
+                raise ValueError(f'Optimization failed: {result.message}')  # pyright: ignore[reportAny]
+            br1 = cast(npt.NDArray[np.floating], result.x)
+        if photospectral_obj.ndim == 1 and cov0 is not None:
+            # Measurement confidence band calculation
+            # Confidence bands for spectral squares and cubes are not computed to save computational resources
+            right_matrix_inv = np.linalg.inv(right_matrix)
+            cov1 = right_matrix_inv @ filter_matrix.T @ np.linalg.inv(cov0) @ filter_matrix @ right_matrix_inv
+    if attach_photospectral_obj:
+        match photospectral_obj:
+            # An implementation suitable for type checking
+            case Photospectrum():
+                spectral_obj = ReconstructedSpectrum(
+                    nm1, br1, cov1,
+                    name=photospectral_obj.name,
+                    photospectral_obj=deepcopy(photospectral_obj)
+                )
+            case PhotospectralSet():
+                spectral_obj = ReconstructedSpectralSet(
+                    nm1, br1, cov1,
+                    name=photospectral_obj.name,
+                    photospectral_obj=deepcopy(photospectral_obj)
+                )
+            case PhotospectralCube():
+                spectral_obj = ReconstructedSpectralCube(
+                    nm1, br1, cov1,
+                    name=photospectral_obj.name,
+                    photospectral_obj=deepcopy(photospectral_obj)
+                )
+            case _:
+                raise ValueError(f'For {photospectral_obj.name} to be reconstructed, it must be of class Photospectrum, PhotospectralSet or PhotospectralCube')
+    else:
+        try:
+            target_class = (Spectrum, SpectralSet, SpectralCube)[photospectral_obj.ndim - 1]
+        except IndexError:
+            raise UnsupportedDimensionError(photospectral_obj.ndim, photospectral_obj.name)
+        spectral_obj = target_class(nm1, br1, cov1, name=photospectral_obj.name)
+    return spectral_obj
