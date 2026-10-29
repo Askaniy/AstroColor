@@ -188,6 +188,27 @@ class BaseObject(UniformSpectralGrid):
         """
         raise NotImplementedError('Implemented in the inherited classes.')
 
+    def _apply_spectral_operation(
+        self,
+        other: 'BaseObject',
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray[np.floating]],
+        error_handling: Callable[[npt.ArrayLike, npt.ArrayLike | None, npt.ArrayLike, npt.ArrayLike | None], npt.NDArray[np.floating] | None]
+    ) -> Self:
+        """
+        Returns a new object formed from an operation defined on the spectral
+        distribution rather than on its photometric integrals.
+        By default, it is equivalent to the element-wise operation.
+
+        Args:
+        - other: Another BaseObject for the operation.
+        - value_handling: Function to handle the value transformation.
+        - error_handling: Function to handle the uncertainty propagation.
+
+        Returns:
+        - A new object with the spectral operation applied.
+        """
+        return self._apply_element_wise_operation(other, value_handling, error_handling)
+
     def _apply_scalar_operation(
         self,
         operand: npt.ArrayLike,
@@ -239,10 +260,10 @@ class BaseObject(UniformSpectralGrid):
         Implements the multiplication operator.
 
         Returns:
-        - A new SpectralObject with element-wise or scalar multiplication applied.
+        - A new object with spectral (element-wise) or scalar multiplication applied.
         """
         if isinstance(other, BaseObject):
-            return self._apply_element_wise_operation(other, mul_value, mul_error)
+            return self._apply_spectral_operation(other, mul_value, mul_error)
         else:
             return self._apply_scalar_operation(other, mul_value, mul_error)
 
@@ -251,10 +272,10 @@ class BaseObject(UniformSpectralGrid):
         Implements the division operator.
 
         Returns:
-        - A new SpectralObject with element-wise or scalar division applied.
+        - A new object with spectral (element-wise) or scalar division applied.
         """
         if isinstance(other, BaseObject):
-            return self._apply_element_wise_operation(other, div_value, div_error)
+            return self._apply_spectral_operation(other, div_value, div_error)
         else:
             return self._apply_scalar_operation(other, div_value, div_error)
 

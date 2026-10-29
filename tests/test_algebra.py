@@ -1,8 +1,22 @@
+import warnings
+from typing import cast
+
 import numpy as np
 import pytest
 
 import astrocolor as ac
 from astrocolor.algebra import mul_error, mul_value
+from astrocolor.errors import ErasingCorrelationsWarning
+
+
+def reconstruct_for_test(photo: ac.Photospectrum | ac.PhotospectralSet):
+    """ Reconstructs a photospectral object without attaching the raw photometry """
+    return ac.spectral_reconstruction(
+        photo,
+        photo.filter_set.wavelength_nm,
+        attach_photospectral_obj=False,
+    )
+
 
 # === Arithmetic Operations Tests ===
 
@@ -14,6 +28,15 @@ class TestAddiction:
             (ac.vega_calspec + ac.vega_calspec).spectral_dist,
             (ac.vega_calspec * 2).spectral_dist,
             rtol=0.01,
+        )
+
+    def test_same_filter_set_photospectra_add_elementwise(self, ubv_filterset: ac.FilterSet):
+        photospectrum1 = ac.Photospectrum(ubv_filterset, [0.5, 1.0, 2.0])
+        photospectrum2 = ac.Photospectrum(ubv_filterset, [2.0, 1.0, 0.5])
+        result = photospectrum1 + photospectrum2
+        np.testing.assert_allclose(
+            result.spectral_dist,
+            photospectrum1.spectral_dist + photospectrum2.spectral_dist,
         )
 
 
@@ -184,6 +207,84 @@ class TestMultiplication:
             rtol=0.01,
         )
 
+    def test_photospectrum_times_spectrum_reconstructs(self, ubv_filterset: ac.FilterSet):
+        """ Multiplication is performed on reconstructed spectra, not on photometric integrals """
+        nm = ubv_filterset.wavelength_nm
+        photospectrum = ac.Photospectrum(ubv_filterset, [0.5, 1.0, 2.0], name='test photospectrum')
+        spectrum = ac.Spectrum(nm, (nm / cast(int, nm[0]))**3, name='test spectrum')
+        result = photospectrum * spectrum
+        expected = ac.get_photometry(
+            reconstruct_for_test(photospectrum) * spectrum,
+            ubv_filterset,
+        )
+        np.testing.assert_allclose(result.spectral_dist, expected.spectral_dist)
+        old_result = photospectrum.spectral_dist * ac.get_photometry(spectrum, ubv_filterset).spectral_dist
+        assert not np.allclose(result.spectral_dist, old_result)
+
+    def test_photospectrum_times_photospectrum_reconstructs(self, ubv_filterset: ac.FilterSet):
+        """ Same-filter photospectra are multiplied through their reconstructed spectra """
+        photospectrum1 = ac.Photospectrum(ubv_filterset, [0.5, 1.0, 2.0])
+        photospectrum2 = ac.Photospectrum(ubv_filterset, [2.0, 1.0, 0.5])
+        result = photospectrum1 * photospectrum2
+        expected = ac.get_photometry(
+            reconstruct_for_test(photospectrum1) * reconstruct_for_test(photospectrum2),
+            ubv_filterset,
+        )
+        np.testing.assert_allclose(result.spectral_dist, expected.spectral_dist)
+        old_result = photospectrum1.spectral_dist * photospectrum2.spectral_dist
+        assert not np.allclose(result.spectral_dist, old_result)
+
+    def test_photospectrum_times_photospectrum_different_filter_sets(self):
+        """ The result uses the filter set of the left operand and stays finite """
+        ub_filter_set = ac.FilterSet.get('Generic/Bessell.U', 'Generic/Bessell.B')
+        bv_filter_set = ac.FilterSet.get('Generic/Bessell.B', 'Generic/Bessell.V')
+        photospectrum1 = ac.Photospectrum(ub_filter_set, [0.5, 1.0])
+        photospectrum2 = ac.Photospectrum(bv_filter_set, [1.0, 2.0])
+        result = photospectrum1 * photospectrum2
+        assert isinstance(result, ac.Photospectrum)
+        assert result.filter_set == ub_filter_set
+        assert result.spectral_dist.shape == photospectrum1.spectral_dist.shape
+        assert np.all(np.isfinite(result.spectral_dist))
+
+    def test_photospectral_set_times_spectrum_reconstructs(self, ubv_filterset: ac.FilterSet):
+        """ Spatial dimensions are broadcast correctly """
+        nm = ubv_filterset.wavelength_nm
+        photospectral_set = ac.PhotospectralSet(
+            ubv_filterset,
+            [[0.5, 1.0], [1.0, 1.5], [2.0, 0.5]],
+        )
+        spectrum = ac.Spectrum(nm, (nm / cast(int, nm[0]))**3)
+        result = photospectral_set * spectrum
+        expected = ac.get_photometry(
+            reconstruct_for_test(photospectral_set) * spectrum,
+            ubv_filterset,
+        )
+        assert isinstance(result, ac.PhotospectralSet)
+        assert result.spectral_dist.shape == photospectral_set.spectral_dist.shape
+        np.testing.assert_allclose(result.spectral_dist, expected.spectral_dist)
+
+    def test_photospectrum_times_scalar_is_unchanged(self, ubv_filterset: ac.FilterSet):
+        photospectrum = ac.Photospectrum(ubv_filterset, [0.5, 1.0, 2.0])
+        np.testing.assert_allclose(
+            (photospectrum * 2).spectral_dist,
+            photospectrum.spectral_dist * 2,
+        )
+
+    def test_photospectrum_times_spectrum_keeps_1d_covariance(self, ubv_filterset: ac.FilterSet):
+        """ 1D uncertainty is propagated through the reconstructed spectra """
+        nm = ubv_filterset.wavelength_nm
+        photospectrum = ac.Photospectrum(
+            ubv_filterset,
+            [0.5, 1.0, 2.0],
+            uncertainty=[0.05, 0.1, 0.2],
+        )
+        spectrum = ac.Spectrum(nm, (nm / cast(int, nm[0]))**3)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', ErasingCorrelationsWarning)
+            result = photospectrum * spectrum
+        assert result.covariance_matrix is not None
+        assert result.covariance_matrix.shape == (len(ubv_filterset), len(ubv_filterset))
+
 
 class TestDivision:
 
@@ -192,6 +293,18 @@ class TestDivision:
 
     def test_zero_division_by_zero_error(self):
         np.testing.assert_equal((ac.SpectralSet.stub() / 0).spectral_dist, [[0.]])
+
+    def test_photospectrum_divided_by_spectrum_reconstructs(self, ubv_filterset: ac.FilterSet):
+        """ Division is also performed on reconstructed spectra """
+        nm = ubv_filterset.wavelength_nm
+        photospectrum = ac.Photospectrum(ubv_filterset, [0.5, 1.0, 2.0])
+        spectrum = ac.Spectrum(nm, (nm / cast(int, nm[0]))**3)
+        result = photospectrum / spectrum
+        expected = ac.get_photometry(
+            reconstruct_for_test(photospectrum) / spectrum,
+            ubv_filterset,
+        )
+        np.testing.assert_allclose(result.spectral_dist, expected.spectral_dist)
 
     def test_filter_spectrum_mean(self, v_filter: ac.Filter, ubv_filterset: ac.FilterSet):
         np.testing.assert_allclose(

@@ -5,6 +5,7 @@ from typing import Self, cast, override
 import numpy as np
 import numpy.typing as npt
 
+from .algebra import make_same_ndim
 from .config import Config
 from .core import BaseObject, Cube, Item, Set, spectral_dist_dtype
 from .errors import (
@@ -22,6 +23,13 @@ from .filter_objects import FilterSet
 class PhotospectralObject(BaseObject):
     """
     Internal parent class for Photospectrum (1D), PhotospectralSet (2D) and PhotospectralCube (3D).
+
+    Multiplication and division with a SpectralObject or another PhotospectralObject
+    are performed on reconstructed spectra: both operands are reconstructed on the
+    filter grid of this object, the spectra are multiplied/divided point-wise,
+    and the result is observed back through `filter_set`.
+    Addition and subtraction remain element-wise, because photometric integrals
+    are linear.
 
     Attributes:
     - `filter_set` (FilterSet): instance of the class storing filter profiles
@@ -126,16 +134,21 @@ class PhotospectralObject(BaseObject):
         error_handling: Callable[[npt.ArrayLike, npt.ArrayLike | None, npt.ArrayLike, npt.ArrayLike | None], npt.NDArray[np.floating] | None]
     ) -> 'PhotospectralObject':
         """
-        Returns a new PhotospectralObject formed from element-wise operation with
-        a SpectralObject or another PhotospectralObject. Operations between objects
-        of the same dimensionality and all (photo)spectrum operations are supported.
+        Returns a new PhotospectralObject formed from a linear element-wise
+        operation (addition or subtraction) with a SpectralObject or another
+        PhotospectralObject.
 
         The filter system of the second object, if it does not match, is converted
         to the filter system of the first object!
         """
         filter_set = self.filter_set
         from .spectral_objects import SpectralObject
-        if isinstance(other, SpectralObject) or (isinstance(other, PhotospectralObject) and other.filter_set != filter_set):
+        if isinstance(other, PhotospectralObject):
+            if other.filter_set != filter_set:
+                # Converting to a PhotospectralObject of the same filter system
+                from .measurements import get_photometry
+                other = get_photometry(other, filter_set)
+        elif isinstance(other, SpectralObject):
             # Converting to a PhotospectralObject of the same filter system
             from .measurements import get_photometry
             other = get_photometry(other, filter_set)
@@ -145,6 +158,73 @@ class PhotospectralObject(BaseObject):
         error = error_handling(self.spectral_dist, self.covariance_matrix, other.spectral_dist, other.covariance_matrix)
         higher_dim = (self, other)[self.ndim < other.ndim]
         return higher_dim.__class__(filter_set, value, error, name=higher_dim.name)
+
+    @override
+    def _apply_spectral_operation(
+        self,
+        other: 'BaseObject',
+        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray[np.floating]],
+        error_handling: Callable[[npt.ArrayLike, npt.ArrayLike | None, npt.ArrayLike, npt.ArrayLike | None], npt.NDArray[np.floating] | None]
+    ) -> 'PhotospectralObject':
+        """
+        Returns a new PhotospectralObject formed from an operation that is
+        defined on the spectral distribution (multiplication or division).
+
+        Both operands are reconstructed into continuous spectra on the filter
+        grid of this object, the operation is applied to the spectra, and the
+        result is observed again through `self.filter_set`.
+
+        Reconstruction uses `attach_photospectral_obj=False`: otherwise
+        `get_photometry()` would reconstruct the original photometry again
+        instead of using the resulting spectrum.
+        """
+        from .measurements import get_photometry, get_spectrometry
+        from .reconstructed_objects import (
+            ReconstructedSpectralObject,
+            spectral_reconstruction,
+        )
+        from .spectral_objects import (
+            SpectralCube,
+            SpectralObject,
+            SpectralSet,
+            Spectrum,
+        )
+
+        if not isinstance(other, (SpectralObject, PhotospectralObject)):
+            return NotImplemented
+
+        filter_set = self.filter_set
+        target_nm = filter_set.wavelength_nm
+
+        def to_spectrum(obj: SpectralObject | PhotospectralObject) -> SpectralObject:
+            if isinstance(obj, PhotospectralObject):
+                obj = spectral_reconstruction(
+                    obj, target_nm, attach_photospectral_obj=False
+                )
+            # The current spectrum of an already reconstructed object must be used,
+            # not its raw photometry re-reconstructed by `get_spectrometry()`.
+            elif isinstance(obj, ReconstructedSpectralObject) and obj.photospectral_obj is not None:
+                obj = deepcopy(obj)
+                obj.photospectral_obj = None
+            if np.array_equal(obj.wavelength_nm, target_nm):
+                return obj
+            return get_spectrometry(obj, target_nm, strictly=True)
+
+        left = to_spectrum(self)
+        right = to_spectrum(other)
+        left_value, right_value = make_same_ndim(left.spectral_dist, right.spectral_dist)
+        value = value_handling(left_value, right_value)
+        # Confidence bands for spectral sets and cubes are not computed by the reconstruction.
+        error = None
+        if left.ndim == 1 and right.ndim == 1:
+            error = error_handling(
+                left.spectral_dist, left.covariance_matrix,
+                right.spectral_dist, right.covariance_matrix
+            )
+        higher = left if left.ndim >= right.ndim else right
+        product_class = (Spectrum, SpectralSet, SpectralCube)[higher.ndim - 1]
+        product = product_class(target_nm, value, error, name=higher.name)
+        return get_photometry(product, filter_set)
 
     @override
     def _generate_repr_config(self) -> dict[str, str]:

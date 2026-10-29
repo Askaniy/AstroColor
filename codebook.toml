@@ -76,6 +76,7 @@ words = [
     "ndim",
     "newaxis",
     "npt",
+    "photospectra",
     "pyplot",
     "pyright",
     "ror",
