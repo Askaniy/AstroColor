@@ -12,12 +12,11 @@ from scipy.optimize import (
     minimize,
 )
 
-from astrocolor.measurements import get_spectrometry
-
 from .auxiliary import smoothness_matrix
 from .config import Config
 from .core import Cube, Item, Set
 from .errors import UnsupportedDimensionError
+from .filter_objects import FilterSet
 from .photospectral_objects import (
     PhotospectralCube,
     PhotospectralObject,
@@ -25,6 +24,29 @@ from .photospectral_objects import (
     Photospectrum,
 )
 from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
+
+
+# `measurements` imports the Reconstructed* classes from this module for the
+# return annotations of `get_spectrometry()`. Importing `get_spectrometry`
+# here at module level would close the cycle, so it is imported lazily below.
+def _filter_set_at_requested_wavelengths(
+    filter_set: FilterSet,
+    requested_wavelengths: npt.ArrayLike,
+) -> FilterSet:
+    """
+    Returns the filter set sampled on the requested wavelength range,
+    non-strictly.
+
+    `get_spectrometry` is imported locally to avoid a module-level import
+    cycle: `measurements` imports the Reconstructed* classes from this
+    module for the return annotations of `get_spectrometry`.
+    """
+    from .measurements import get_spectrometry
+    return get_spectrometry(
+        filter_set,
+        requested_wavelengths,
+        strictly=False,
+    )
 
 # For type checkers, this type specifies that each reconstructed class
 # can only store hyperspectral objects of its own dimension.
@@ -82,7 +104,10 @@ class ReconstructedSpectralObject[PhotospectralType: PhotospectralObject](Spectr
             extrapolated = super().determine_at_trusted_wavelengths(requested_wavelengths)
         else:
             # Repeating the spectral reconstruction on the new wavelength range
-            extrapolated = self.photospectral_obj.determine_at_trusted_wavelengths(requested_wavelengths)
+            extrapolated = self.photospectral_obj.determine_at_trusted_wavelengths(
+                requested_wavelengths,
+                attach_photospectral_obj=attach_photospectral_obj,
+            )
         return extrapolated
 
     @override
@@ -175,7 +200,7 @@ def spectral_reconstruction(
     Confidence bands for spectral sets and cubes are not computed by default.
     """
     br0 = photospectral_obj.spectral_dist
-    filter_set = get_spectrometry(photospectral_obj.filter_set, requested_wavelengths, strictly=False)
+    filter_set = _filter_set_at_requested_wavelengths(photospectral_obj.filter_set, requested_wavelengths)
     nm1 = filter_set.wavelength_nm
     if Config.ignore_uncertainty_for_cubes and photospectral_obj.ndim == 3:
         cov0 = None
@@ -286,7 +311,7 @@ def spectral_reconstruction_experimental(
     Confidence bands for spectral sets and cubes are not computed by default.
     """
     br0 = photospectral_obj.spectral_dist
-    filter_set = get_spectrometry(photospectral_obj.filter_set, requested_wavelengths, strictly=False)
+    filter_set = _filter_set_at_requested_wavelengths(photospectral_obj.filter_set, requested_wavelengths)
     nm1 = filter_set.wavelength_nm
     if Config.ignore_uncertainty_for_cubes and photospectral_obj.ndim == 3:
         cov0 = None

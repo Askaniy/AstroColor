@@ -174,12 +174,14 @@ class PhotospectralObject(BaseObject):
         defined on the spectral distribution (multiplication or division).
 
         Both operands are reconstructed into continuous spectra on the filter
-        grid of this object, the operation is applied to the spectra, and the
-        result is observed again through `self.filter_set`.
-
-        Reconstruction uses `attach_photospectral_obj=False`: otherwise
-        `get_photometry()` would reconstruct the original photometry again
-        instead of using the resulting spectrum.
+        grid of this object. Reconstructing both of them on one common
+        wavelength interval is preferred over extrapolating or clipping an
+        already reconstructed spectrum: an attached reconstructed object is
+        therefore reconstructed again from its stored source photometry. The
+        operation is applied point-wise, and the result is wrapped as a plain
+        `Spectrum`/`SpectralSet`/`SpectralCube` before being observed through
+        `self.filter_set`. The final `get_photometry()` therefore always measures
+        the product spectrum itself.
         """
         from .measurements import get_photometry, get_spectrometry
         from .spectral_objects import (
