@@ -11,6 +11,7 @@ from .algebra import (
     add_value,
     div_error,
     div_value,
+    get_standard_deviation,
     mul_error,
     mul_value,
     sub_error,
@@ -31,6 +32,7 @@ nm_step: Final[int] = 5  # nm
 # Wavelength and brightness axis storage data type
 wavelength_nm_dtype: Final[npt.DTypeLike] = np.int64
 spectral_dist_dtype: Final[npt.DTypeLike] = np.float64
+uncertainty_dtype: Final[npt.DTypeLike] = np.float64
 
 # Maximum wavelength, the clipping level
 # It is important that there be no overflow when raising a number to the second power
@@ -113,6 +115,7 @@ class BaseObject(UniformSpectralGrid):
 
     wavelength_nm_dtype: Final[npt.DTypeLike] = wavelength_nm_dtype
     spectral_dist_dtype: Final[npt.DTypeLike] = spectral_dist_dtype
+    uncertainty_dtype: Final[npt.DTypeLike] = uncertainty_dtype
 
     @property
     def spectral_size(self) -> int:
@@ -141,8 +144,7 @@ class BaseObject(UniformSpectralGrid):
         if self.covariance_matrix is None:
             return None
         else:
-            # TODO: support for sets and cubes
-            return np.sqrt(np.diag(self.covariance_matrix))
+            return get_standard_deviation(self.covariance_matrix)
 
     @classmethod
     def stub(cls, name: object = None) -> Self:  # pyright: ignore[reportUnusedParameter]

@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from copy import deepcopy
 from typing import cast, overload
 
 import numpy as np
@@ -10,7 +11,7 @@ from astrocolor.errors import (
     UnsupportedDimensionError,
 )
 
-from .algebra import mul_error, mul_value
+from .algebra import mul_value
 from .auxiliary import integrate
 from .filter_objects import Filter, FilterSet
 from .photospectral_objects import (
@@ -27,7 +28,8 @@ from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectru
 def get_spectrometry(
     target: Filter,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False
+    strictly: bool = False,
+    attach_photospectral_obj: bool = True
 ) -> Filter:
     ...
 
@@ -35,7 +37,8 @@ def get_spectrometry(
 def get_spectrometry(
     target: Spectrum | Photospectrum | PhysicalModel,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False
+    strictly: bool = False,
+    attach_photospectral_obj: bool = True
 ) -> Spectrum:
     ...
 
@@ -43,7 +46,8 @@ def get_spectrometry(
 def get_spectrometry(
     target: FilterSet,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False
+    strictly: bool = False,
+    attach_photospectral_obj: bool = True
 ) -> FilterSet:
     ...
 
@@ -51,7 +55,8 @@ def get_spectrometry(
 def get_spectrometry(
     target: SpectralSet | PhotospectralSet,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False
+    strictly: bool = False,
+    attach_photospectral_obj: bool = True
 ) -> SpectralSet:
     ...
 
@@ -59,7 +64,8 @@ def get_spectrometry(
 def get_spectrometry(
     target: SpectralCube | PhotospectralCube,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False
+    strictly: bool = False,
+    attach_photospectral_obj: bool = True
 ) -> SpectralCube:
     ...
 
@@ -67,14 +73,16 @@ def get_spectrometry(
 def get_spectrometry(
     target: SpectralObject | PhotospectralObject,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False
+    strictly: bool = False,
+    attach_photospectral_obj: bool = True
 ) -> SpectralObject:
     ...
 
 def get_spectrometry(
     target: SpectralObject | PhotospectralObject | PhysicalModel,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False
+    strictly: bool = False,
+    attach_photospectral_obj: bool = True
 ) -> SpectralObject:
     """
     Returns a new SpectralObject, guaranteeing that the specified wavelength range
@@ -98,7 +106,7 @@ def get_spectrometry(
     """
     nm_min, nm_max = target.get_extremal_grid_endpoints(requested_wavelengths)
     requested_wavelengths = target.uniform_grid(nm_min, nm_max)
-    spectral_obj = target.determine_at_trusted_wavelengths(requested_wavelengths)
+    spectral_obj = target.determine_at_trusted_wavelengths(requested_wavelengths, attach_photospectral_obj=attach_photospectral_obj)
     # Spectral range clipping
     if strictly and not np.array_equal(spectral_obj.wavelength_nm, requested_wavelengths):
         spectral_obj.spectral_dist = spectral_obj.get_spectral_dist_at_wavelengths(nm_min, nm_max)
@@ -155,6 +163,11 @@ def get_photometry(
     Implementation of convolution between a (photo)spectral object and a filter or a filter set.
     Ignores the uncertainty of filter profiles.
     """
+    # The data is already measured in these filters: do not lose it to a reconstruction round trip.
+    if isinstance(target, PhotospectralObject) and isinstance(bandpass, FilterSet) and target.filter_set == bandpass:
+        output = deepcopy(target)
+        output.filter_set = bandpass
+        return output
     target = get_spectrometry(target, bandpass.wavelength_nm, strictly=True)
     ndim = target.ndim
     sd = target.spectral_dist
@@ -162,9 +175,13 @@ def get_photometry(
     match bandpass:
         case Filter():
             value = cast(float, integrate(mul_value(sd, bandpass.spectral_dist), target.nm_step))
-            error = mul_error(sd, cov, bandpass.spectral_dist, None)
-            if error is not None:
-                error = cast(float, integrate(error, target.nm_step))
+            error = None
+            if cov is not None:
+                error = cast(
+                    float | npt.NDArray[np.floating],
+                    np.einsum('i...,ij...,j...->...', bandpass.spectral_dist, cov, bandpass.spectral_dist)
+                    * target.nm_step**2
+                )
             return value, error
         case FilterSet():
             value = cast(npt.NDArray[np.floating], np.einsum('ij, j... -> i...', bandpass.matrix, sd))

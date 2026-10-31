@@ -71,6 +71,7 @@ words = [
     "kms",
     "linalg",
     "longward",
+    "monkeypatch",
     "mul",
     "multidim",
     "ndim",

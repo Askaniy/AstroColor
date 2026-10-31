@@ -30,7 +30,10 @@ class FilterObject(SpectralObject):
         return (self * self.wavelength_nm).normalized()
 
     @override
-    def determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]) -> Self:
+    def determine_at_trusted_wavelengths(self,
+        requested_wavelengths: npt.NDArray[np.integer],
+        attach_photospectral_obj: bool = True
+    ) -> Self:
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!
         See `get_spectrometry()` for the general case.

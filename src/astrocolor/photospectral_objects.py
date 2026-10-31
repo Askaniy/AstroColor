@@ -5,7 +5,7 @@ from typing import Self, cast, override
 import numpy as np
 import numpy.typing as npt
 
-from .algebra import make_same_ndim
+from .algebra import make_diagonal_covariance, make_same_ndim
 from .config import Config
 from .core import BaseObject, Cube, Item, Set, spectral_dist_dtype
 from .errors import (
@@ -74,7 +74,7 @@ class PhotospectralObject(BaseObject):
             if (len_error := len(uncertainty)) != len_values:
                 raise InconsistentUncertaintySizeError(len_error, len_values, name)
             if uncertainty.ndim == self.spectral_dist.ndim:
-                self.covariance_matrix = np.diag(uncertainty**2)
+                self.covariance_matrix = make_diagonal_covariance(uncertainty)
             elif uncertainty.ndim == self.spectral_dist.ndim + 1:
                 self.covariance_matrix = uncertainty
             else:
@@ -117,13 +117,16 @@ class PhotospectralObject(BaseObject):
         else:
             return deepcopy(self)
 
-    def determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]):
+    def determine_at_trusted_wavelengths(self,
+        requested_wavelengths: npt.NDArray[np.integer],
+        attach_photospectral_obj: bool = True
+    ):
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!
         See `get_spectrometry()` for the general case.
         """
         from .reconstructed_objects import spectral_reconstruction
-        obj = spectral_reconstruction(self, requested_wavelengths)
+        obj = spectral_reconstruction(self, requested_wavelengths, attach_photospectral_obj=attach_photospectral_obj)
         return obj
 
     @override
@@ -138,18 +141,18 @@ class PhotospectralObject(BaseObject):
         operation (addition or subtraction) with a SpectralObject or another
         PhotospectralObject.
 
-        The filter system of the second object, if it does not match, is converted
-        to the filter system of the first object!
+        The filter set of the second object, if it does not match, is converted
+        to the filter set of the first object!
         """
         filter_set = self.filter_set
         from .spectral_objects import SpectralObject
         if isinstance(other, PhotospectralObject):
             if other.filter_set != filter_set:
-                # Converting to a PhotospectralObject of the same filter system
+                # Converting to a PhotospectralObject of the same filter set
                 from .measurements import get_photometry
                 other = get_photometry(other, filter_set)
         elif isinstance(other, SpectralObject):
-            # Converting to a PhotospectralObject of the same filter system
+            # Converting to a PhotospectralObject of the same filter set
             from .measurements import get_photometry
             other = get_photometry(other, filter_set)
         else:
@@ -179,10 +182,6 @@ class PhotospectralObject(BaseObject):
         instead of using the resulting spectrum.
         """
         from .measurements import get_photometry, get_spectrometry
-        from .reconstructed_objects import (
-            ReconstructedSpectralObject,
-            spectral_reconstruction,
-        )
         from .spectral_objects import (
             SpectralCube,
             SpectralObject,
@@ -196,22 +195,8 @@ class PhotospectralObject(BaseObject):
         filter_set = self.filter_set
         target_nm = filter_set.wavelength_nm
 
-        def to_spectrum(obj: SpectralObject | PhotospectralObject) -> SpectralObject:
-            if isinstance(obj, PhotospectralObject):
-                obj = spectral_reconstruction(
-                    obj, target_nm, attach_photospectral_obj=False
-                )
-            # The current spectrum of an already reconstructed object must be used,
-            # not its raw photometry re-reconstructed by `get_spectrometry()`.
-            elif isinstance(obj, ReconstructedSpectralObject) and obj.photospectral_obj is not None:
-                obj = deepcopy(obj)
-                obj.photospectral_obj = None
-            if np.array_equal(obj.wavelength_nm, target_nm):
-                return obj
-            return get_spectrometry(obj, target_nm, strictly=True)
-
-        left = to_spectrum(self)
-        right = to_spectrum(other)
+        left = get_spectrometry(self, target_nm, strictly=True, attach_photospectral_obj=False)
+        right = get_spectrometry(other, target_nm, strictly=True, attach_photospectral_obj=False)
         left_value, right_value = make_same_ndim(left.spectral_dist, right.spectral_dist)
         value = value_handling(left_value, right_value)
         # Confidence bands for spectral sets and cubes are not computed by the reconstruction.

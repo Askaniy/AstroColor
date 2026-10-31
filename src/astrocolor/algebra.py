@@ -8,7 +8,10 @@ def make_same_ndim(
     arr1: npt.ArrayLike,
     arr2: npt.ArrayLike
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    """ Equalizes the arrays dimensions along spatial axes to make it possible to broadcast """
+    """
+    Equalizes the arrays dimensions along spatial axes
+    to make it possible to broadcast.
+    """
     arr1 = np.asarray(arr1)
     arr2 = np.asarray(arr2)
     if (ndim_delta := arr2.ndim - arr1.ndim) != 0:
@@ -17,6 +20,91 @@ def make_same_ndim(
         else:
             arr2 = arr2.reshape(arr2.shape + (1,) * (-ndim_delta))
     return arr1, arr2
+
+
+def _make_diagonal_covariance_from_variance(
+    var: npt.ArrayLike
+) -> npt.NDArray[np.floating]:
+    """
+    Builds a covariance matrix `(n, n, *spatial)`
+    from variances `(n, *spatial)`.
+    """
+    var = np.asarray(var, dtype=np.float64)
+    n = cast(int, var.shape[0])
+    cov = np.zeros((n, n, *var.shape[1:]), dtype=np.float64)
+    indices = np.arange(n)
+    cov[indices, indices] = var
+    return cov
+
+def make_diagonal_covariance(
+    std: npt.ArrayLike
+) -> npt.NDArray[np.floating]:
+    """
+    Builds a covariance matrix `(n, n, *spatial)`
+    from standard deviations `(n, *spatial)`.
+    """
+    std = np.asarray(std, dtype=np.float64)
+    return _make_diagonal_covariance_from_variance(std**2)
+
+def get_standard_deviation(
+    cov: npt.ArrayLike
+) -> npt.NDArray[np.floating]:
+    """
+    Extracts standard deviations `(n, *spatial)`
+    from a covariance matrix `(n, n, *spatial)`.
+    """
+    cov = np.asarray(cov, dtype=np.float64)
+    return np.sqrt(cast(npt.NDArray[np.floating], np.einsum('ii...->i...', cov)))
+
+
+def _prepare_covariance(
+    cov: npt.ArrayLike,
+    mean: npt.NDArray[np.floating]
+) -> npt.NDArray[np.floating]:
+    """ Brings a covariance or variance array to the `(n, n, *spatial)` form. """
+    cov = np.asarray(cov, dtype=np.float64)
+    if mean.ndim == 0:
+        return cov
+    n = cast(int, mean.shape[0])
+    if cov.shape == mean.shape:
+        return _make_diagonal_covariance_from_variance(cov)
+    if cov.ndim == 1 and cov.shape[0] == n:
+        cov = _make_diagonal_covariance_from_variance(cov)
+    if cov.ndim >= 2 and cov.shape[:2] == (n, n):
+        extra = mean.ndim - (cov.ndim - 1)
+        if extra < 0:
+            raise ValueError(f'Covariance shape {cov.shape} does not match data shape {mean.shape}')
+        return cov.reshape((*cov.shape, *((1,) * extra)))
+    raise ValueError(f'Covariance shape {cov.shape} does not match data shape {mean.shape}')
+
+
+def _covariance_term(
+    mean: npt.ArrayLike,
+    cov: npt.ArrayLike | None,
+    weight: npt.NDArray[np.floating]
+) -> npt.NDArray[np.floating] | None:
+    """ Returns `cov[i, j] * weight[i] * weight[j]` for the first-order propagation. """
+    if cov is None:
+        return None
+    mean = np.asarray(mean, dtype=np.float64)
+    if mean.ndim == 0:
+        return _make_diagonal_covariance_from_variance(weight**2 * float(cov))
+    cov = _prepare_covariance(cov, mean)
+    target_ndim = weight.ndim + 1
+    if cov.ndim < target_ndim:
+        cov = cov.reshape((*cov.shape, *((1,) * (target_ndim - cov.ndim))))
+    target_shape = (weight.shape[0], weight.shape[0], *weight.shape[1:])
+    return np.broadcast_to(cov, target_shape) * weight[:, np.newaxis] * weight[np.newaxis, :]
+
+
+def _broadcast_means(
+    mean_x: npt.ArrayLike,
+    mean_y: npt.ArrayLike
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """ Broadcasts two data arrays along their common spectral and spatial axes. """
+    mean_x, mean_y = make_same_ndim(mean_x, mean_y)
+    x_values, y_values = np.broadcast_arrays(mean_x, mean_y)
+    return x_values, y_values
 
 
 # 1. Addition
@@ -81,10 +169,6 @@ def mul_value(
             mean_x, mean_y = mean_y, mean_x
         return (mean_x.T * mean_y).T
 
-# mul_error() was updated with AI and passed clean-up and checks, but needs more.
-# TODO:
-# - ensure spectral sets and cubes processing, "array.reshape(-1)" approach may break it
-# - apply similar improvements to all operations
 def mul_error(
     mean_x: npt.ArrayLike,
     cov_x: npt.ArrayLike | None,
@@ -92,141 +176,29 @@ def mul_error(
     cov_y: npt.ArrayLike | None
 ) -> npt.NDArray[np.floating] | None:
     """
-    Computes the covariance matrix of the product z = x * y
+    Computes the covariance of the product z = x * y:
+    cov_z[i, j] = cov_x[i, j] * y[i] * y[j] + cov_y[i, j] * x[i] * x[j].
 
-    Uses the error propagation formula:
-    cov_z = diag(y) @ cov_x @ diag(y) + diag(x) @ cov_y @ diag(x)
-
-    Parameters
-    ----------
-    mean_x : array-like or scalar
-        Mean values of x
-    cov_x : array-like or None
-        Covariance matrix of x (shape (n, n)) or variance vector (shape (n,))
-        For scalars - variance (number). None if no uncertainty.
-    mean_y : array-like or scalar
-        Mean values of y
-    cov_y : array-like or None
-        Covariance matrix of y (shape (n, n)) or variance vector (shape (n,))
-        For scalars - variance (number). None if no uncertainty.
-
-    Returns
-    -------
-    cov_z : ndarray of shape (n, n), float, or None
-        Covariance matrix of the product z = x * y
-        For scalars returns a number (variance)
-        If both uncertainties are None, returns None
-
-    Examples
-    --------
-    >>> # Multiplication of two scalars with errors
-    >>> mul_error(10, 4, 20, 25)  # dx^2=4, dy^2=25
-    700.0
-
-    >>> # Multiplication of scalar by array
-    >>> mul_error(3, None, [1, 2, 3], [0.1, 0.2, 0.3])
-    array([[0.9, 0. , 0. ],
-           [0. , 1.8, 0. ],
-           [0. , 0. , 2.7]])
-
-    >>> # Multiplication of arrays with correlation
-    >>> x = [1, 2, 3]
-    >>> cov_x = [[0.1, 0.02], [0.02, 0.2]]  # incomplete example
-    >>> y = [4, 5, 6]
-    >>> result = mul_error(x, cov_x, y, None)
+    Supports scalars, 1D arrays and arrays with spatial axes. Covariances are
+    expected in the `(n, n, *spatial)` form; variance arrays are accepted too.
     """
     if cov_x is None and cov_y is None:
         return None
-
-    # Convert to numpy arrays
-    mean_x_arr = np.asarray(mean_x)
-    mean_y_arr = np.asarray(mean_y)
-
-    # Determine dimensionalities
-    x_is_scalar = mean_x_arr.ndim == 0
-    y_is_scalar = mean_y_arr.ndim == 0
-
-    # Case 1: Both scalars
-    if x_is_scalar and y_is_scalar:
+    mean_x = np.asarray(mean_x, dtype=np.float64)
+    mean_y = np.asarray(mean_y, dtype=np.float64)
+    if mean_x.ndim == 0 and mean_y.ndim == 0:
         cov_z = 0.
         if cov_x is not None:
-            cov_z += (float(mean_y_arr) ** 2) * float(cov_x)
+            cov_z += float(mean_y)**2 * float(cov_x)
         if cov_y is not None:
-            cov_z += (float(mean_x_arr) ** 2) * float(cov_y)
-
-    # Cases 2 and 3: x is scalar, y is array OR y is scalar, x is array
-    elif x_is_scalar or y_is_scalar:
-        mean_scalar = mean_x if x_is_scalar else mean_y
-        mean_array = mean_x_arr if y_is_scalar else mean_y_arr
-        var_scalar = cov_x if x_is_scalar else cov_y
-        cov_array = cov_x if y_is_scalar else cov_y
-
-        # Flatten to 1D if needed
-        if mean_array.ndim > 1:
-            mean_arr_flat = mean_array.reshape(-1)
-        else:
-            mean_arr_flat = mean_array
-
-        n = len(mean_arr_flat)
-        cov_z = np.zeros((n, n))
-
-        if cov_array is not None:
-            # If cov_array is already a matrix (n, n)
-            if hasattr(cov_array, 'shape') and len(np.asarray(cov_array).shape) == 2:
-                cov_array = np.asarray(cov_array)
-            else:
-                # If cov_y is a variance vector, create diagonal matrix
-                cov_array = np.diag(np.asarray(cov_array))
-
-            # First part: scalar^2 * cov_array
-            cov_z += (float(mean_scalar) ** 2) * cov_array
-
-        if var_scalar is not None:
-            # Second part: diag(array^2 * var_scalar)
-            cov_z += np.diag(mean_arr_flat**2 * float(var_scalar))
-
-    # Case 4: Both arrays
+            cov_z += float(mean_x)**2 * float(cov_y)
     else:
-        # Flatten to 1D if needed
-        if mean_x_arr.ndim > 1:
-            mean_x_flat = mean_x_arr.reshape(-1)
-        else:
-            mean_x_flat = mean_x_arr
-
-        if mean_y_arr.ndim > 1:
-            mean_y_flat = mean_y_arr.reshape(-1)
-        else:
-            mean_y_flat = mean_y_arr
-
-        # Check size compatibility
-        n_x = len(mean_x_flat)
-        n_y = len(mean_y_flat)
-        if n_x != n_y:
-            raise ValueError(
-                f'Incompatible sizes: x has {n_x} elements, y has {n_y} elements'
-            )
-
-        n = n_x
-        cov_z = np.zeros((n, n))
-
-        if cov_x is not None:
-            # Convert cov_x to matrix if needed
-            if hasattr(cov_x, 'shape') and len(np.asarray(cov_x).shape) == 2:
-                cov_x_arr = np.asarray(cov_x)
-            else:
-                cov_x_arr = np.diag(np.asarray(cov_x))
-            diag_y = np.diag(mean_y_flat)
-            cov_z += diag_y @ cov_x_arr @ diag_y
-
-        if cov_y is not None:
-            # Convert cov_y to matrix if needed
-            if hasattr(cov_y, 'shape') and len(np.asarray(cov_y).shape) == 2:
-                cov_y_arr = np.asarray(cov_y)
-            else:
-                cov_y_arr = np.diag(np.asarray(cov_y))
-            diag_x = np.diag(mean_x_flat)
-            cov_z += diag_x @ cov_y_arr @ diag_x
-
+        x_values, y_values = _broadcast_means(mean_x, mean_y)
+        terms = (
+            _covariance_term(mean_x, cov_x, y_values),
+            _covariance_term(mean_y, cov_y, x_values),
+        )
+        cov_z = sum(term for term in terms if term is not None)
     return cov_z if not np.allclose(cov_z, 0) else None
 
 
@@ -259,19 +231,28 @@ def div_error(
     mean_y: npt.ArrayLike,
     cov_y: npt.ArrayLike | None
 ) -> npt.NDArray[np.floating] | None:
-    mean_x = np.asarray(mean_x)
-    mean_y = np.asarray(mean_y)
+    """
+    Computes the covariance of the quotient z = x / y by first-order propagation.
+    Supports scalars, 1D arrays and arrays with spatial axes.
+    """
     if cov_x is None and cov_y is None:
         return None
-    else:
-        n = cast(int, mean_x.shape[0])
-        cov_z = np.zeros((n, n)) # TODO: fix the case of x.ndim != y.ndim
+    mean_x = np.asarray(mean_x, dtype=np.float64)
+    mean_y = np.asarray(mean_y, dtype=np.float64)
+    if mean_x.ndim == 0 and mean_y.ndim == 0:
+        cov_z = 0.
         if cov_x is not None:
-            cov_x = np.asarray(cov_x)
-            cov_z += cov_x
+            cov_z += float(cov_x) / float(mean_y)**2
         if cov_y is not None:
-            cov_y = np.asarray(cov_y)
-            diag_z = np.diag(div_value(mean_x, mean_y))
-            cov_z += diag_z @ cov_y @ diag_z
-        diag_y_inv = np.diag(1 / mean_y)
-        return diag_y_inv @ cov_z @ diag_y_inv
+            cov_z += float(mean_x)**2 * float(cov_y) / float(mean_y)**4
+    else:
+        x_values, y_values = _broadcast_means(mean_x, mean_y)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            weight_x = 1 / y_values
+            weight_y = x_values / y_values**2
+        terms = (
+            _covariance_term(mean_x, cov_x, weight_x),
+            _covariance_term(mean_y, cov_y, weight_y),
+        )
+        cov_z = sum(term for term in terms if term is not None)
+    return cov_z if not np.allclose(cov_z, 0) else None

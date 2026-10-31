@@ -2,10 +2,18 @@ import warnings
 from typing import cast
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 import astrocolor as ac
-from astrocolor.algebra import mul_error, mul_value
+from astrocolor.algebra import (
+    div_error,
+    get_standard_deviation,
+    make_diagonal_covariance,
+    mul_error,
+    mul_value,
+)
+from astrocolor.config import Config
 from astrocolor.errors import ErasingCorrelationsWarning
 
 
@@ -342,3 +350,115 @@ class TestNormalization:
             ac.get_photometry(ac.vega_calspec, ubv_filterset).spectral_dist,
             rtol=0.01,
         )
+
+
+class TestCovariance:
+
+    def test_spectral_set_std_array_roundtrip(self):
+        nm = np.arange(500, 516, 5)
+        std = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6], [0.7, 0.8]])
+        obj = ac.SpectralSet(nm, np.ones((4, 2)), std)
+        assert obj.covariance_matrix is not None
+        assert obj.covariance_matrix.shape == (4, 4, 2)
+        assert isinstance(obj.standard_deviation, np.ndarray)
+        np.testing.assert_allclose(obj.standard_deviation, std)
+
+    def test_photospectral_set_std_array_roundtrip(self, ubv_filterset: ac.FilterSet):
+        std = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]])
+        obj = ac.PhotospectralSet(ubv_filterset, np.ones((3, 2)), std)
+        assert obj.covariance_matrix is not None
+        assert obj.covariance_matrix.shape == (3, 3, 2)
+        assert isinstance(obj.standard_deviation, np.ndarray)
+        np.testing.assert_allclose(obj.standard_deviation, std)
+
+    def test_unsorted_covariance_is_reordered_on_both_axes(self):
+        nm0 = np.arange(400, 431, 5)
+        order = np.array([3, 1, 5, 0, 6, 2, 4])
+        cov = np.arange(49.).reshape(7, 7) + np.eye(7)
+        obj = ac.Spectrum(nm0[order], np.arange(1., 8.), cov)
+        assert isinstance(obj.covariance_matrix, np.ndarray)
+        np.testing.assert_allclose(
+            obj.covariance_matrix,
+            cov[np.ix_(np.argsort(nm0[order]), np.argsort(nm0[order]))],
+        )
+
+    def test_determine_at_trusted_wavelengths_keeps_covariance_shape(self):
+        nm = np.arange(500, 601, 5)
+        std = np.ones((nm.size, 2)) * 0.1
+        obj = ac.SpectralSet(nm, np.ones((nm.size, 2)), std)
+        output = obj.determine_at_trusted_wavelengths(np.arange(490, 611, 5))
+        assert output.covariance_matrix is not None
+        assert output.covariance_matrix.shape == (output.spectral_size, output.spectral_size, 2)
+        assert output.standard_deviation is not None
+        np.testing.assert_allclose(output.standard_deviation[1:-1], np.ones((output.spectral_size - 2, 2)) * 0.1)
+
+    def test_cube_covariance_is_extrapolated_along_spatial_axes(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(Config, 'ignore_uncertainty_for_cubes', False)
+        nm = np.arange(500, 601, 5)
+        std = np.ones((nm.size, 2, 2)) * 0.1
+        obj = ac.SpectralCube(nm, np.ones((nm.size, 2, 2)), std)
+        output = obj.determine_at_trusted_wavelengths(np.arange(490, 611, 5))
+        assert output.covariance_matrix is not None
+        assert output.covariance_matrix.shape == (output.spectral_size, output.spectral_size, 2, 2)
+        assert output.standard_deviation is not None
+        assert output.standard_deviation.shape == output.spectral_dist.shape
+
+    def test_mul_and_div_error_support_spatial_axes(self):
+        x = np.arange(1., 7.).reshape(3, 2)
+        y = np.full((3, 2), 2.)
+        std_x = np.full((3, 2), 0.1)
+        std_y = np.full((3, 2), 0.2)
+        cov_x = make_diagonal_covariance(std_x)
+        cov_y = make_diagonal_covariance(std_y)
+
+        product = mul_error(x, cov_x, y, cov_y)
+        assert product is not None
+        assert product.shape == (3, 3, 2)
+        expected_product_diag = (y * std_x)**2 + (x * std_y)**2
+        np.testing.assert_allclose(get_standard_deviation(product)**2, expected_product_diag)
+
+        quotient = div_error(x, cov_x, y, cov_y)
+        assert quotient is not None
+        assert quotient.shape == (3, 3, 2)
+        expected_quotient_diag = (std_x / y)**2 + (x * std_y / y**2)**2
+        np.testing.assert_allclose(get_standard_deviation(quotient)**2, expected_quotient_diag)
+
+    def test_single_filter_photometry_error_is_scalar_and_convolved(self):
+        nm = np.arange(500, 601, 5)
+        cov = np.diag(np.full(nm.size, 0.01))
+        spectrum = ac.Spectrum(nm, np.arange(1., nm.size + 1.), cov)
+        bandpass = ac.Filter.get('Generic/Bessell.V')
+        _, error = ac.get_photometry(spectrum, bandpass)
+        target = ac.get_spectrometry(spectrum, bandpass.wavelength_nm, strictly=True)
+        assert isinstance(target.covariance_matrix, np.ndarray)
+        expected = target.nm_step**2 * cast(npt.NDArray[np.floating], np.einsum(
+            'i,ij,j->', bandpass.spectral_dist, target.covariance_matrix, bandpass.spectral_dist
+        ))
+        assert error is not None
+        assert np.ndim(error) == 0
+        np.testing.assert_allclose(error, expected)
+
+    def test_filter_set_photometry_keeps_spatial_covariance(self, ubv_filterset: ac.FilterSet):
+        nm = ubv_filterset.wavelength_nm
+        std = np.ones((nm.size, 2)) * 0.1
+        spectral_set = ac.SpectralSet(nm, np.ones((nm.size, 2)) * 2, std)
+        photospectral_set = ac.get_photometry(spectral_set, ubv_filterset)
+        assert isinstance(photospectral_set, ac.PhotospectralSet)
+        assert photospectral_set.covariance_matrix is not None
+        assert photospectral_set.covariance_matrix.shape == (len(ubv_filterset), len(ubv_filterset), 2)
+        assert isinstance(spectral_set.covariance_matrix, np.ndarray)
+        expected = cast(npt.NDArray[np.floating], np.einsum(
+            'ij,jk...,lk->il...',
+            ubv_filterset.matrix,
+            spectral_set.covariance_matrix,
+            ubv_filterset.matrix,
+        ))
+        np.testing.assert_allclose(photospectral_set.covariance_matrix, expected)
+
+    def test_same_filter_photometry_is_identity_with_covariance(self, ubv_filterset: ac.FilterSet):
+        std = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]])
+        photospectral_set = ac.PhotospectralSet(ubv_filterset, np.ones((3, 2)), std)
+        output = ac.get_photometry(photospectral_set, ubv_filterset)
+        np.testing.assert_allclose(output.spectral_dist, photospectral_set.spectral_dist)
+        assert isinstance(output.standard_deviation, np.ndarray)
+        np.testing.assert_allclose(output.standard_deviation, std)

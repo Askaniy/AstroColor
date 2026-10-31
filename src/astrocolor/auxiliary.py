@@ -471,7 +471,7 @@ def extrap_std(
     x_arr: npt.NDArray[np.integer | np.floating]
 ) -> npt.NDArray[np.floating]:
     """ The exponential growth of uncertainty is completely arbitrary and needs to be investigated """
-    return corner_y * 0.05 * (1.01**x_arr - 1)
+    return np.multiply.outer(0.05 * (1.01**x_arr - 1), corner_y)
 
 
 weights_center_of_mass = 1 - 1 / cast(float, np.sqrt(2))
@@ -524,7 +524,6 @@ def extrapolating(
     The exponential growth of uncertainty is completely arbitrary and needs to be investigated.
     """
     spatial_shape = y.shape[1:] # (,) for 1D; (n,) for 2D; (w, h) for 3D
-    # std processing is currently broken for spectral cubes and sets
     if std is None:
         # Uncertainty is generated
         std = np.zeros_like(y)
@@ -540,7 +539,7 @@ def extrapolating(
     x_arr_1 = cast(float, x_arr[-1])
     if len(x) == 1: # filling with equal-energy spectrum
         x1 = np.arange(min(x_arr_0, x_0), max(x_arr_1, x_0) + step, step)
-        y1 = stretch(cast(npt.NDArray[np.floating], y[0]), x1.size)
+        y1 = np.moveaxis(stretch(cast(npt.NDArray[np.floating], y[0]), x1.size), -1, 0)
         std = extrap_std(cast(npt.NDArray[np.floating], std[0]), np.abs(x1 - x_0))
         x = x1
         y = y1
@@ -562,7 +561,7 @@ def extrapolating(
                     diff = np.average(np.diff(y_arr, axis=0), weights=avg_weights[:-1], axis=0)
                     corner_y = np.average(y_arr, weights=avg_weights, axis=0) - diff * avg_steps * weights_center_of_mass
                 y1 = custom_extrap(x1, diff/step, x_0, corner_y)
-                std1 = std_left + stretch(extrap_std(corner_y, np.arange(x_0-x_arr_0, 0, -step) - step), spatial_shape)
+                std1 = std_left + extrap_std(corner_y, np.arange(x_0-x_arr_0, 0, -step) - step)
             x = np.append(x1, x)
             y = np.append(y1, y, axis=0)
             std = np.append(std1, std, axis=0)
@@ -582,7 +581,7 @@ def extrapolating(
                     diff = np.average(np.diff(y_arr, axis=0), weights=avg_weights[1:], axis=0)
                     corner_y = np.average(y_arr, weights=avg_weights, axis=0) + diff * avg_steps * weights_center_of_mass
                 y1 = custom_extrap(x1, diff/step, x_1, corner_y)
-                std1 = std_right + stretch(extrap_std(corner_y, np.arange(0, x_arr_1-x_1, step)), spatial_shape)
+                std1 = std_right + extrap_std(corner_y, np.arange(0, x_arr_1-x_1, step))
             x = np.append(x, x1)
             y = np.append(y, y1, axis=0)
             std = np.append(std, std1, axis=0)

@@ -70,7 +70,10 @@ class ReconstructedSpectralObject[PhotospectralType: PhotospectralObject](Spectr
         self.photospectral_obj = photospectral_obj
 
     @override
-    def determine_at_trusted_wavelengths(self, requested_wavelengths: npt.NDArray[np.integer]):
+    def determine_at_trusted_wavelengths(self,
+        requested_wavelengths: npt.NDArray[np.integer],
+        attach_photospectral_obj: bool = True
+    ):
         """
         Directly uses the provided wavelength grid to create a new object.
         See `get_spectrometry()` for the general case.
