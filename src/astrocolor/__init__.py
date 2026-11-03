@@ -1,3 +1,4 @@
+from .celestial_objects import CelestialObject
 from .color import (
     ColorImage,
     ColorLine,
@@ -9,7 +10,6 @@ from .color import (
 )
 from .config import Config
 from .filter_objects import Filter, FilterSet
-from .json5_objects import EmittingBody, ReflectingBody, parse_json5_object
 from .measurements import get_photometry, get_spectrometry, scale_to_match_value
 from .photometric_models import (
     HG,
@@ -35,12 +35,12 @@ __all__ = (
     'HG',
     'HG1G2',
     'BlackBodyModel',
+    'CelestialObject',
     'ColorImage',
     'ColorLine',
     'ColorPoint',
     'ColorSystem',
     'Config',
-    'EmittingBody',
     'Exponentials',
     'Filter',
     'FilterSet',
@@ -52,13 +52,11 @@ __all__ = (
     'ReconstructedSpectralCube',
     'ReconstructedSpectralSet',
     'ReconstructedSpectrum',
-    'ReflectingBody',
     'SpectralCube',
     'SpectralSet',
     'Spectrum',
     'get_photometry',
     'get_spectrometry',
-    'parse_json5_object',
     'scale_to_match_value',
     'spectral_reconstruction',
     'spectral_reconstruction_experimental',
