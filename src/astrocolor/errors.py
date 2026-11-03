@@ -121,3 +121,18 @@ def empty_spectral_intersection_operator_warning(
         SpectralAxisWarning,
         stacklevel=2
     )
+
+class PhaseFunctionWarning(UserWarning):
+    pass
+
+def invalid_phase_function_warning(count: int, name: object = None) -> None:
+    msg = f'Invalid number of `phase_function` arguments: {count} (should be 2 or 3)'
+    if name is not None:
+        msg += f' for "{name}"'
+    warnings.warn(msg + '.', PhaseFunctionWarning, stacklevel=2)
+
+def unsupported_phase_function_warning(model_name: str, name: object = None) -> None:
+    msg = f'Phase function model "{model_name}" is not supported'
+    if name is not None:
+        msg += f' for "{name}"'
+    warnings.warn(msg + '.', PhaseFunctionWarning, stacklevel=2)
