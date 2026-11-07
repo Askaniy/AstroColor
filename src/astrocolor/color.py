@@ -216,8 +216,11 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
         Attention! For saturated colors, color system conversion is not always reversible!
         """
         output = deepcopy(self)
-        output.spectral_dist, output.covariance_matrix \
-            = new_color_system.xyz_to_rgb(*self._color_system.rgb_to_xyz(self.spectral_dist))
+        xyz_values, xyz_covariance = self._color_system.rgb_to_xyz(
+            self.spectral_dist, self.covariance_matrix
+        )
+        output.spectral_dist, output.covariance_matrix = \
+            new_color_system.xyz_to_rgb(xyz_values, xyz_covariance)
         if np.any(output.spectral_dist < 0):
             # We're not in the color system gamut: approximate by desaturating
             # 1D implementation: rgb -= np.min(rgb)
@@ -340,6 +343,7 @@ class ColorImage(ColorObject[SpectralCube | PhotospectralCube]):
         start_time = monotonic()
         flatten_cube = data.flatten()
         flatten_img = np.empty((3, px_num))
+        flatten_cov: npt.NDArray[np.floating] | None = None
         batch_num = ceil(px_num / px_limit)
         for i in range(batch_num):
             j = i + 1
@@ -349,13 +353,23 @@ class ColorImage(ColorObject[SpectralCube | PhotospectralCube]):
                 batch = flatten_cube[x0:x1]
             except IndexError:
                 batch = flatten_cube[x0:]
-            flatten_img[:, x0:x1] = ColorLine.from_spectral_data(batch).spectral_dist
+            batch_color = ColorLine.from_spectral_data(batch)
+            flatten_img[:, x0:x1] = batch_color.spectral_dist
+            if batch_color.covariance_matrix is not None:
+                if flatten_cov is None:
+                    flatten_cov = np.zeros((3, 3, px_num))
+                flatten_cov[:, :, x0:x1] = batch_color.covariance_matrix
             print(f'Progress: {j} / {batch_num}')
         # End of processing, summarizing
         time = monotonic() - start_time
         speed = px_num / time
         print(f'Processing took {time:.1f} seconds ({speed:.1f} px/sec)')
-        return cls(flatten_img.reshape(3, data.width, data.height), color_system=xyz_color_system)
+        covariance = None if flatten_cov is None else flatten_cov.reshape(3, 3, data.width, data.height)
+        return cls(
+            flatten_img.reshape(3, data.width, data.height),
+            covariance,
+            color_system=xyz_color_system,
+        )
 
     def upscale(
         self,
@@ -363,7 +377,13 @@ class ColorImage(ColorObject[SpectralCube | PhotospectralCube]):
     ) -> 'ColorImage':
         """ Creates a new ColorImage with increased size by an integer number of times """
         output = deepcopy(self)
-        output.spectral_dist = np.repeat(np.repeat(output.spectral_dist, times, axis=0), times, axis=1)
+        output.spectral_dist = np.repeat(
+            np.repeat(output.spectral_dist, times, axis=1), times, axis=2
+        )
+        if output.covariance_matrix is not None:
+            output.covariance_matrix = np.repeat(
+                np.repeat(output.covariance_matrix, times, axis=2), times, axis=3
+            )
         return output
 
     def downscale(

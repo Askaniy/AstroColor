@@ -11,7 +11,6 @@ from .core import BaseObject, Cube, Item, Set, spectral_dist_dtype
 from .errors import (
     InconsistentAxesError,
     InconsistentDimensionError,
-    InconsistentUncertaintyShapeError,
     InconsistentUncertaintySizeError,
     nan_values_warning,
 )
@@ -73,12 +72,26 @@ class PhotospectralObject(BaseObject):
             uncertainty = np.array(uncertainty, dtype=spectral_dist_dtype)
             if (len_error := len(uncertainty)) != len_values:
                 raise InconsistentUncertaintySizeError(len_error, len_values, name)
-            if uncertainty.ndim == self.spectral_dist.ndim:
-                self.covariance_matrix = make_diagonal_covariance(uncertainty)
-            elif uncertainty.ndim == self.spectral_dist.ndim + 1:
+            is_cov_matrix = self._classify_uncertainty(
+                uncertainty, self.spectral_dist.shape, name
+            )
+            if is_cov_matrix:
+                if uncertainty.ndim == 2 and self.spectral_dist.ndim > 1:
+                    uncertainty = np.broadcast_to(
+                        uncertainty.reshape((
+                            len_values,
+                            len_values,
+                            *((1,) * (self.spectral_dist.ndim - 1)),
+                        )),
+                        (len_values, len_values, *self.spectral_dist.shape[1:]),
+                    ).copy()
+                self._validate_covariance(uncertainty, self.spectral_dist.shape, name)
                 self.covariance_matrix = uncertainty
             else:
-                raise InconsistentUncertaintyShapeError(uncertainty.ndim, self.spectral_dist.ndim, name)
+                self._validate_standard_deviation(
+                    uncertainty, self.spectral_dist.shape, name
+                )
+                self.covariance_matrix = make_diagonal_covariance(uncertainty)
 
     @override
     @classmethod

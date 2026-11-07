@@ -32,7 +32,7 @@ class InconsistentUncertaintySizeError(AstroColorError, ValueError):
         super().__init__(msg + '.')
 
 class InconsistentUncertaintyShapeError(AstroColorError, ValueError):
-    def __init__(self, shape_error: int, shape_values: int, name: object = None):
+    def __init__(self, shape_error: object, shape_values: object, name: object = None):
         msg = f'Uncertainty shape {shape_error} does not match the data shape {shape_values}'
         if name is not None:
             msg += f' for "{name}"'

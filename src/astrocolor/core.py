@@ -24,6 +24,7 @@ from .auxiliary import (
     spatial_downscaling,
     uniform_grid,
 )
+from .errors import InconsistentUncertaintyShapeError
 
 # For the sake of simplifying work with the spectrum,
 # its discretization step is fixed and frozen.
@@ -116,6 +117,67 @@ class BaseObject(UniformSpectralGrid):
     wavelength_nm_dtype: Final[npt.DTypeLike] = wavelength_nm_dtype
     spectral_dist_dtype: Final[npt.DTypeLike] = spectral_dist_dtype
     uncertainty_dtype: Final[npt.DTypeLike] = uncertainty_dtype
+
+    @staticmethod
+    def _classify_uncertainty(
+        uncertainty: npt.NDArray[np.floating],
+        data_shape: tuple[int, ...],
+        name: object = None
+    ) -> bool:
+        """
+        Returns `True` if `uncertainty` is a covariance matrix and `False`
+        if it is an array of standard deviations.
+
+        Covariance matrices are accepted as `(n, n, *spatial)`; for
+        convenience, a shared `(n, n)` matrix is accepted for objects with
+        spatial axes as well.
+        """
+        n = data_shape[0]
+        if uncertainty.ndim == len(data_shape):
+            if uncertainty.shape == data_shape:
+                return False
+            if uncertainty.ndim == 2 and uncertainty.shape == (n, n):
+                return True
+            raise InconsistentUncertaintyShapeError(uncertainty.shape, data_shape, name)
+        if uncertainty.ndim == len(data_shape) + 1:
+            expected_shape = (n, n, *data_shape[1:])
+            if uncertainty.shape == expected_shape:
+                return True
+            raise InconsistentUncertaintyShapeError(uncertainty.shape, expected_shape, name)
+        if uncertainty.ndim == 2 and uncertainty.shape == (n, n):
+            return True
+        raise InconsistentUncertaintyShapeError(uncertainty.shape, data_shape, name)
+
+    @staticmethod
+    def _validate_standard_deviation(
+        std: npt.NDArray[np.floating],
+        data_shape: tuple[int, ...],
+        name: object = None
+    ) -> None:
+        """ Validates a standard-deviation array before it is converted to a covariance matrix. """
+        if std.shape != data_shape:
+            raise InconsistentUncertaintyShapeError(std.shape, data_shape, name)
+        if not np.all(np.isfinite(std)):
+            raise ValueError(f'Standard deviations contain non-finite values for "{name}"')
+        if np.any(std < 0):
+            raise ValueError(f'Standard deviations contain negative values for "{name}"')
+
+    @staticmethod
+    def _validate_covariance(
+        cov: npt.NDArray[np.floating],
+        data_shape: tuple[int, ...],
+        name: object = None
+    ) -> None:
+        """ Validates the shape and basic numerical properties of a covariance matrix. """
+        expected_shape = (data_shape[0], data_shape[0], *data_shape[1:])
+        if cov.shape != expected_shape:
+            raise InconsistentUncertaintyShapeError(cov.shape, expected_shape, name)
+        if not np.all(np.isfinite(cov)):
+            raise ValueError(f'Covariance matrix contains non-finite values for "{name}"')
+        diagonal = np.diagonal(cov, axis1=0, axis2=1)
+        scale = max(1.0, float(cast(float, np.max(np.abs(cov)))))
+        if np.any(diagonal < -1e-10 * scale):
+            raise ValueError(f'Covariance matrix contains negative variances for "{name}"')
 
     @property
     def spectral_size(self) -> int:

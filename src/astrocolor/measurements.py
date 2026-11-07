@@ -7,7 +7,7 @@ import numpy.typing as npt
 
 from astrocolor.errors import (
     InconsistentAxesError,
-    InconsistentUncertaintySizeError,
+    InconsistentUncertaintyShapeError,
     UnsupportedDimensionError,
 )
 
@@ -203,8 +203,14 @@ def get_spectrometry(
     # Sanity checks
     if (len_nm := spectral_obj.wavelength_nm.size) != (len_values := len(spectral_obj.spectral_dist)):
         raise InconsistentAxesError(len_nm, len_values, spectral_obj.name)
-    if spectral_obj.covariance_matrix is not None and (len_error := len(spectral_obj.covariance_matrix)) != len_nm:
-        raise InconsistentUncertaintySizeError(len_error, len_values, spectral_obj.name)
+    if spectral_obj.covariance_matrix is not None:
+        expected_shape = (len_nm, len_nm, *spectral_obj.spectral_dist.shape[1:])
+        if spectral_obj.covariance_matrix.shape != expected_shape:
+            raise InconsistentUncertaintyShapeError(
+                spectral_obj.covariance_matrix.shape,
+                expected_shape,
+                spectral_obj.name,
+            )
     return spectral_obj
 
 
@@ -246,7 +252,7 @@ def get_photometry(
 def get_photometry(
     target: SpectralObject | PhotospectralObject,
     bandpass: Filter | FilterSet
-) -> tuple[float, float | None] | PhotospectralObject:
+) -> tuple[float, float | npt.NDArray[np.floating] | None] | PhotospectralObject:
     """
     Implementation of convolution between a (photo)spectral object and a filter or a filter set.
     Ignores the uncertainty of filter profiles.

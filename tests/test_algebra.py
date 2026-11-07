@@ -13,9 +13,18 @@ from astrocolor.algebra import (
     make_diagonal_covariance,
     mul_error,
     mul_value,
+    propagate_covariance,
+)
+from astrocolor.auxiliary import (
+    interpolation_matrix,
+    spectral_binning,
+    spectral_binning_matrix,
 )
 from astrocolor.config import Config
-from astrocolor.errors import ErasingCorrelationsWarning
+from astrocolor.errors import (
+    ErasingCorrelationsWarning,
+    InconsistentUncertaintyShapeError,
+)
 
 
 @overload
@@ -404,12 +413,12 @@ class TestPhotospectralMultiplication:
         # What using the current (narrow-range) spectrum and extrapolating it would give.
         extrapolated = deepcopy(reconstructed)
         extrapolated.photospectral_obj = None
-        extrapolated = ac.get_spectrometry(
+        extrapolated = cast(ac.Spectrum, ac.get_spectrometry(
             extrapolated,
             nm,
             strictly=True,
             attach_photospectral_obj=False,
-        )
+        ))
         expected_extrapolated = synthetic_product(left, extrapolated, ubv_filterset)
 
         result = photospectrum * reconstructed
@@ -610,3 +619,304 @@ class TestCovariance:
         np.testing.assert_allclose(output.spectral_dist, photospectral_set.spectral_dist)
         assert isinstance(output.standard_deviation, np.ndarray)
         np.testing.assert_allclose(output.standard_deviation, std)
+
+
+def correlated_covariance(
+    n: int,
+    spatial_shape: tuple[int, ...] = (),
+    seed: int = 0,
+) -> np.ndarray:
+    """A deterministic symmetric positive-definite covariance matrix."""
+    rng = np.random.default_rng(seed)
+    matrix = rng.normal(size=(n, n))
+    covariance = matrix @ matrix.T / n + np.eye(n) * 0.1
+    if spatial_shape:
+        covariance = np.broadcast_to(
+            covariance.reshape(n, n, *((1,) * len(spatial_shape))),
+            (n, n, *spatial_shape),
+        ).copy()
+    return covariance
+
+
+class TestCovarianceHandling:
+
+    def test_determine_at_trusted_wavelengths_preserves_correlations_on_same_grid(self):
+        nm = np.arange(500, 601, 5)
+        covariance = correlated_covariance(nm.size)
+        obj = ac.Spectrum(nm, np.ones(nm.size), covariance)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', ErasingCorrelationsWarning)
+            output = obj.determine_at_trusted_wavelengths(nm)
+
+        output_covariance = output.covariance_matrix
+        assert output_covariance is not None
+        np.testing.assert_allclose(output_covariance, covariance)
+
+    def test_determine_at_trusted_wavelengths_keeps_old_block_when_extending(self):
+        nm = np.arange(500, 601, 5)
+        covariance = correlated_covariance(nm.size)
+        obj = ac.Spectrum(nm, np.ones(nm.size), covariance)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', ErasingCorrelationsWarning)
+            output = obj.determine_at_trusted_wavelengths(np.arange(490, 611, 5))
+
+        old_indices = np.searchsorted(output.wavelength_nm, nm)
+        assert output.covariance_matrix is not None
+        assert output.covariance_matrix.shape == (output.spectral_size, output.spectral_size)
+        np.testing.assert_allclose(
+            output.covariance_matrix[np.ix_(old_indices, old_indices)],
+            covariance,
+        )
+
+    def test_photometry_uses_full_covariance(self):
+        nm = np.arange(470, 711, 5)
+        covariance = correlated_covariance(nm.size)
+        obj = ac.Spectrum(nm, np.ones(nm.size), covariance)
+        bandpass = ac.Filter.get('Generic/Bessell.V')
+
+        _, error = ac.get_photometry(obj, bandpass)
+
+        target = ac.get_spectrometry(obj, bandpass.wavelength_nm, strictly=True)
+        assert target.covariance_matrix is not None
+        expected = cast(float, target.nm_step**2 * np.einsum(
+            'i,ij,j->',
+            bandpass.spectral_dist,
+            target.covariance_matrix,
+            bandpass.spectral_dist,
+        ))
+        assert error is not None
+        np.testing.assert_allclose(float(error), expected)
+
+    def test_constructor_interpolates_full_covariance(self):
+        nm = np.array([500., 512., 524., 536., 548., 560., 572., 584., 596.])
+        covariance = correlated_covariance(nm.size)
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', ErasingCorrelationsWarning)
+            obj = ac.Spectrum(nm, np.ones(nm.size), covariance)
+
+        operator = interpolation_matrix(nm, obj.wavelength_nm, obj.nm_step)
+        expected = propagate_covariance(covariance, operator)
+        covariance = obj.covariance_matrix
+        assert covariance is not None
+        np.testing.assert_allclose(covariance, expected)
+
+    def test_constructor_bins_full_covariance(self):
+        nm = np.arange(500., 600., 2.5)
+        covariance = correlated_covariance(nm.size)
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', ErasingCorrelationsWarning)
+            obj = ac.Spectrum(nm, np.ones(nm.size), covariance)
+
+        operator = spectral_binning_matrix(
+            nm, obj.wavelength_nm, obj.nm_step, np.diff(nm), nm.size
+        )
+        expected = propagate_covariance(covariance, operator)
+        covariance = obj.covariance_matrix
+        assert covariance is not None
+        np.testing.assert_allclose(covariance, expected)
+
+    def test_constructor_still_warns_for_spectral_downscaling(self):
+        nm = np.array([500., 502., 510., 512., 520., 522., 530., 532., 540., 542.])
+        covariance = correlated_covariance(nm.size)
+        with pytest.warns(ErasingCorrelationsWarning):
+            obj = ac.Spectrum(nm, np.ones(nm.size), covariance)
+        assert obj.covariance_matrix is not None
+
+    def test_emission_spectrum_preserves_cross_line_correlations(self):
+        nm = np.array([500., 600.])
+        covariance = np.array([[0.01, 0.008], [0.008, 0.04]])
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', ErasingCorrelationsWarning)
+            obj = ac.Spectrum(nm, np.array([1., 2.]), covariance, is_emission_spectrum=True)
+
+        first_kernel = ac.Spectrum.monochromatic(cast(float, nm[0]))
+        last_kernel = ac.Spectrum.monochromatic(cast(float, nm[1]))
+        nm_min, nm_max = last_kernel.get_extremal_grid_endpoints(
+            (first_kernel.wavelength_nm[0], last_kernel.wavelength_nm[-1])
+        )
+        nm_uniform = last_kernel.uniform_grid(nm_min, nm_max)
+        kernel_matrix = np.empty((nm_uniform.size, nm.size))
+        for i in range(nm.size):
+            line = ac.Spectrum.monochromatic(cast(float, nm[i])).determine_at_trusted_wavelengths(
+                nm_uniform
+            )
+            kernel_matrix[:, i] = line.spectral_dist
+
+        expected = propagate_covariance(covariance, kernel_matrix)
+        assert obj.covariance_matrix is not None
+        np.testing.assert_allclose(obj.covariance_matrix, expected)
+        assert np.any(np.abs(obj.covariance_matrix - np.diag(np.diag(obj.covariance_matrix))) > 1e-12)
+
+    def test_normalize_updates_covariance(self):
+        nm = np.arange(500, 601, 5)
+        std = np.ones(nm.size) * 0.1
+        obj = ac.Spectrum(nm, np.ones(nm.size) * 2, std)
+        expected = obj.normalized().covariance_matrix
+        old_covariance = obj.covariance_matrix
+        assert old_covariance is not None
+        old_covariance = old_covariance.copy()
+
+        obj.normalize()
+
+        covariance = obj.covariance_matrix
+        assert covariance is not None
+        assert expected is not None
+        np.testing.assert_allclose(covariance, expected)
+        assert not np.allclose(covariance, old_covariance)
+
+    def test_edges_to_zero_updates_covariance(self):
+        nm = np.arange(500, 601, 5)
+        std = np.ones(nm.size) * 0.1
+        obj = ac.Spectrum(nm, np.ones(nm.size), std)
+        old_covariance = obj.covariance_matrix
+        assert old_covariance is not None
+        old_covariance = old_covariance.copy()
+
+        obj.edges_to_zero()
+
+        covariance = obj.covariance_matrix
+        assert covariance is not None
+        assert covariance.shape == (obj.spectral_size, obj.spectral_size)
+        np.testing.assert_allclose(covariance[1:-1, 1:-1], old_covariance)
+        np.testing.assert_allclose(cast(npt.NDArray[np.floating], covariance[0]), 0)
+        np.testing.assert_allclose(cast(npt.NDArray[np.floating], covariance[-1]), 0)
+
+    def test_color_system_conversion_preserves_covariance(self):
+        covariance = np.array([[0.01, 0.002, 0.001],
+                               [0.002, 0.02, 0.003],
+                               [0.001, 0.003, 0.03]])
+        color = ac.ColorPoint(np.array([0.2, 0.3, 0.4]), covariance)
+        new_system = ac.ColorSystem('sRGB', 'Illuminant E')
+
+        converted = color.to_color_system(new_system)
+
+        xyz_values, xyz_covariance = color.color_system.rgb_to_xyz(
+            color.spectral_dist, color.covariance_matrix
+        )
+        _, expected_covariance = new_system.xyz_to_rgb(xyz_values, xyz_covariance)
+        assert expected_covariance is not None
+        covariance = converted.covariance_matrix
+        assert covariance is not None
+        np.testing.assert_allclose(covariance, expected_covariance)
+
+    def test_color_image_upscale_keeps_covariance_shape(self):
+        image = ac.ColorImage(
+            np.ones((3, 2, 3)),
+            np.ones((3, 3, 2, 3)) * 0.01,
+        )
+        upscaled = image.upscale(2)
+        assert upscaled.spectral_dist.shape == (3, 4, 6)
+        assert upscaled.covariance_matrix is not None
+        assert upscaled.covariance_matrix.shape == (3, 3, 4, 6)
+
+    def test_mixed_dimensional_addition_broadcasts_covariance(self):
+        nm = np.arange(500, 601, 5)
+        std = np.ones(nm.size) * 0.1
+        spectral_set = ac.SpectralSet(nm, np.ones((nm.size, 2)))
+        spectrum = ac.Spectrum(nm, np.ones(nm.size), std)
+
+        result = spectral_set + spectrum
+
+        assert result.covariance_matrix is not None
+        assert result.covariance_matrix.shape == (nm.size, nm.size, 2)
+        np.testing.assert_allclose(np.diag(result.covariance_matrix[:, :, 0]), std**2)
+
+    def test_mixed_dimensional_addition_broadcasts_into_cube(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(Config, 'ignore_uncertainty_for_cubes', False)
+        nm = np.arange(500, 601, 5)
+        std = np.ones((nm.size, 2)) * 0.1
+        spectral_cube = ac.SpectralCube(nm, np.ones((nm.size, 2, 2)))
+        spectral_set = ac.SpectralSet(nm, np.ones((nm.size, 2)), std)
+
+        result = spectral_cube + spectral_set
+
+        assert result.covariance_matrix is not None
+        assert result.covariance_matrix.shape == (nm.size, nm.size, 2, 2)
+
+    def test_invalid_covariance_shape_is_rejected(self):
+        nm = np.arange(500, 601, 5)
+        with pytest.raises(InconsistentUncertaintyShapeError):
+            _ = ac.Spectrum(nm, np.ones(nm.size), np.ones((nm.size, nm.size + 1)))
+
+    def test_nonfinite_and_negative_uncertainty_are_rejected(self):
+        nm = np.arange(500, 601, 5)
+        nan_covariance = np.eye(nm.size)
+        nan_covariance[0, 0] = np.nan
+        with pytest.raises(ValueError):
+            _ = ac.Spectrum(nm, np.ones(nm.size), nan_covariance)
+        with pytest.raises(ValueError):
+            _ = ac.Spectrum(nm, np.ones(nm.size), -np.ones(nm.size))
+
+    def test_shared_covariance_is_expanded_over_spatial_axes(self):
+        nm = np.arange(500, 601, 5)
+        covariance = np.eye(nm.size)
+        obj = ac.SpectralSet(nm, np.ones((nm.size, 2)), covariance)
+        assert obj.covariance_matrix is not None
+        assert obj.covariance_matrix.shape == (nm.size, nm.size, 2)
+        np.testing.assert_allclose(obj.covariance_matrix[:, :, 0], covariance)
+        np.testing.assert_allclose(obj.covariance_matrix[:, :, 1], covariance)
+
+    def test_spectral_binning_standard_deviation_uses_variances(self):
+        nm0 = np.array([400., 405., 410., 415., 420.])
+        nm1 = np.array([405, 410, 415])
+        br0 = np.ones(nm0.size)
+        std0 = np.array([0.1, 0.1, 0.2, 0.2, 0.2])
+        diff = np.diff(nm0)
+
+        _, std1 = spectral_binning(nm0, br0, std0, nm1, 5., diff)
+
+        operator = spectral_binning_matrix(nm0, nm1, 5., diff, nm0.size)
+        variance = cast(
+            npt.NDArray[np.floating],
+            np.einsum('ai,i...,ai->a...', operator, std0**2, operator),
+        )
+        expected = cast(npt.NDArray[np.floating], np.sqrt(variance))
+        assert std1 is not None
+        np.testing.assert_allclose(std1, expected)
+
+    def test_constructor_interpolation_of_standard_deviation_uses_variances(self):
+        nm = np.array([500., 512., 524., 536., 548., 560., 572., 584., 596.])
+        std = np.linspace(0.1, 0.2, nm.size)
+        obj = ac.Spectrum(nm, np.ones(nm.size), std)
+
+        operator = interpolation_matrix(nm, obj.wavelength_nm, obj.nm_step)
+        expected = np.sqrt(np.diag(
+            propagate_covariance(make_diagonal_covariance(std), operator)
+        ))
+        assert obj.covariance_matrix is not None
+        np.testing.assert_allclose(get_standard_deviation(obj.covariance_matrix), expected)
+
+    def test_color_image_batch_preserves_covariance(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(Config, 'ignore_uncertainty_for_cubes', False)
+        monkeypatch.setattr(Config, 'pixel_upper_limit', 2)
+        nm = np.arange(400, 701, 5)
+        std = np.ones((nm.size, 2, 2)) * 0.1
+        cube = ac.SpectralCube(nm, np.ones((nm.size, 2, 2)), std)
+
+        image = ac.ColorImage.from_spectral_data(cube)
+
+        assert image.covariance_matrix is not None
+        assert image.covariance_matrix.shape == (3, 3, 2, 2)
+
+    def test_normalize_updates_covariance_for_spatial_objects(self):
+        nm = np.arange(500, 601, 5)
+        std = np.ones((nm.size, 2)) * 0.1
+        obj = ac.SpectralSet(nm, np.ones((nm.size, 2)) * 2, std)
+        expected = obj.normalized().covariance_matrix
+        obj.normalize()
+        assert expected is not None
+        assert obj.covariance_matrix is not None
+        np.testing.assert_allclose(obj.covariance_matrix, expected)
+
+    def test_narrow_spectrum_preserves_full_covariance(self):
+        nm = np.array([500., 502., 504.])
+        covariance = correlated_covariance(nm.size)
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', ErasingCorrelationsWarning)
+            obj = ac.Spectrum(nm, np.ones(nm.size), covariance)
+
+        assert obj.covariance_matrix is not None
+        assert obj.covariance_matrix.shape == (obj.spectral_size, obj.spectral_size)
+        assert np.any(np.abs(obj.covariance_matrix - np.diag(np.diag(obj.covariance_matrix))) > 1e-12)

@@ -97,6 +97,30 @@ def is_smooth(array: npt.NDArray[np.floating]) -> bool:
     diff2 = np.diff(np.diff(array, axis=0), axis=0)
     return bool(np.all(diff2 <= 0) | np.all(diff2 >= 0))
 
+def spectral_binning_matrix(
+    nm0: npt.NDArray[np.integer | np.floating],
+    nm1: npt.NDArray[np.integer | np.floating],
+    step: float,
+    nm0_diff: npt.NDArray[np.integer | np.floating],
+    n: int
+) -> npt.NDArray[np.floating]:
+    """
+    Builds the linear operator of the cumulative-integral binning:
+    `br1 = A @ br0`. The operator does not depend on the spatial axes.
+    """
+    # Computing bin edges assuming that nm1 is a uniform grid
+    half_step = 0.5 * step
+    nm1_edges = np.append(nm1 - half_step, cast(int, nm1[-1]) + half_step)
+    nm0_diff = stretch(nm0_diff, (n,))
+    # Cumulative distribution function of the identity basis
+    basis = np.eye(n, dtype=np.float64)
+    br_cdf = np.zeros((n, n), dtype=np.float64)
+    br_cdf[1:] = np.cumsum(0.5 * (basis[:-1] + basis[1:]) * nm0_diff, axis=0) # Riemann sum
+    return np.diff(
+        linear_interp(nm0, br_cdf, nm1_edges, extrap_mode='linear'), axis=0
+    ) / step
+
+
 def spectral_binning(
     nm0: npt.NDArray[np.integer | np.floating],
     br0: npt.NDArray[np.floating],
@@ -108,21 +132,23 @@ def spectral_binning(
     """
     Cumulative-integral binning method for a uniform grid. Fast (O(N) complexity), vectorized.
     Requires at least one measurement per bin; otherwise use `spectral_downscaling()`.
+
+    Standard deviations are propagated through the same linear operator as the
+    values, so independent errors are combined by their variances rather than
+    by the standard deviations themselves.
     """
-    # Computing bin edges assuming that nm1 is a uniform grid
-    half_step = 0.5 * step
-    nm1_edges = np.append(nm1 - half_step, cast(int, nm1[-1]) + half_step)
-    nm0_diff = stretch(nm0_diff, br0.shape[1:])
-    # Cumulative distribution function
-    br_cdf = np.zeros(br0.shape, dtype=np.float64)
-    br_cdf[1:] = np.cumsum(0.5 * (br0[:-1] + br0[1:]) * nm0_diff, axis=0) # Riemann sum
-    br1 = np.diff(linear_interp(nm0, br_cdf, nm1_edges, extrap_mode='linear'), axis=0) / step
+    weights = spectral_binning_matrix(nm0, nm1, step, nm0_diff, cast(int, br0.shape[0]))
+    br1 = cast(npt.NDArray[np.floating], np.einsum('ai,i...->a...', weights, br0))
     std1 = None
     if std0 is not None:
-        # Problem 2
-        std_cdf = np.zeros(nm0.shape, dtype=np.float64)
-        std_cdf[1:] = np.cumsum(0.5 * (std0[:-1] + std0[1:]) * nm0_diff, axis=0)
-        std1 = np.diff(linear_interp(nm0, std_cdf, nm1_edges, extrap_mode='linear'), axis=0) / step
+        variance1 = cast(
+            npt.NDArray[np.floating],
+            np.einsum('ai,i...->a...', weights**2, std0**2),
+        )
+        std1 = cast(
+            npt.NDArray[np.floating],
+            np.sqrt(np.maximum(variance1, 0)),
+        )
     return br1, std1
 
 def linear_interp(
@@ -406,6 +432,19 @@ def interpolate(
     return linear_interp(x0, y0, x1)
 
 
+def interpolation_matrix(
+    x0: npt.NDArray[np.integer | np.floating],
+    x1: npt.NDArray[np.integer | np.floating],
+    step: float
+) -> npt.NDArray[np.floating]:
+    """
+    Returns the linear operator `A` such that `interpolate(x0, y0, x1, step)`
+    is equal to `A @ y0` for one-dimensional `y0`.
+    """
+    n = len(x0)
+    return interpolate(x0, np.eye(n, dtype=np.float64), x1, step)
+
+
 @overload
 def stretch(
     arr: npt.NDArray[np.integer],
@@ -459,8 +498,13 @@ def custom_extrap(
     Extrapolation bases on function f(x) = exp( (1-x²)/2 ): f' has extrema of ±1 in (-1, 1) and (1, 1).
     Therefore, it scales to complement the spectrum more easily than similar functions.
     """
-    if np.all(derivative) == 0: # extrapolation by constant
-        return stretch(corner_y, grid.size)
+    grid = np.asarray(grid)
+    corner_y = np.asarray(corner_y)
+    if np.all(derivative == 0): # extrapolation by constant
+        return np.broadcast_to(
+            corner_y[np.newaxis, ...],
+            (grid.size, *corner_y.shape),
+        ).copy()
     else:
         grid = stretch(grid, corner_y.shape)
         sign = np.sign(derivative)

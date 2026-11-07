@@ -82,6 +82,7 @@ words = [
     "multidim",
     "ndim",
     "newaxis",
+    "nonfinite",
     "npt",
     "photospectra",
     "pyplot",
