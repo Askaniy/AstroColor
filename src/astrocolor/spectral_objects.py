@@ -43,7 +43,7 @@ from .errors import (
     empty_spectral_intersection_operator_warning,
     empty_spectral_intersection_warning,
     erasing_correlations_warning,
-    nan_values_warning,
+    non_finite_values_warning,
     zero_brightness_warning,
 )
 
@@ -117,9 +117,10 @@ class SpectralObject(BaseObject):
         sd: npt.NDArray[np.floating] = np.array(spectral_dist, dtype=spectral_dist_dtype)
         if self.ndim != sd.ndim:
             raise InconsistentDimensionError(self.ndim, sd.ndim, name)
-        if np.any(np.isnan(sd)):
-            sd = np.nan_to_num(sd)
-            nan_values_warning('spectral_dist', name)
+        non_finite = ~np.isfinite(sd)
+        if np.any(non_finite):
+            sd[non_finite] = 0.
+            non_finite_values_warning('spectral_dist', name)
         # Spectral axis check
         nm: npt.NDArray[np.integer | np.floating] = np.array(wavelength_nm) # numpy decides int or float
         if (len_nm := nm.size) != (len_values := len(sd)):
@@ -135,6 +136,24 @@ class SpectralObject(BaseObject):
         is_cov_matrix = False
         if uncertainty is not None:
             is_cov_matrix = self._classify_uncertainty(uncertainty, sd.shape, name)
+        # Non-finite wavelengths cannot be recovered, so the affected points are removed.
+        finite_nm = np.isfinite(nm)
+        if not np.all(finite_nm):
+            non_finite_values_warning('wavelength', name, 'removed')
+            nm = nm[finite_nm]
+            sd = sd[finite_nm]
+            if uncertainty is not None:
+                if is_cov_matrix:
+                    uncertainty = uncertainty[np.ix_(finite_nm, finite_nm)]
+                else:
+                    uncertainty = uncertainty[finite_nm]
+            len_values = len(sd)
+            if len_values == 0:
+                stub = self.stub(name)
+                self.wavelength_nm = stub.wavelength_nm
+                self.spectral_dist = stub.spectral_dist
+                self.covariance_matrix = stub.covariance_matrix
+                return
         # Fast increasing check
         if np.any(nm[:-1] > nm[1:]):
             order = np.argsort(nm)
@@ -300,9 +319,10 @@ class SpectralObject(BaseObject):
                 sd0 = np.expand_dims(sd0, axis=(0, 1))
         if cls.ndim - 1 != sd0.ndim:
             raise InconsistentDimensionError(cls.ndim - 1, sd0.ndim, name)
-        if np.any(np.isnan(sd0)):
-            sd0 = np.nan_to_num(sd0)
-            nan_values_warning('intensity', name)
+        non_finite = ~np.isfinite(sd0)
+        if np.any(non_finite):
+            sd0[non_finite] = 0.0
+            non_finite_values_warning('intensity', name)
         # Uncertainty check
         std0 = None
         if not (Config.ignore_uncertainty_for_cubes and cls.ndim == 3) and standard_deviation is not None:

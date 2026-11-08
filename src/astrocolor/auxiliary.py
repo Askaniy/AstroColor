@@ -262,13 +262,13 @@ def spectral_downscaling(
     The idea is inspired by https://gist.github.com/keflavich/37a2705fb4add9a2491caf2dfa195efd
     """
     cube_flag = br0.ndim == 3 # spectral cube processing
-    if br0.min() < 0:
-        br0 = np.clip(br0, cast(float, np.nextafter(0, 1)), None) # strange NumPy errors with weights without it
-    not_nan = ~np.isnan(br0)
-    nm0 = nm0[not_nan]
-    br0 = br0[not_nan]
+    finite = np.isfinite(br0)
+    nm0 = nm0[finite]
+    br0 = br0[finite]
     if std0 is not None:
-        std0 = std0[not_nan]
+        std0 = std0[finite]
+    if br0.size and br0.min() < 0:
+        br0 = np.clip(br0, cast(float, np.nextafter(0, 1)), None) # strange NumPy errors with weights without it
     # Obtaining a graph of standard deviations for a Gaussian
     nm_diff = np.diff(nm0)
     nm_mid = (nm0[1:] + nm0[:-1]) * 0.5

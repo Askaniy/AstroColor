@@ -12,7 +12,7 @@ from .errors import (
     InconsistentAxesError,
     InconsistentDimensionError,
     InconsistentUncertaintySizeError,
-    nan_values_warning,
+    non_finite_values_warning,
 )
 
 # No dependency on .spectral_objects to avoid a cycle!
@@ -57,9 +57,10 @@ class PhotospectralObject(BaseObject):
         self.spectral_dist: npt.NDArray[np.floating] = np.array(spectral_dist, dtype=spectral_dist_dtype)
         if self.ndim != self.spectral_dist.ndim:
             raise InconsistentDimensionError(self.ndim, self.spectral_dist.ndim, self.name)
-        if np.any(np.isnan(self.spectral_dist)):
-            self.spectral_dist = np.nan_to_num(self.spectral_dist)
-            nan_values_warning('spectral_dist', self.name)
+        non_finite = ~np.isfinite(self.spectral_dist)
+        if np.any(non_finite):
+            self.spectral_dist[non_finite] = 0.0
+            non_finite_values_warning('spectral_dist', self.name)
         # Spectral axis check
         self.filter_set: FilterSet = filter_set
         if (len_filters := len(self.filter_set)) != (len_values := len(self.spectral_dist)):

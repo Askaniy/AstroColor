@@ -24,7 +24,7 @@ from .auxiliary import (
     spatial_downscaling,
     uniform_grid,
 )
-from .errors import InconsistentUncertaintyShapeError
+from .errors import InconsistentUncertaintyShapeError, non_finite_values_warning
 
 # For the sake of simplifying work with the spectrum,
 # its discretization step is fixed and frozen.
@@ -157,8 +157,10 @@ class BaseObject(UniformSpectralGrid):
         """ Validates a standard-deviation array before it is converted to a covariance matrix. """
         if std.shape != data_shape:
             raise InconsistentUncertaintyShapeError(std.shape, data_shape, name)
-        if not np.all(np.isfinite(std)):
-            raise ValueError(f'Standard deviations contain non-finite values for "{name}"')
+        non_finite = ~np.isfinite(std)
+        if np.any(non_finite):
+            std[non_finite] = 0.
+            non_finite_values_warning('standard deviation', name)
         if np.any(std < 0):
             raise ValueError(f'Standard deviations contain negative values for "{name}"')
 

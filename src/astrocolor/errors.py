@@ -61,14 +61,14 @@ def erasing_correlations_warning(name: object = None):
         msg += f' for "{name}"'
     warnings.warn(msg + '.', ErasingCorrelationsWarning, stacklevel=2)
 
-class NanValuesWarning(UserWarning):
+class NonFiniteValuesWarning(UserWarning):
     pass
 
-def nan_values_warning(input: str, name: object = None):
-    msg = f'NaN values detected in the {input} input been replaced with zeros'
+def non_finite_values_warning(input: str, name: object = None, action: str = 'replaced with zeros'):
+    msg = f'Non-finite values detected in the {input} input have been {action}'
     if name is not None:
         msg += f' for "{name}"'
-    warnings.warn(msg + '.', NanValuesWarning, stacklevel=2)
+    warnings.warn(msg + '.', NonFiniteValuesWarning, stacklevel=2)
 
 class SpatialAxisWarning(UserWarning):
     pass
