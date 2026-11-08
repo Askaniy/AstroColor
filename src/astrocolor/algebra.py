@@ -99,9 +99,23 @@ def propagate_covariance(
         raise ValueError(f'Covariance matrix must have at least 2 dimensions, not {cov.ndim}')
     if matrix.ndim != 2:
         raise ValueError(f'Linear operator must have 2 dimensions, not {matrix.ndim}')
+    n = cast(int, cov.shape[0])
+    if cov.shape[1] != n:
+        raise ValueError(f'Covariance matrix must be square, not {cov.shape[:2]}')
+    if matrix.shape[1] != n:
+        raise ValueError(
+            f'Linear operator shape {matrix.shape} does not match the covariance size {n}'
+        )
+    m = cast(int, matrix.shape[0])
+    spatial_shape = cov.shape[2:]
+    # Fold all spatial axes into one to use a single BLAS matrix multiplication
+    # for `matrix @ cov`. A direct three-operand `einsum` is orders of magnitude
+    # slower for large spectra because it does not use the optimized BLAS path.
+    intermediate = matrix @ cov.reshape(n, -1)
+    intermediate = intermediate.reshape((m, n, *spatial_shape))
     return cast(
         npt.NDArray[np.floating],
-        np.einsum('ai,ij...,bj->ab...', matrix, cov, matrix),
+        np.einsum('aj...,bj->ab...', intermediate, matrix, optimize=True),
     )
 
 
