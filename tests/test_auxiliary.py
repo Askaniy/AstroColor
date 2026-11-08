@@ -1,7 +1,12 @@
+from math import log, sqrt
+from typing import cast
+
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 from astrocolor.auxiliary import (
+    color_index_splitter,
     color_indices_parser,
     get_extremal_grid_endpoints,
     grid_endpoints_preprocessing,
@@ -101,54 +106,227 @@ class TestParsing:
 
 
 class TestColorIndices:
+    """ Tests for parsing database-style color indices and their uncertainties. """
+
+    @staticmethod
+    def _mag_std(
+        std: npt.NDArray[np.floating],
+        irradiance: npt.NDArray[np.floating],
+    ) -> npt.NDArray[np.floating]:
+        """ Converts irradiance standard deviations back to magnitude ones. """
+        scale = 0.4 * log(10) * irradiance
+        return np.asarray(std / scale, dtype=np.float64)
 
     def test_1_index(self):
         # (120347) Salacia by Stansberry et al. 2012
-        input = {'V-I': 0.87}
-        # expected = {'V': 1., 'I': 1.-0.87}
-        expected = (
-            ('V', 'I'),
-            mag2irradiance(np.array((0., -0.87))),
-            None
-        )
-        output = color_indices_parser(input)
-        np.testing.assert_equal(output, expected)
+        filters, irradiance, std = color_indices_parser({'V-I': 0.87})
+        assert filters == ('V', 'I')
+        np.testing.assert_allclose(irradiance, mag2irradiance(np.array((0., -0.87))))
+        assert std is None
 
     def test_3_indices(self):
         # (120347) Salacia from MBOSS
-        input = {'B-V': 0.664, 'V-R': 0.403, 'R-I': 0.433}
-        # expected = {'B': 1., 'V': 1.-0.664, 'R': 1.-0.664-0.403, 'I': 1.-0.664-0.403-0.433}
-        expected = (
-            ('B', 'V', 'R', 'I'),
-            mag2irradiance(np.array((0., -0.664, -0.664-0.403, -0.664-0.403-0.433))),
-            None
+        filters, irradiance, std = color_indices_parser(
+            {'B-V': 0.664, 'V-R': 0.403, 'R-I': 0.433}
         )
-        output = color_indices_parser(input)
-        np.testing.assert_equal(output, expected)
+        assert filters == ('B', 'V', 'R', 'I')
+        np.testing.assert_allclose(
+            irradiance,
+            mag2irradiance(np.array((
+                0.,
+                -0.664,
+                -0.664 - 0.403,
+                -0.664 - 0.403 - 0.433,
+            ))),
+        )
+        assert std is None
 
     def test_1_index_std(self):
         # (120347) Salacia by Stansberry et al. 2012
-        input = {'V-I': [0.87, 0.01]}
-        # expected = {'V': [1., 0.], 'I': [1.-0.87, 0.]}
-        expected = (
-            ('V', 'I'),
-            mag2irradiance(np.array((0., -0.87))),
-            (0.008823506076353184, 0.005885815833609801) # not real values! output reference of working state
-        )
-        output = color_indices_parser(input)
-        np.testing.assert_equal(output, expected)
+        filters, irradiance, std = color_indices_parser({'V-I': [0.87, 0.01]})
+        assert filters == ('V', 'I')
+        np.testing.assert_allclose(irradiance, mag2irradiance(np.array((0., -0.87))))
+        assert std is not None
+        mag_std = self._mag_std(std, irradiance)
+        # The one-dimensional family is centered: both filters get half the variance.
+        np.testing.assert_allclose(mag_std, np.full(2, 0.01 / sqrt(2)))
+        assert cast(float, mag_std[0])**2 + cast(float, mag_std[1])**2 == pytest.approx(0.01**2)
 
     def test_3_indices_std(self):
         # (120347) Salacia from MBOSS
-        input = {'B-V': [0.664, 0.098], 'V-R': [0.403, 0.061], 'R-I': [0.433, 0.118]}
-        # expected = {'B': [1., 0.], 'V': [1.-0.664, 0.], 'R': [1.-0.664-0.403, 0.], 'I': [1.-0.664-0.403-0.433, 0.]}
-        expected = (
-            ('B', 'V', 'R', 'I'),
-            mag2irradiance(np.array((0., -0.664, -0.664-0.403, -0.664-0.403-0.433))),
-            (0.08926846095326758, 0.024610219649774723, 0.14580865605424098, 0.37416765317580036)  # not real values! output reference of working state
+        indices = {'B-V': [0.664, 0.098], 'V-R': [0.403, 0.061], 'R-I': [0.433, 0.118]}
+        filters, irradiance, std = color_indices_parser(indices)
+        assert filters == ('B', 'V', 'R', 'I')
+        np.testing.assert_allclose(
+            irradiance,
+            mag2irradiance(np.array((
+                0.,
+                -0.664,
+                -0.664 - 0.403,
+                -0.664 - 0.403 - 0.433,
+            ))),
         )
-        output = color_indices_parser(input)
-        np.testing.assert_equal(output, expected)
+        assert std is not None
+        mag_std = self._mag_std(std, irradiance)
+        # Analytic maximin solution for the three color variances.
+        s1, s2, s3 = 0.098**2, 0.061**2, 0.118**2
+        t = 0.5 * ((s1 - s2) + s1)
+        expected_variances = np.array((t, s1 - t, s2 - s1 + t, s3 - s2 + s1 - t))
+        np.testing.assert_allclose(mag_std**2, expected_variances)
+
+    @pytest.mark.parametrize(
+        'indices',
+        (
+            {'V-I': [0.87, 0.01]},
+            {'B-V': [0.664, 0.098], 'V-R': [0.403, 0.061], 'R-I': [0.433, 0.118]},
+            {'B-V': [0.5, 0.1], 'B-R': [0.2, 0.05]},
+            {'V-R': [0.5, 0.1], 'B-V': [0.3, 0.05]},
+            {'B-V': [1.0, 0.1], 'V-R': [0.5, 0.02]},
+        ),
+    )
+    def test_std_reproduces_color_variances(
+        self,
+        indices: dict[str, float | list[float]],
+    ) -> None:
+        filters, irradiance, std = color_indices_parser(indices)
+        assert std is not None
+        mag_std = self._mag_std(std, irradiance)
+        for key, value in indices.items():
+            bluer_filter, redder_filter = color_index_splitter(key)
+            color_std = parse_value_std(value)[1]
+            assert color_std is not None
+            color_var = (
+                cast(float, mag_std[filters.index(bluer_filter)])**2
+                + cast(float, mag_std[filters.index(redder_filter)])**2
+            )
+            assert color_var == pytest.approx(color_std**2, rel=1e-12)
+
+    def test_maximin_variance_choice(self):
+        # s1 = 0.01, s2 = 0.0004. The feasible root variance is t in [0.0096, 0.01].
+        # The midpoint t=0.0098 maximizes the minimum band variance (0.0002).
+        _, irradiance, std = color_indices_parser({'B-V': [1.0, 0.1], 'V-R': [0.5, 0.02]})
+        assert std is not None
+        mag_std = self._mag_std(std, irradiance)
+        np.testing.assert_allclose(mag_std**2, (0.0098, 0.0002, 0.0002))
+        assert cast(float, (mag_std**2).min()) == pytest.approx(0.0002)
+
+    def test_branching_tree(self):
+        filters, irradiance, std = color_indices_parser(
+            {'B-V': [0.5, 0.1], 'B-R': [0.2, 0.05]}
+        )
+        assert filters == ('B', 'V', 'R')
+        np.testing.assert_allclose(
+            irradiance,
+            mag2irradiance(np.array((0., -0.5, -0.2))),
+        )
+        assert std is not None
+        np.testing.assert_allclose(
+            self._mag_std(std, irradiance)**2,
+            (0.00125, 0.00875, 0.00125),
+        )
+
+    def test_backwards_chain(self):
+        filters, irradiance, std = color_indices_parser(
+            {'V-R': [0.5, 0.1], 'B-V': [0.3, 0.05]}
+        )
+        assert filters == ('V', 'R', 'B')
+        np.testing.assert_allclose(
+            irradiance,
+            mag2irradiance(np.array((0., -0.5, 0.3))),
+        )
+        assert std is not None
+        np.testing.assert_allclose(
+            self._mag_std(std, irradiance)**2,
+            (0.00125, 0.00875, 0.00125),
+        )
+
+    @pytest.mark.parametrize(
+        'indices',
+        (
+            {'B-V': [0.5, 0.1], 'V-R': 0.2},
+            {'B-V': 0.5, 'V-R': [0.2, 0.05]},
+        ),
+    )
+    def test_missing_std_returns_none(
+        self,
+        indices: dict[str, float | list[float]],
+    ) -> None:
+        _, _, std = color_indices_parser(indices)
+        assert std is None
+
+    def test_zero_std(self):
+        _, irradiance, std = color_indices_parser({'B-V': [0.5, 0.0]})
+        assert std is not None
+        np.testing.assert_array_equal(std, np.zeros_like(irradiance))
+
+    def test_inconsistent_std_returns_none(self):
+        # The variances 0.01, 0.04, 0.01 cannot be edge sums of nonnegative
+        # band variances: v_V + v_R <= 0.02, but the middle color needs 0.04.
+        _, _, std = color_indices_parser({
+            'B-V': [0.1, 0.1],
+            'V-R': [1.0, 0.2],
+            'R-I': [0.1, 0.1],
+        })
+        assert std is None
+
+    def test_std_scales_linearly(self):
+        _, _, std = color_indices_parser({'B-V': [1.0, 0.1], 'V-R': [0.5, 0.02]})
+        _, _, doubled_std = color_indices_parser({'B-V': [1.0, 0.2], 'V-R': [0.5, 0.04]})
+        assert std is not None
+        assert doubled_std is not None
+        np.testing.assert_allclose(doubled_std, 2 * std)
+
+    def test_std_is_independent_of_traversal_order(self):
+        forward = {'B-V': [0.664, 0.098], 'V-R': [0.403, 0.061], 'R-I': [0.433, 0.118]}
+        reordered = {'R-I': [0.433, 0.118], 'V-R': [0.403, 0.061], 'B-V': [0.664, 0.098]}
+        filters_f, irradiance_f, std_f = color_indices_parser(forward)
+        filters_r, irradiance_r, std_r = color_indices_parser(reordered)
+        assert std_f is not None
+        assert std_r is not None
+        mag_std_f_values = self._mag_std(std_f, irradiance_f)
+        mag_std_r_values = self._mag_std(std_r, irradiance_r)
+        mag_std_f = {
+            filter_name: cast(float, mag_std_f_values[index])
+            for index, filter_name in enumerate(filters_f)
+        }
+        mag_std_r = {
+            filter_name: cast(float, mag_std_r_values[index])
+            for index, filter_name in enumerate(filters_r)
+        }
+        for filter_name, value in mag_std_f.items():
+            assert mag_std_r[filter_name] == pytest.approx(value)
+
+    def test_empty_indices_rejected(self):
+        with pytest.raises(ValueError, match='At least one'):
+            _ = color_indices_parser({})
+
+    def test_disconnected_indices_rejected(self):
+        with pytest.raises(ValueError, match='not connected'):
+            _ = color_indices_parser({'B-V': [0.5, 0.1], 'R-I': [0.2, 0.05]})
+
+    def test_cycle_rejected(self):
+        with pytest.raises(ValueError, match='cycle'):
+            _ = color_indices_parser({
+                'B-V': [0.5, 0.1],
+                'V-R': [0.2, 0.05],
+                'B-R': [0.7, 0.1],
+            })
+
+    def test_filter_names_with_dashes(self):
+        filters, irradiance, std = color_indices_parser({
+            'Generic/Bessell.B-Generic/Bessell.V': [0.5, 0.1],
+            'Generic/Bessell.V-Generic/Bessell.R': [0.2, 0.05],
+        })
+        assert filters == (
+            'Generic/Bessell.B',
+            'Generic/Bessell.V',
+            'Generic/Bessell.R',
+        )
+        np.testing.assert_allclose(
+            irradiance,
+            mag2irradiance(np.array((0., -0.5, -0.7))),
+        )
+        assert std is not None
 
 
 # TODO: add test for the spectrum generator from the slope

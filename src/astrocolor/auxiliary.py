@@ -750,100 +750,111 @@ def color_indices_parser(
 ) -> tuple[tuple[str, ...], npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """
     Converts color indices to linear brightness, assuming mag=0 in the first filter.
-    Each new color index must refer to a previously specified one.
-    Note: The output order may sometimes not be in ascending wavelength order.
-    This can be corrected by knowing the filter profiles, which better to do outside the function.
 
-    For standard deviations the error propagation equation is used:
-    f(x, y) = x - y
-    std_f² = (df/dx)² std_x² + (df/dy)² std_y² = std_x² + std_y²
-    where x, y are magnitudes and f is a color index.
+    Each new color index must connect to a previously specified filter, so the
+    indices form a tree rooted at the first filter. The output order follows the
+    order in which filters are discovered; it is not necessarily sorted by
+    wavelength. This can be corrected outside the function by using the filter
+    profiles.
 
-    Finding standard deviations of a photospectrum built from color indices is an ill-posed problem:
-    it's just like with integrating, we loose constant after differentiation (color indices is
-    a discrete differential form of a photospectrum).
-    For the photospectrum itself, it's not a problem: the solutions dimension is just scaling
-    the spectrum on a constant (it's pretty obvious that color indices always lost brightness
-    information).
-    But the solutions space for their standard deviations is more complex, I found its geometric
-    interpretation: since the standard deviations subtracting rule is, in fact, the Pythagorean theorem,
-    the solutions space is the same as if you try to build a line of right triangles, for each one
-    the next cathetus is linked to a previous cathetus by their square.
-    (To draw on the plane you have to use rhombuses of the same area and the same equal sides
-    instead of squares.)
-    N hypotenuses are standard deviations of color indices, and N+1 different cathetes are the sought
-    standard deviations of the photospectrum.
-    The whole triangle line possible positions can be described by just one parameter (1D parametric
-    space of solutions).
-    For simplicity, I will choose the first cathetus (the first sought standard deviation) as
-    a variable of this space.
-    Such triangles can "collapse" if the previous cathetus is greater than the next hypotenuse!
-    I tried to find an analytical solution, but the requirement for the optimal solution I derived
-    suggested that about a half of the triangles should be collapsed.
+    Values are propagated as magnitude differences:
 
-    In the numerical approach I use, some solutions are collapsed (the `try-except` code block),
-    but there are a some range of possible solutions too, which one to choose?
-    I decided to choose the solution with minimal standard deviation of standard deviations it gives.
-    To tighten the solution selection criteria, it can be assumed that the size of the standard deviation
-    is inversely proportional to the root of the irradiance (in the Poisson noise approximation).
-    So it's better to minimize the differences not between the stds of magnitudes, but between
-    the stds of scaled irradiances.
+        m_red = m_blue - (blue - red)
+        m_blue = m_red + (blue - red)
+
+    For uncertainties, independent per-filter magnitude errors are assumed, so
+    the variance of a color index is the sum of the variances of its filters:
+
+        var(blue - red) = var(m_blue) + var(m_red)
+
+    Colors constrain only magnitude differences, so the absolute variance zero
+    point is free. On a tree, all solutions form a one-parameter family:
+
+        var(filter) = offset(filter) + sign(filter) * t
+
+    where `sign` alternates between the two sides of the tree. Nonnegativity of
+    the variances defines an interval of admissible `t`. The midpoint of this
+    interval is chosen: it is the maximin (Chebyshev-center) solution that
+    maximizes the smallest per-filter variance. This choice is analytic, avoids
+    an arbitrary endpoint (and thus an arbitrary zero uncertainty), and does not
+    privilege one filter over another.
+
+    If the admissible interval is empty, the supplied uncertainties cannot be
+    produced by independent per-filter errors, and `None` is returned instead
+    of uncertainties.
     """
-    first_color_index = next(iter(indices.keys()))
+    if not indices:
+        raise ValueError('At least one color index is required.')
+
+    first_color_index = next(iter(indices))
     filter0, _ = color_index_splitter(first_color_index)
-    _, std0 = parse_value_std(indices[first_color_index])
-    # Photospectrum calculation
+
+    # Magnitude calculation and tree construction
+    magnitudes: dict[str, float] = {filter0: 0.}  # mag=0 for the first point (arbitrarily)
+    edges: list[tuple[str, str, float]] = []
     uncertainty_flag = True
-    filters = {filter0: 0} # mag=0 for the first point (arbitrarily)
     for key, value in indices.items():
         bluer_filter, redder_filter = color_index_splitter(key)
-        mag, std = parse_value_std(value)
-        if std is None:
-            uncertainty_flag = False
-        if bluer_filter in filters:
-            filters |= {redder_filter: filters[bluer_filter] - mag}
+        mag, color_std = parse_value_std(value)
+        if bluer_filter in magnitudes and redder_filter not in magnitudes:
+            magnitudes[redder_filter] = magnitudes[bluer_filter] - mag
+            parent, child = bluer_filter, redder_filter
+        elif redder_filter in magnitudes and bluer_filter not in magnitudes:
+            magnitudes[bluer_filter] = magnitudes[redder_filter] + mag
+            parent, child = redder_filter, bluer_filter
+        elif bluer_filter in magnitudes and redder_filter in magnitudes:
+            raise ValueError(
+                f'Color index "{key}" closes a cycle; color indices must form a tree.'
+            )
         else:
-            filters |= {bluer_filter: filters[redder_filter] + mag}
-    magnitudes = np.array(tuple(filters.values()))
-    irradiance = cast(npt.NDArray[np.floating], mag2irradiance(magnitudes))
-    filter_names = tuple(filters.keys()) # name setting before using the variable for std processing
-    std = None
+            raise ValueError(
+                f'Color index "{key}" is not connected to a previously specified filter.'
+            )
+        if color_std is None:
+            uncertainty_flag = False
+        else:
+            edges.append((parent, child, color_std**2))
+
+    filter_names = tuple(magnitudes.keys())
+    irradiance = cast(
+        npt.NDArray[np.floating],
+        mag2irradiance(np.array(tuple(magnitudes.values()), dtype=np.float64)),
+    )
+
     # Uncertainty calculation
+    std: npt.NDArray[np.floating] | None = None
     if uncertainty_flag:
-        std0 = cast(float, std0)
-        shot_noise_factor = np.sqrt(irradiance) # common Poisson noise factor
-        std_of_std = np.inf
-        for std_assumed in np.linspace(0, std0, 1001):  # pyright: ignore[reportAny]
-            impossible_assumption = False
-            # Numerically select the best value of the standard deviation of the first point,
-            # on which all other standard deviations clearly depend
-            filters = {filter0: cast(float, std_assumed)}
-            for key, value in indices.items():
-                bluer_filter, redder_filter = color_index_splitter(key)
-                index_std = cast(float, parse_value_std(value)[1])
-                try:
-                    if bluer_filter in filters:
-                        filters |= {redder_filter: sqrt(index_std**2 - filters[bluer_filter]**2)}
-                    else:
-                        filters |= {bluer_filter: sqrt(index_std**2 - filters[redder_filter]**2)}
-                except ValueError:
-                    # This means that the difference under the root is negative
-                    # and the initial standard deviation assumption is not possible
-                    impossible_assumption = True
-                    break
-            if not impossible_assumption:
-                new_std = cast(npt.NDArray[np.floating], std_mag2std_irradiance(np.array(tuple(filters.values())), irradiance))
-                # Finding the minimum deviation between std as solution quality criterion
-                # The standard deviations are scaled by the Poisson noise factor
-                new_std_of_std = np.std(new_std * shot_noise_factor)
-                if new_std_of_std < std_of_std:
-                    std = new_std
-                    std_of_std = new_std_of_std
-                    continue
-                else:
-                    # Means that the best values of standard deviations were found
-                    # in the last iteration and they started to diverge
-                    break
+        # var(filter) = offset + sign * t; the root fixes offset=0, sign=+1.
+        offsets: dict[str, float] = {filter0: 0.}
+        signs: dict[str, int] = {filter0: 1}
+        for parent, child, variance in edges:
+            offsets[child] = variance - offsets[parent]
+            signs[child] = -signs[parent]
+
+        # Admissible interval from var(filter) >= 0.
+        t_min = 0.0
+        t_max = np.inf
+        for filter_name in filter_names:
+            offset = offsets[filter_name]
+            if signs[filter_name] > 0:
+                t_min = max(t_min, -offset)
+            else:
+                t_max = min(t_max, offset)
+
+        # Midpoint = maximin solution; tiny overshoots are treated as a single point.
+        scale = max(1.0, abs(t_min), abs(t_max))
+        if t_min <= t_max + 1e-12 * scale:
+            t = 0.5 * (t_min + t_max)
+            variance = np.array(
+                [offsets[name] + signs[name] * t for name in filter_names],
+                dtype=np.float64,
+            )
+            # Clamp tiny negative values caused by floating-point rounding.
+            mag_std = np.sqrt(np.maximum(variance, 0.))
+            std = cast(
+                npt.NDArray[np.floating],
+                std_mag2std_irradiance(mag_std, irradiance),
+            )
     return filter_names, irradiance, std
 
 
