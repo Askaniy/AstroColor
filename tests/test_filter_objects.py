@@ -35,10 +35,12 @@ def test_mean_nm_bessell_filters():
     b_filter = ac.Filter.get('Generic/Bessell.B')
     v_filter = ac.Filter.get('Generic/Bessell.V')
     r_filter = ac.Filter.get('Generic/Bessell.R')
+    i_filter = ac.Filter.get('Generic/Bessell.I')
     np.testing.assert_allclose(u_filter.mean_nm(), 360.507, rtol=0.001)
     np.testing.assert_allclose(b_filter.mean_nm(), 441.308, rtol=0.001)
     np.testing.assert_allclose(v_filter.mean_nm(), 551.210, rtol=0.001)
     np.testing.assert_allclose(r_filter.mean_nm(), 658.592, rtol=0.001)
+    np.testing.assert_allclose(i_filter.mean_nm(), 805.988, rtol=0.001)
 
 def test_mean_nm_bessell_filter_set(ubv_filterset: ac.FilterSet):
     # Reference for effective wavelengths: Bessell 2005, Table 1
