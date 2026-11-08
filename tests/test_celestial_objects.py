@@ -42,6 +42,49 @@ def photometry(obj: ac.Spectrum | ac.Photospectrum, bandpass: ac.Filter = V) -> 
     return value
 
 
+def color_index_std(photospectrum: ac.Photospectrum, first: int, second: int) -> float:
+    """
+    Propagates the photometry covariance into the standard deviation
+    of a color index `-2.5 log10(F_first / F_second)`.
+    """
+    covariance = photospectrum.covariance_matrix
+    assert covariance is not None
+    cov = np.asarray(covariance, dtype=np.float64)
+    flux = np.asarray(photospectrum.spectral_dist, dtype=np.float64)
+    first_flux = cast(float, flux[first])
+    second_flux = cast(float, flux[second])
+    variance = (
+        cast(float, cov[first, first]) / first_flux**2
+        + cast(float, cov[second, second]) / second_flux**2
+        - 2 * cast(float, cov[first, second]) / (first_flux * second_flux)
+    )
+    return float(2.5 / math.log(10) * math.sqrt(variance))
+
+
+def reconstruct_bvri(
+    photospectral: ac.Photospectrum | ac.PhotospectralSet,
+    filter_set: ac.FilterSet,
+) -> ac.Photospectrum | ac.PhotospectralSet:
+    """
+    Reconstructs the continuous spectrum on the BVRI grid and synthesizes
+    photometry.
+
+    The input photometry is already measured in these filters, so
+    `get_photometry()` alone would return it unchanged. The explicit
+    `get_spectrometry()` call forces the full processing cycle.
+    """
+    continuous = ac.get_spectrometry(
+        photospectral,
+        filter_set.wavelength_nm,
+        strictly=True,
+        attach_photospectral_obj=False,
+    )
+    return cast(
+        ac.Photospectrum | ac.PhotospectralSet,
+        ac.get_photometry(continuous, filter_set),
+    )
+
+
 class TestSpectralSources:
 
     def test_continuous_spectrum(self):
@@ -868,6 +911,176 @@ class TestDatabaseStyleInputs:
         spectral_data, estimated = obj.get_spectral_data('geometric')
         assert spectral_data is obj.spectral_data_unscaled
         assert estimated is None
+
+
+class TestFullCycleRoundtrip:
+    """
+    Passes a database entry through the complete processing cycle:
+    color indices -> Vega-calibrated reflected-sunlight photospectrum ->
+    geometric albedo -> continuous Tikhonov reconstruction -> synthetic BVRI
+    photometry -> Solar/Vega normalization -> color indices.
+
+    The recovered colors must reproduce the input ones within the propagated
+    uncertainty, which is expected to be only slightly larger than the input.
+    """
+
+    # Reconstructed colors of the current implementation, used as regression
+    # anchors. A 5% drift is allowed so that accuracy improvements still pass.
+    B_V_REFERENCE: float = 1.367130
+    V_R_REFERENCE: float = 0.841156
+    R_I_REFERENCE: float = 0.819074
+
+    def test_gonggong_bvri_roundtrip(self):
+        input_b_v, input_b_v_std = 1.38, 0.03
+        input_v_r, input_v_r_std = 0.86, 0.02
+        input_r_i, input_r_i_std = 0.79, 0.02
+        color_indices = {
+            'B-V': [input_b_v, input_b_v_std],
+            'V-R': [input_v_r, input_v_r_std],
+            'R-I': [input_r_i, input_r_i_std],
+        }
+        celestial_obj = ac.CelestialObject(
+            name='(225088) Gonggong | Boehnhardt2014, Kiss2019',
+            filter_set='Generic/Bessell',
+            color_indices=color_indices,
+            calibration_system='Vega',
+            is_reflecting_sunlight=True,
+            geometric_albedo=['Generic/Bessell.V', [0.14, 0.01]],
+        )
+        spectrum, estimated = celestial_obj.get_spectral_data('geometric')
+        assert estimated is False
+        assert isinstance(spectrum, ac.Photospectrum)
+
+        filter_set = ac.FilterSet.get(
+            'Generic/Bessell.B',
+            'Generic/Bessell.V',
+            'Generic/Bessell.R',
+            'Generic/Bessell.I',
+        )
+        bvri_photometry = cast(ac.Photospectrum, reconstruct_bvri(spectrum, filter_set))
+        # The V-band geometric albedo must survive the reconstruction.
+        assert bvri_photometry.spectral_dist[1] == pytest.approx(0.14, abs=0.001)
+
+        bvri_photometry *= ac.sun_tsis1_hsrs
+        bvri_photometry /= ac.vega_calspec
+        flux = np.asarray(bvri_photometry.spectral_dist, dtype=np.float64)
+        b = cast(float, flux[0])
+        v = cast(float, flux[1])
+        r = cast(float, flux[2])
+        i = cast(float, flux[3])
+        b_v = -2.5 * math.log10(b / v)
+        v_r = -2.5 * math.log10(v / r)
+        r_i = -2.5 * math.log10(r / i)
+        b_v_std = color_index_std(bvri_photometry, 0, 1)
+        v_r_std = color_index_std(bvri_photometry, 1, 2)
+        r_i_std = color_index_std(bvri_photometry, 2, 3)
+
+        # The recovered colors stay within two reconstructed standard
+        # deviations of the input values.
+        assert abs(b_v - input_b_v) <= 2 * b_v_std
+        assert abs(v_r - input_v_r) <= 2 * v_r_std
+        assert abs(r_i - input_r_i) <= 2 * r_i_std
+
+        # Regression anchors: the reconstructed colors must not drift by more
+        # than 5% from the values recorded for the current implementation.
+        assert b_v == pytest.approx(self.B_V_REFERENCE, rel=0.05)
+        assert v_r == pytest.approx(self.V_R_REFERENCE, rel=0.05)
+        assert r_i == pytest.approx(self.R_I_REFERENCE, rel=0.05)
+
+        # The reconstruction is expected to be slightly less precise than the
+        # input, but not drastically so.
+        assert input_b_v_std <= b_v_std <= 2 * input_b_v_std
+        assert input_v_r_std <= v_r_std <= 2 * input_v_r_std
+        assert input_r_i_std <= r_i_std <= 2 * input_r_i_std
+
+    def test_gonggong_bvri_monte_carlo(self):
+        """
+        Checks the uncertainty propagation statistically.
+
+        One thousand realizations of the input BVRI photometry are drawn from
+        its covariance matrix and passed through the same reconstruction and
+        Solar/Vega normalization. The empirical color scatter must match the
+        analytical uncertainties obtained from one deterministic pass.
+        """
+        # The 5% tolerance accommodates the ~1.4% standard error of 2500 samples.
+        sample_count = 2_500
+        # A fixed seed keeps the statistical test reproducible.
+        rng = np.random.default_rng(42)
+        input_b_v, input_b_v_std = 1.38, 0.03
+        input_v_r, input_v_r_std = 0.86, 0.02
+        input_r_i, input_r_i_std = 0.79, 0.02
+        color_indices = {
+            'B-V': [input_b_v, input_b_v_std],
+            'V-R': [input_v_r, input_v_r_std],
+            'R-I': [input_r_i, input_r_i_std],
+        }
+        celestial_obj = ac.CelestialObject(
+            name='(225088) Gonggong | Boehnhardt2014, Kiss2019',
+            filter_set='Generic/Bessell',
+            color_indices=color_indices,
+            calibration_system='Vega',
+            is_reflecting_sunlight=True,
+            geometric_albedo=['Generic/Bessell.V', [0.14, 0.01]],
+        )
+        spectrum, estimated = celestial_obj.get_spectral_data('geometric')
+        assert estimated is False
+        assert isinstance(spectrum, ac.Photospectrum)
+        covariance = spectrum.covariance_matrix
+        assert covariance is not None
+
+        filter_set = ac.FilterSet.get(
+            'Generic/Bessell.B',
+            'Generic/Bessell.V',
+            'Generic/Bessell.R',
+            'Generic/Bessell.I',
+        )
+
+        # Analytical reference: one deterministic pass through the pipeline.
+        deterministic = cast(ac.Photospectrum, reconstruct_bvri(spectrum, filter_set))
+        deterministic *= ac.sun_tsis1_hsrs
+        deterministic /= ac.vega_calspec
+        reported_stds = (
+            color_index_std(deterministic, 0, 1),
+            color_index_std(deterministic, 1, 2),
+            color_index_std(deterministic, 2, 3),
+        )
+
+        # Batched Monte Carlo: all realizations are reconstructed at once.
+        samples = rng.multivariate_normal(
+            spectrum.spectral_dist,
+            covariance,
+            size=sample_count,
+        ).T
+        photospectral_set = ac.PhotospectralSet(spectrum.filter_set, samples)
+        mc_photometry = cast(ac.PhotospectralSet, reconstruct_bvri(photospectral_set, filter_set))
+        mc_photometry *= ac.sun_tsis1_hsrs
+        mc_photometry /= ac.vega_calspec
+        mc_flux = np.asarray(mc_photometry.spectral_dist, dtype=np.float64)
+        b = np.asarray(mc_flux[0], dtype=np.float64)
+        v = np.asarray(mc_flux[1], dtype=np.float64)
+        r = np.asarray(mc_flux[2], dtype=np.float64)
+        i = np.asarray(mc_flux[3], dtype=np.float64)
+        mc_b_v = -2.5 * np.log10(b / v)
+        mc_v_r = -2.5 * np.log10(v / r)
+        mc_r_i = -2.5 * np.log10(r / i)
+        rows = (
+            ('B-V', mc_b_v, input_b_v, self.B_V_REFERENCE, input_b_v_std, reported_stds[0]),
+            ('V-R', mc_v_r, input_v_r, self.V_R_REFERENCE, input_v_r_std, reported_stds[1]),
+            ('R-I', mc_r_i, input_r_i, self.R_I_REFERENCE, input_r_i_std, reported_stds[2]),
+        )
+
+        for name, values, target, reference, input_std, reported_std in rows:
+            assert np.all(np.isfinite(values))
+            empirical_mean = float(np.mean(values))
+            empirical_std = float(np.std(values, ddof=1))
+            # The mean stays within two recovered standard deviations.
+            assert abs(empirical_mean - target) <= 2 * reported_std, name
+            # The MC mean also stays within 5% of the regression anchor.
+            assert empirical_mean == pytest.approx(reference, rel=0.05), name
+            # The empirical scatter matches the propagated uncertainty to 5%.
+            assert empirical_std == pytest.approx(reported_std, rel=0.05), name
+            # The reconstruction is slightly less precise than the input.
+            assert input_std <= empirical_std <= 2 * input_std, name
 
 
 def test_no_unexpected_warnings():
