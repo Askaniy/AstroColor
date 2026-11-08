@@ -255,7 +255,7 @@ class CelestialObject:
         # Main part
         is_sun = bool(is_reflecting_sunlight)
         # Goal is to create geometric and spherical albedo (photo)spectral objects
-        base_object: SpectralData | None = None
+        unscaled: SpectralData | None = None
         geometric: SpectralData | None = None
         spherical: SpectralData | None = None
         if len(sd) == 0:
@@ -291,31 +291,30 @@ class CelestialObject:
                 geometric = scale_to_match_value(spherical, geom_where, geom_how)
             if geometric is None and spherical is None:
                 empty_spatial_axis_warning(name)
-                base_object = Spectrum.stub(name)
         else:
-            base_object = self.create_spectral_data(
+            unscaled = self.create_spectral_data(
                 name, nm, filter_list, sd, std, filter_group_name,
                 calibration_system, is_sun, is_emission
             )
             if is_geom_albedo:
-                geometric = base_object
+                geometric = unscaled
             elif geom_where is not None and geom_how is not None:
-                geometric = scale_to_match_value(base_object, geom_where, geom_how)
+                geometric = scale_to_match_value(unscaled, geom_where, geom_how)
             if is_sphe_albedo:
-                spherical = base_object
+                spherical = unscaled
             elif sphe_where is not None and sphe_how is not None:
-                spherical = scale_to_match_value(base_object, sphe_where, sphe_how)
+                spherical = scale_to_match_value(unscaled, sphe_where, sphe_how)
             elif bond_albedo is not None:
-                spherical = scale_to_match_value(base_object, sun_filter, parse_value_std(bond_albedo))
+                spherical = scale_to_match_value(unscaled, sun_filter, parse_value_std(bond_albedo))
 
         if is_photon_counter:
-            base_object, geometric, spherical = self._convert_from_photon_counter(
-                base_object, geometric, spherical
+            unscaled, geometric, spherical = self._convert_from_photon_counter(
+                unscaled, geometric, spherical
             )
 
         # Assigning attributes
         self.name: object = name
-        self.spectral_data_unscaled: SpectralData | None = base_object
+        self.spectral_data_unscaled: SpectralData | None = unscaled
         self.spectral_data_geometric: SpectralData | None = geometric
         self.spectral_data_spherical: SpectralData | None = spherical
         self.photometric_model: PhotometricModel = photometric_model
@@ -348,7 +347,7 @@ class CelestialObject:
 
     @staticmethod
     def _convert_from_photon_counter(
-        base_object: SpectralData | None,
+        unscaled: SpectralData | None,
         geometric: SpectralData | None,
         spherical: SpectralData | None
     ) -> tuple[SpectralData | None, SpectralData | None, SpectralData | None]:
@@ -359,7 +358,7 @@ class CelestialObject:
         `is_albedo=True`), so the cache is shared between all three inputs.
 
         Args:
-        - `base_object` (Spectrum | Photospectrum): unscaled data
+        - `unscaled` (Spectrum | Photospectrum): unscaled data
         - `geometric` (Spectrum | Photospectrum): geometric albedo data
         - `spherical` (Spectrum | Photospectrum): spherical albedo data
 
@@ -368,7 +367,7 @@ class CelestialObject:
         """
         converted: dict[int, SpectralData] = {}
         result: list[SpectralData | None] = []
-        for obj in (base_object, geometric, spherical):
+        for obj in (unscaled, geometric, spherical):
             if obj is None:
                 result.append(None)
                 continue
@@ -465,9 +464,9 @@ class CelestialObject:
         Returns:
         - Calibrated `Spectrum` or `Photospectrum` object.
         """
-        base_obj: SpectralData
+        spectral_data: SpectralData
         if len(wavelength_nm) > 0:
-            base_obj = Spectrum(
+            spectral_data = Spectrum(
                 wavelength_nm,
                 spectral_dist,
                 standard_deviation,
@@ -486,7 +485,7 @@ class CelestialObject:
                 filter_objects.append(filter_obj)
             filter_set = FilterSet.from_filters(filter_objects)
             filter_set.name = filter_group_name
-            base_obj = Photospectrum(
+            spectral_data = Photospectrum(
                 filter_set,
                 spectral_dist,
                 standard_deviation,
@@ -494,39 +493,42 @@ class CelestialObject:
             )
         else:
             empty_spectral_axis_warning(name)
-            base_obj = Spectrum.stub(name)
+            spectral_data = Spectrum.stub(name)
         if calibration_system is not None:
             match calibration_system.lower():
                 case 'vega':
-                    base_obj = base_obj * vega_norm
+                    spectral_data = spectral_data * vega_norm
                 case 'ab':
-                    base_obj = base_obj.convert_from_energy_spectral_density_per_frequency()
+                    spectral_data = spectral_data.convert_from_energy_spectral_density_per_frequency()
                 case _:
                     pass
         if is_reflecting_sunlight:
-            base_obj = base_obj / sun_norm
-        return base_obj
+            spectral_data = spectral_data / sun_norm
+        return spectral_data
 
-    def get_spectrum(
+    def get_spectral_data(
         self,
-        mode: Literal['geometric', 'spherical']
-    ) -> tuple[SpectralData | None, bool | None]:
+        albedo_type: Literal['geometric', 'spherical'] | None = None
+    ) -> tuple[SpectralData, bool | None]:
         """
         Returns the albedo-scaled spectrum as the first argument, and the status as the second one.
+
+        If the albedo type is not specified, internal "unscaled" spectral data has the highest priority,
+        geometric data has the second priority, and spherical albedo data returns with the lowest priority.
 
         The status interpretation: "estimated = "
         - `True` means albedo was estimated using some assumptions
         - `False` means the requested albedo spectrum is known or calculated without assumptions
-        - `None` means the spectrum can't be albedo-scaled
+        - `None` means the spectral distribution has no physical meaning of albedo
 
         Args:
-        - `mode` (`"geometric"` or `"spherical"`): requested albedo type
+        - `albedo_type` (`"geometric"`, `"spherical"` or None): requested albedo type
 
         Returns:
         - Tuple of the (photo)spectrum and the albedo estimation status.
         """
         v_filter = Filter.get('Generic/Bessell.V')
-        match mode:
+        match albedo_type:
             case 'geometric':
                 if self.spectral_data_geometric is not None:
                     return self.spectral_data_geometric, False
@@ -537,8 +539,6 @@ class CelestialObject:
                         self.photometric_model.estimate_geometric_albedo(spherical_in_V)
                     )
                     return scale_to_match_value(self.spectral_data_spherical, v_filter, geometric_in_V), estimated
-                else:
-                    return self.spectral_data_unscaled, None
             case 'spherical':
                 if self.spectral_data_spherical is not None:
                     return self.spectral_data_spherical, False
@@ -549,7 +549,12 @@ class CelestialObject:
                         self.photometric_model.estimate_spherical_albedo(geometric_in_V)
                     )
                     return scale_to_match_value(self.spectral_data_geometric, v_filter, spherical_in_V), estimated
-                else:
-                    return self.spectral_data_unscaled, None
-            case _:  # pyright: ignore[reportUnnecessaryComparison]
-                raise ValueError('The `mode` argument of `get_spectrum()` must be `"geometric"` or `"spherical"`')  # pyright: ignore[reportUnreachable]
+            case _:
+                pass
+        if self.spectral_data_unscaled is not None:
+            return self.spectral_data_unscaled, None
+        if self.spectral_data_geometric is not None:
+            return self.spectral_data_geometric, None
+        if self.spectral_data_geometric is not None:
+            return self.spectral_data_geometric, None
+        return Spectrum.stub(name=self.name), None

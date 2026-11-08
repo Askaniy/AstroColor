@@ -286,14 +286,18 @@ class TestSpectralSources:
     def test_empty_spectral_axis_warns(self):
         with pytest.warns(SpectralAxisWarning, match='test'):
             obj = ac.CelestialObject('test', spectral_dist=[1., 2., 3.])
-        assert isinstance(obj.spectral_data_unscaled, ac.Spectrum)
-        np.testing.assert_allclose(obj.spectral_data_unscaled.integrate(), 0.)
+        spectral_data, estimated = obj.get_spectral_data()
+        assert isinstance(spectral_data, ac.Spectrum)
+        assert estimated is None
+        np.testing.assert_allclose(spectral_data.integrate(), 0.) # a stub object
 
     def test_empty_spatial_axis_warns(self):
         with pytest.warns(SpatialAxisWarning, match='test'):
             obj = ac.CelestialObject('test', wavelength_nm=NM)
-        assert isinstance(obj.spectral_data_unscaled, ac.Spectrum)
-        np.testing.assert_allclose(obj.spectral_data_unscaled.integrate(), 0.)
+        spectral_data, estimated = obj.get_spectral_data()
+        assert isinstance(spectral_data, ac.Spectrum)
+        assert estimated is None
+        np.testing.assert_allclose(spectral_data.integrate(), 0.) # a stub object
 
 
 class TestAlbedo:
@@ -576,7 +580,7 @@ class TestPhotometricModels:
         assert isinstance(obj.photometric_model, DefaultModel)
 
 
-class TestGetSpectrum:
+class TestGetSpectralData:
 
     def test_geometric_known(self):
         obj = ac.CelestialObject(
@@ -585,8 +589,8 @@ class TestGetSpectrum:
             spectral_dist=SD,
             geometric_albedo=['Generic/Bessell.V', 0.4]
         )
-        spectrum, estimated = obj.get_spectrum('geometric')
-        assert spectrum is obj.spectral_data_geometric
+        spectral_data, estimated = obj.get_spectral_data('geometric')
+        assert spectral_data is obj.spectral_data_geometric
         assert estimated is False
 
     def test_spherical_known(self):
@@ -596,8 +600,8 @@ class TestGetSpectrum:
             spectral_dist=SD,
             spherical_albedo=['Generic/Bessell.V', 0.3]
         )
-        spectrum, estimated = obj.get_spectrum('spherical')
-        assert spectrum is obj.spectral_data_spherical
+        spectral_data, estimated = obj.get_spectral_data('spherical')
+        assert spectral_data is obj.spectral_data_spherical
         assert estimated is False
 
     def test_estimate_spherical(self):
@@ -610,7 +614,7 @@ class TestGetSpectrum:
         assert obj.spectral_data_geometric is not None
         geometric_in_V = photometry(obj.spectral_data_geometric)
         expected = geometric_in_V * (0.359 + 0.47 * geometric_in_V)
-        spherical, estimated = obj.get_spectrum('spherical')
+        spherical, estimated = obj.get_spectral_data('spherical')
         assert estimated is True
         assert spherical is not None
         assert photometry(spherical) == pytest.approx(expected)
@@ -625,7 +629,7 @@ class TestGetSpectrum:
         assert obj.spectral_data_spherical is not None
         spherical_in_V = photometry(obj.spectral_data_spherical)
         expected = (math.sqrt(0.359**2 + 4 * 0.47 * spherical_in_V) - 0.359) / (2 * 0.47)
-        geometric, estimated = obj.get_spectrum('geometric')
+        geometric, estimated = obj.get_spectral_data('geometric')
         assert estimated is True
         assert geometric is not None
         assert photometry(geometric) == pytest.approx(expected)
@@ -638,7 +642,7 @@ class TestGetSpectrum:
             geometric_albedo=['Generic/Bessell.V', 0.4],
             phase_integral=0.5
         )
-        spherical, estimated = obj.get_spectrum('spherical')
+        spherical, estimated = obj.get_spectral_data('spherical')
         assert estimated is False
         assert spherical is not None
         assert photometry(spherical) == pytest.approx(0.2)
@@ -650,18 +654,18 @@ class TestGetSpectrum:
             spherical_albedo=['Generic/Bessell.V', 0.2],
             phase_integral=0.5
         )
-        geometric, estimated = spherical_obj.get_spectrum('geometric')
+        geometric, estimated = spherical_obj.get_spectral_data('geometric')
         assert estimated is False
         assert geometric is not None
         assert photometry(geometric) == pytest.approx(0.4)
 
     def test_unscaled_fallback(self):
         obj = ac.CelestialObject('test', wavelength_nm=NM, spectral_dist=SD)
-        spectrum, estimated = obj.get_spectrum('geometric')
-        assert spectrum is obj.spectral_data_unscaled
+        spectral_data, estimated = obj.get_spectral_data('geometric')
+        assert spectral_data is obj.spectral_data_unscaled
         assert estimated is None
-        spectrum, estimated = obj.get_spectrum('spherical')
-        assert spectrum is obj.spectral_data_unscaled
+        spectral_data, estimated = obj.get_spectral_data('spherical')
+        assert spectral_data is obj.spectral_data_unscaled
         assert estimated is None
 
     def test_albedo_only_object(self):
@@ -671,11 +675,10 @@ class TestGetSpectrum:
             sd_geometric=[0.1, 0.2, 0.3],
             phase_integral=0.5
         )
-        assert obj.spectral_data_unscaled is None
-        geometric, estimated = obj.get_spectrum('geometric')
+        geometric, estimated = obj.get_spectral_data('geometric')
         assert geometric is obj.spectral_data_geometric
         assert estimated is False
-        spherical, estimated = obj.get_spectrum('spherical')
+        spherical, estimated = obj.get_spectral_data('spherical')
         assert estimated is False
         assert spherical is not None
         assert obj.spectral_data_geometric is not None
@@ -683,9 +686,12 @@ class TestGetSpectrum:
         assert photometry(spherical) == pytest.approx(geometric_in_V * 0.5)
 
     def test_invalid_mode(self):
-        obj = ac.CelestialObject('test', wavelength_nm=NM, spectral_dist=SD)
-        with pytest.raises(ValueError, match='geometric'):
-            _ = obj.get_spectrum('invalid')  # pyright: ignore[reportArgumentType]
+        with pytest.warns(SpatialAxisWarning, match='test'):
+            obj = ac.CelestialObject('test', wavelength_nm=NM)
+        spectral_data, estimated = obj.get_spectral_data('invalid')  # pyright: ignore[reportArgumentType]
+        assert isinstance(spectral_data, ac.Spectrum)
+        assert estimated is None
+        np.testing.assert_allclose(spectral_data.integrate(), 0.) # a stub object
 
 
 class TestFlags:
@@ -807,7 +813,6 @@ class TestDatabaseStyleInputs:
         assert obj.spectral_data_geometric is obj.spectral_data_unscaled
         assert obj.spectral_data_spherical is obj.spectral_data_unscaled
 
-    @pytest.mark.filterwarnings('ignore::astrocolor.errors.ErasingCorrelationsWarning')
     def test_hyperion_color_indices_and_bond_albedo(self):
         obj = ac.CelestialObject(
             name='Hyperion',
@@ -837,7 +842,6 @@ class TestDatabaseStyleInputs:
         assert photometry(obj.spectral_data_geometric, monochromatic_550) == pytest.approx(0.050)
         assert photometry(obj.spectral_data_spherical, monochromatic_550) == pytest.approx(0.018)
 
-    @pytest.mark.filterwarnings('ignore::astrocolor.errors.ErasingCorrelationsWarning')
     def test_proteus_magnitudes(self):
         obj = ac.CelestialObject(
             name='Proteus',
@@ -861,8 +865,8 @@ class TestDatabaseStyleInputs:
         )
         assert obj.is_emissive is True
         assert obj.spectral_data_geometric is None
-        spectrum, estimated = obj.get_spectrum('geometric')
-        assert spectrum is obj.spectral_data_unscaled
+        spectral_data, estimated = obj.get_spectral_data('geometric')
+        assert spectral_data is obj.spectral_data_unscaled
         assert estimated is None
 
 
