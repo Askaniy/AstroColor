@@ -104,10 +104,8 @@ The first axis of `spectral_dist` is always the spectral, filter, or color-chann
 
 - **Spectral** objects store continuous spectral distributions.
 - **Photospectral** objects store measurements through a filter set.
-- **Reconstructed** objects are continuous spectra reconstructed from photometry
-  and always keep the source `PhotospectralObject`.
-- **Color** objects store exactly three color channels (RGB/XYZ), with optional
-  spatial axes.
+- **Reconstructed** objects are continuous spectra reconstructed from photometry and always keep the source `PhotospectralObject`.
+- **Color** objects store exactly three color channels (RGB/XYZ), with optional spatial axes.
 
 Internal `Item`, `Set`, and `Cube` bases encode the 1D/2D/3D behaviour shared by the public classes.
 
@@ -144,9 +142,18 @@ The refactoring took place in 2026; it opens up a general astronomical applicati
 
 ## For developers
 
-Use `uv sync --group dev` to set the environment and build the library.
-Use `uv run pytest` for testing.
-Use `\dev` folder for local experiments.
+`uv sync --group dev` to set the environment and build the library.
+
+`uv run pytest` for testing.
+
+`\dev` folder for local experiments.
+
+Benchmarks:
+```sh
+uv run python benchmarks/benchmark.py
+uv run python benchmarks/benchmark.py --suite 2d3d
+uv run python benchmarks/benchmark.py --suite uncertainty
+```
 
 Any changes suggested by AI must be thoroughly reviewed by the person who generated them. The responsibility always lies with the person.
 
