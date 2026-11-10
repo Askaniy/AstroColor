@@ -28,12 +28,8 @@ def test_photometry():
     np.testing.assert_allclose(photospectrum.spectral_dist, [1.236852, 2.713022], rtol=0.001)
 
 def test_color():
-    color_xyz = ac.ColorPoint.from_spectral_data(ac.sun_tsis1_hsrs)
-    color_system = ac.ColorSystem('sRGB', 'Illuminant E') # recommended
-    color_rgb = color_xyz.to_color_system(color_system)
-    color_rgb.gamma_correction = True
-    color_rgb.maximize_brightness = True
-    color_html = color_rgb.to_html()
+    color = ac.get_color(ac.sun_tsis1_hsrs)
+    color_html = color.to_html()
     assert color_html == '#ecfeff'
 
 def test_models():

@@ -77,12 +77,8 @@ spectrum = ac.get_spectrometry(photospectrum_BVR, requested_wavelengths=[400, 70
 
 - Color calculations
 ```py
-color_xyz = ac.ColorPoint.from_spectral_data(ac.sun_tsis1_hsrs)
-color_system = ac.ColorSystem('sRGB', 'Illuminant E') # recommended
-color_rgb = color_xyz.to_color_system(color_system)
-color_rgb.gamma_correction = True
-color_rgb.maximize_brightness = True
-color_html = color_rgb.to_html() # '#ecfeff'
+color = ac.get_color(ac.sun_tsis1_hsrs)  # sRGB + illuminant E chromatic adaptation by default
+color_html = color.to_html()  # '#ecfeff'
 ```
 
 - Models
@@ -108,6 +104,35 @@ The first axis of `spectral_dist` is always the spectral, filter, or color-chann
 - **Color** objects store exactly three color channels (RGB/XYZ), with optional spatial axes.
 
 Internal `Item`, `Set`, and `Cube` bases encode the 1D/2D/3D behaviour shared by the public classes.
+
+
+## Color output
+
+`get_color()` returns linear color data in the recommended sRGB color space with a chromatic adaptation to illuminant E white point (`ac.default_color_system`). It accepts spectra, sets and cubes and returns the matching `ColorPoint`, `ColorLine` or `ColorImage`.
+`ColorPoint.from_spectral_data()` keeps the scientific default, linear CIE 1931 XYZ, but `render()` and `to_html()` convert to the default (or selected) color system automatically.
+
+Display processing is controlled by `ColorSettings`:
+
+- `color_system` is the output color system (sRGB + Illuminant E by default).
+- `gamma_correction` applies the transfer function of that color system: the piecewise sRGB curve, Adobe RGB gamma 2.2, ProPhoto RGB, HDTV (Rec. 709), UHDTV (Rec. 2020), or the identity for linear spaces.
+- `maximize_brightness` normalizes the output to the brightest channel.
+- `scale_factor` multiplies the result by a non-negative constant.
+
+`DEFAULT_SETTINGS` is the recommended display preset; `LINEAR_SETTINGS` disables both the transfer function and brightness normalization. Processing order is: color-system conversion, brightness normalization, scaling, then the transfer function. Examples:
+
+```py
+color = ac.get_color(ac.sun_tsis1_hsrs)
+linear_rgb = color.spectral_dist  # linear sRGB/E
+display_rgb = color.render()      # sRGB/E + gamma + maximize
+
+color_system = ac.ColorSystem('sRGB', 'Sun')  # D65 white point by default
+custom_settings = ac.ColorSettings(
+    color_system=color_system,
+    maximize_brightness=False,
+    scale_factor=0.5
+)
+custom_rgb = color.render(custom_settings)
+```
 
 
 ## Uncertainty

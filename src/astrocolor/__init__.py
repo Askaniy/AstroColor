@@ -1,9 +1,20 @@
 from .celestial_objects import CelestialObject
-from .color import (
+from .color_objects import (
+    DEFAULT_SETTINGS,
+    LINEAR_SETTINGS,
     ColorImage,
     ColorLine,
     ColorPoint,
+    ColorSettings,
+    get_color,
+)
+from .color_standards import (
+    Chromaticity,
+    ColorSpace,
     ColorSystem,
+    TransferFunction,
+    WhitePoint,
+    default_color_system,
     visible_range,
     xyz_cmf,
     xyz_color_system,
@@ -32,13 +43,18 @@ from .uncertainty import Uncertainty
 
 # API namespace
 __all__ = (
+    'DEFAULT_SETTINGS',
     'HG',
     'HG1G2',
+    'LINEAR_SETTINGS',
     'BlackBodyModel',
     'CelestialObject',
+    'Chromaticity',
     'ColorImage',
     'ColorLine',
     'ColorPoint',
+    'ColorSettings',
+    'ColorSpace',
     'ColorSystem',
     'Config',
     'Exponentials',
@@ -55,7 +71,11 @@ __all__ = (
     'SpectralCube',
     'SpectralSet',
     'Spectrum',
+    'TransferFunction',
     'Uncertainty',
+    'WhitePoint',
+    'default_color_system',
+    'get_color',
     'get_photometry',
     'get_spectrometry',
     'scale_to_match_value',
