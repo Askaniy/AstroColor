@@ -87,6 +87,7 @@ class CelestialObject:
 
     def __init__(self,
         name: object = None,
+        *,
         wavelength_nm: npt.ArrayLike | None = None,
         spectral_dist: Iterable[float | Sequence[float]] | None = None,
         magnitudes: Iterable[float | Sequence[float]] | None = None,

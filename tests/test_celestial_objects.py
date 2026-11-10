@@ -602,6 +602,18 @@ class TestPhotometricModels:
         assert phase_integral[0] == pytest.approx(0.6)
         assert phase_integral[1] == pytest.approx(0.01)
 
+    def test_spherical_albedo_error_uses_variances(self):
+        model = PhaseCoefficient(cast(dict[str, float | tuple[float]], {'beta': (0.1, 0.01)}))
+        model.geometric_albedo = (0.2, 0.02)
+        phase_integral = cast(tuple[float, float | None], model.phase_integral)
+        spherical = model.spherical_albedo
+        assert spherical is not None
+        value, std = spherical
+        assert phase_integral[1] is not None
+        expected_variance = (0.02 * phase_integral[0])**2 + (phase_integral[1] * 0.2)**2
+        assert value == pytest.approx(0.2 * phase_integral[0])
+        assert std == pytest.approx(math.sqrt(expected_variance))
+
     def test_unsupported_model(self):
         with pytest.warns(PhaseFunctionWarning, match='is not supported'):
             obj = ac.CelestialObject(

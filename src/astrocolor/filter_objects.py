@@ -17,10 +17,24 @@ from .filter_loader import (
     get_profile,
 )
 from .spectral_objects import SpectralObject, SpectralSet, Spectrum
+from .uncertainty import Uncertainty
 
 
 class FilterObject(SpectralObject):
     """ Internal class for inheriting filter methods. """
+
+    @override
+    @classmethod
+    def _from_computed_arrays(
+        cls,
+        wavelength_nm: npt.ArrayLike,
+        spectral_dist: npt.NDArray[np.floating],
+        uncertainty: Uncertainty | npt.ArrayLike | None,
+        name: object = None
+    ) -> Self:
+        """ Filter profiles have no uncertainty, so the propagated error is ignored. """
+        _ = uncertainty
+        return cls(wavelength_nm, spectral_dist, name=name)
 
     def convert_for_photon_counter(self) -> Self:
         """
@@ -111,7 +125,6 @@ class Filter(FilterObject, Spectrum):
         self,
         wavelength_nm: npt.ArrayLike,
         spectral_dist: npt.ArrayLike,
-        uncertainty: None = None,
         name: object = None,
     ) -> None:
         """
@@ -160,7 +173,6 @@ class FilterSet(FilterObject, SpectralSet):
         self,
         wavelength_nm: npt.ArrayLike,
         spectral_dist: npt.ArrayLike,
-        uncertainty: None = None,
         name: object = None,
     ) -> None:
         """

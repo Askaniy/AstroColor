@@ -1,5 +1,4 @@
 import warnings
-from copy import deepcopy
 from typing import cast, overload
 
 import numpy as np
@@ -7,14 +6,7 @@ import numpy.typing as npt
 import pytest
 
 import astrocolor as ac
-from astrocolor.algebra import (
-    div_error,
-    get_standard_deviation,
-    make_diagonal_covariance,
-    mul_error,
-    mul_value,
-    propagate_covariance,
-)
+from astrocolor.algebra import mul_value
 from astrocolor.auxiliary import (
     interpolation_matrix,
     spectral_binning,
@@ -25,6 +17,22 @@ from astrocolor.errors import (
     ErasingCorrelationsWarning,
     InconsistentUncertaintyShapeError,
 )
+from astrocolor.uncertainty import (
+    Uncertainty,
+    combine_covariance_terms,
+    div_uncertainty,
+    propagate_covariance,
+)
+
+
+def product_covariance(
+    mean_x: npt.ArrayLike,
+    cov_x: npt.ArrayLike | None,
+    mean_y: npt.ArrayLike,
+    cov_y: npt.ArrayLike | None
+):
+    """ Product-rule wrapper around the generic weighted covariance combiner. """
+    return combine_covariance_terms(cov_x, mean_y, cov_y, mean_x)
 
 
 @overload
@@ -102,46 +110,46 @@ class TestMultiplication:
     def test_1D_mul_value(self):
         np.testing.assert_allclose(mul_value([3, 3], 3), [9, 9])
 
-    def test_0D_mul_error_both_have_errors(self):
+    def test_0D_product_covariance_both_have_errors(self):
         x = 10
         dx = 2
         y = 20
         dy = 5
         expected = (y * dx)**2 + (x * dy)**2
-        result = mul_error(x, dx**2, y, dy**2)
+        result = product_covariance(x, dx**2, y, dy**2)
         assert isinstance(result, (int, float))
         assert np.isclose(result, expected)
 
-    def test_0D_mul_error_only_x_has_error(self):
+    def test_0D_product_covariance_only_x_has_error(self):
         x = 10
         dx = 2
         y = 20
         expected = (y * dx)**2
-        result = mul_error(x, dx**2, y, None)
+        result = product_covariance(x, dx**2, y, None)
         assert isinstance(result, (int, float))
         assert np.isclose(result, expected)
 
-    def test_0D_mul_error_only_y_has_error(self):
+    def test_0D_product_covariance_only_y_has_error(self):
         x = 10
         y = 20
         dy = 5
         expected = (x * dy)**2
-        result = mul_error(x, None, y, dy**2)
+        result = product_covariance(x, None, y, dy**2)
         assert isinstance(result, (int, float))
         assert np.isclose(result, expected)
 
-    def test_0D_0D_mul_error_no_errors(self):
-        result = mul_error(10, None, 20, None)
+    def test_0D_0D_product_covariance_no_errors(self):
+        result = product_covariance(10, None, 20, None)
         assert result is None
 
-    def test_1D_1D_mul_error_no_errors(self):
+    def test_1D_1D_product_covariance_no_errors(self):
         x = np.array([1, 2, 3])
         y = np.array([4, 5, 6])
-        result = mul_error(x, None, y, None)
+        result = product_covariance(x, None, y, None)
         assert result is None
 
-    def test_0D_1D_mul_error_no_errors(self):
-        result = mul_error(3, None, np.array([1, 2, 3]), None)
+    def test_0D_1D_product_covariance_no_errors(self):
+        result = product_covariance(3, None, np.array([1, 2, 3]), None)
         assert result is None
 
     def test_scalar_times_array_with_error(self):
@@ -149,7 +157,7 @@ class TestMultiplication:
         scalar = 3
         array = np.array([1, 2, 3])
         cov_array = np.diag([0.1, 0.2, 0.3])  # diagonal covariance matrix
-        result = mul_error(scalar, None, array, cov_array)
+        result = product_covariance(scalar, None, array, cov_array)
         assert isinstance(result, np.ndarray)
         expected = scalar**2 * cov_array
         assert result.shape == (3, 3)
@@ -160,7 +168,7 @@ class TestMultiplication:
         array = np.array([1, 2, 3])
         cov_array = np.diag([0.1, 0.2, 0.3])
         scalar = 5
-        result = mul_error(array, cov_array, scalar, None)
+        result = product_covariance(array, cov_array, scalar, None)
         assert isinstance(result, np.ndarray)
         expected = scalar**2 * cov_array
         assert result.shape == (3, 3)
@@ -172,7 +180,7 @@ class TestMultiplication:
         cov_array = np.diag([0.1, 0.2, 0.3])
         scalar = 5
         scalar_var = 0.5
-        result = mul_error(array, cov_array, scalar, scalar_var)
+        result = product_covariance(array, cov_array, scalar, scalar_var)
         assert isinstance(result, np.ndarray)
         expected = scalar**2 * cov_array + np.diag(array**2 * scalar_var)
         assert result.shape == (3, 3)
@@ -188,7 +196,7 @@ class TestMultiplication:
         cov_y = np.array([[0.4, 0.05, 0.02],
                         [0.05, 0.5, 0.06],
                         [0.02, 0.06, 0.6]])
-        result = mul_error(x, cov_x, y, cov_y)
+        result = product_covariance(x, cov_x, y, cov_y)
         assert isinstance(result, np.ndarray)
         assert result.shape == (3, 3)
         diag_y = np.diag(y)
@@ -201,7 +209,7 @@ class TestMultiplication:
         x = np.array([1, 2, 3])
         y = np.array([4, 5, 6])
         cov_x = np.diag([0.1, 0.2, 0.3])
-        result = mul_error(x, cov_x, y, None)
+        result = product_covariance(x, cov_x, y, None)
         assert isinstance(result, np.ndarray)
         diag_y = np.diag(y)
         expected = diag_y @ cov_x @ diag_y
@@ -212,7 +220,7 @@ class TestMultiplication:
         x = np.array([1, 2, 3])
         y = np.array([4, 5, 6])
         cov_y = np.diag([0.4, 0.5, 0.6])
-        result = mul_error(x, None, y, cov_y)
+        result = product_covariance(x, None, y, cov_y)
         assert isinstance(result, np.ndarray)
         diag_x = np.diag(x)
         expected = diag_x @ cov_y @ diag_x
@@ -222,7 +230,7 @@ class TestMultiplication:
         x = np.array([1, 2, 3])
         y = np.array([4, 5])
         with pytest.raises(ValueError):
-            _ = mul_error(x, np.diag([0.1, 0.2, 0.3]), y, np.diag([0.4, 0.5]))
+            _ = product_covariance(x, np.diag([0.1, 0.2, 0.3]), y, np.diag([0.4, 0.5]))
 
     def test_vector_covariance_input(self):
         """ Check that variance vector can be passed instead of matrix """
@@ -230,7 +238,7 @@ class TestMultiplication:
         y = np.array([4, 5, 6])
         var_x = np.array([0.1, 0.2, 0.3])
         var_y = np.array([0.4, 0.5, 0.6])
-        result = mul_error(x, var_x, y, var_y)
+        result = product_covariance(x, var_x, y, var_y)
         assert isinstance(result, np.ndarray)
         cov_x = np.diag(var_x)
         cov_y = np.diag(var_y)
@@ -411,10 +419,14 @@ class TestPhotospectralMultiplication:
         expected_reconstructed = synthetic_product(left, reconstruct(source, nm), ubv_filterset)
 
         # What using the current (narrow-range) spectrum and extrapolating it would give.
-        extrapolated = deepcopy(reconstructed)
-        extrapolated.photospectral_obj = None
+        detached = ac.get_spectrometry(
+            source,
+            narrow_nm,
+            strictly=True,
+            attach_photospectral_obj=False,
+        )
         extrapolated = cast(ac.Spectrum, ac.get_spectrometry(
-            extrapolated,
+            detached,
             nm,
             strictly=True,
             attach_photospectral_obj=False,
@@ -560,25 +572,30 @@ class TestCovariance:
         assert output.standard_deviation is not None
         assert output.standard_deviation.shape == output.spectral_dist.shape
 
-    def test_mul_and_div_error_support_spatial_axes(self):
+    def test_product_covariance_and_div_uncertainty_support_spatial_axes(self):
         x = np.arange(1., 7.).reshape(3, 2)
         y = np.full((3, 2), 2.)
         std_x = np.full((3, 2), 0.1)
         std_y = np.full((3, 2), 0.2)
-        cov_x = make_diagonal_covariance(std_x)
-        cov_y = make_diagonal_covariance(std_y)
+        cov_x = Uncertainty.from_standard_deviation(std_x).covariance_matrix
+        cov_y = Uncertainty.from_standard_deviation(std_y).covariance_matrix
 
-        product = mul_error(x, cov_x, y, cov_y)
-        assert product is not None
+        product = product_covariance(x, cov_x, y, cov_y)
+        assert isinstance(product, np.ndarray)
         assert product.shape == (3, 3, 2)
         expected_product_diag = (y * std_x)**2 + (x * std_y)**2
-        np.testing.assert_allclose(get_standard_deviation(product)**2, expected_product_diag)
+        product_uncertainty = Uncertainty.from_covariance(
+            product, (product.shape[0], *product.shape[2:])
+        )
+        np.testing.assert_allclose(product_uncertainty.standard_deviation**2, expected_product_diag)
 
-        quotient = div_error(x, cov_x, y, cov_y)
+        quotient = div_uncertainty(
+            x, Uncertainty.from_standard_deviation(std_x),
+            y, Uncertainty.from_standard_deviation(std_y),
+        )
         assert quotient is not None
-        assert quotient.shape == (3, 3, 2)
         expected_quotient_diag = (std_x / y)**2 + (x * std_y / y**2)**2
-        np.testing.assert_allclose(get_standard_deviation(quotient)**2, expected_quotient_diag)
+        np.testing.assert_allclose(quotient.standard_deviation**2, expected_quotient_diag)
 
     def test_single_filter_photometry_error_is_scalar_and_convolved(self):
         nm = np.arange(500, 601, 5)
@@ -883,10 +900,13 @@ class TestCovarianceHandling:
 
         operator = interpolation_matrix(nm, obj.wavelength_nm, obj.nm_step)
         expected = np.sqrt(np.diag(
-            propagate_covariance(make_diagonal_covariance(std), operator)
+            propagate_covariance(
+                Uncertainty.from_standard_deviation(std).covariance_matrix,
+                operator,
+            )
         ))
-        assert obj.covariance_matrix is not None
-        np.testing.assert_allclose(get_standard_deviation(obj.covariance_matrix), expected)
+        assert obj.standard_deviation is not None
+        np.testing.assert_allclose(obj.standard_deviation, expected)
 
     def test_color_image_batch_preserves_covariance(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(Config, 'ignore_uncertainty_for_cubes', False)

@@ -16,6 +16,12 @@ class Config:
     # and uncertainty processing is disabled by default.
     ignore_uncertainty_for_cubes: bool = True
 
+    # Ignore correlations between spectral points. Covariance matrices are
+    # reduced to their diagonal, and uncertainty propagation stays compact.
+    # The flag is read dynamically; existing objects are compacted on their
+    # next operation. Explicit covariance_matrix access still materializes.
+    ignore_correlations: bool = False
+
     # Fetch filters from Spanish Virtual Observatory Filter Profile Service (SVO FPS)
     # https://svo2.cab.inta-csic.es/svo/theory/fps3/fps.php
     allow_internet_access: bool = True

@@ -28,6 +28,7 @@ from .reconstructed_objects import (
 )
 from .reference_spectra import sun_calspec, sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import SpectralCube, SpectralSet, Spectrum
+from .uncertainty import Uncertainty
 
 # API namespace
 __all__ = (
@@ -54,6 +55,7 @@ __all__ = (
     'SpectralCube',
     'SpectralSet',
     'Spectrum',
+    'Uncertainty',
     'get_photometry',
     'get_spectrometry',
     'scale_to_match_value',

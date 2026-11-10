@@ -5,7 +5,7 @@ A Python library for general-purpose photometric conversions, image processing a
 Key features:
 - classes for data of different dimensions (1D/2D/3D, up to spectral cubes)
 - algebraic interactions between classes
-- error processing (with covariance matrices)
+- error processing (standard deviations or covariance matrices)
 - build-in "true" color calculation
 - filter profiles auto-loading ([>11K available](https://svo2.cab.inta-csic.es/svo/theory/fps3/index.php?mode=browse))
 - lightweight: absolute minimal dependencies
@@ -89,6 +89,49 @@ color_html = color_rgb.to_html() # '#ecfeff'
 ```py
 bb_7000K = ac.get_spectrometry(ac.BlackBodyModel(7000), [400, 500])
 ```
+
+
+## Object dimensions
+
+The first axis of `spectral_dist` is always the spectral, filter, or color-channel axis; all remaining axes are spatial. Here 1D means a single spectrum/color point, 2D means a set/line, and 3D means a cube/image.
+
+| Object family | 1D | 2D | 3D |
+|---|---|---|---|
+| Spectral | `Spectrum` | `SpectralSet` | `SpectralCube` |
+| Photospectral | `Photospectrum` | `PhotospectralSet` | `PhotospectralCube` |
+| Reconstructed | `ReconstructedSpectrum` | `ReconstructedSpectralSet` | `ReconstructedSpectralCube` |
+| Color | `ColorPoint` | `ColorLine` | `ColorImage` |
+
+- **Spectral** objects store continuous spectral distributions.
+- **Photospectral** objects store measurements through a filter set.
+- **Reconstructed** objects are continuous spectra reconstructed from photometry
+  and always keep the source `PhotospectralObject`.
+- **Color** objects store exactly three color channels (RGB/XYZ), with optional
+  spatial axes.
+
+Internal `Item`, `Set`, and `Cube` bases encode the 1D/2D/3D behaviour shared by the public classes.
+
+
+## Uncertainty
+
+Spectral objects, photospectral objects and color objects accept either standard deviations or a covariance matrix. They store an `Uncertainty` in the `uncertainty` attribute, keeping only diagonal variances while spectral points are uncorrelated. A shared `(n, n)` covariance matrix is stored once and broadcast over spatial axes.
+
+`standard_deviation` and `covariance_matrix` are read-only properties. `covariance_matrix` materializes a full array on access, but does not change the compact representation:
+
+```py
+spectrum = ac.Spectrum(
+    wavelength_nm=[500, 505, 510, 515],
+    spectral_dist=[1, 2, 3, 4],
+    uncertainty=[0.1, 0.1, 0.1, 0.1],
+)
+assert spectrum.uncertainty is not None
+assert not spectrum.uncertainty.is_covariance
+std = spectrum.standard_deviation
+full = spectrum.covariance_matrix  # materialized on access
+print(spectrum.uncertainty.nbytes)  # stored uncertainty array size
+```
+
+Setting `Config.ignore_correlations = True` disables correlation handling: covariance inputs are reduced to their diagonal and operations stay compact. The flag is read dynamically, so an existing full-covariance object is compacted on its next operation. Explicit `covariance_matrix` access still materializes the matrix.
 
 
 ## History

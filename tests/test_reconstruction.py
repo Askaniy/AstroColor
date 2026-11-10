@@ -89,3 +89,10 @@ def test_attach_flag_selects_return_class(
     assert isinstance(attached, reconstructed_type)
     assert isinstance(detached, plain_type)
     assert not isinstance(detached, reconstructed_type)
+
+
+def test_reconstructed_object_requires_photometry():
+    with pytest.raises(TypeError):
+        _ = ac.ReconstructedSpectrum([500, 505], [1., 1.])  # pyright: ignore[reportCallIssue]
+    with pytest.raises(ValueError, match='require source photospectral_obj'):
+        _ = ac.ReconstructedSpectrum([500, 505], [1., 1.], photospectral_obj=None)

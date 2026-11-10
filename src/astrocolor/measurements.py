@@ -7,12 +7,9 @@ import numpy.typing as npt
 
 from astrocolor.errors import (
     InconsistentAxesError,
-    InconsistentUncertaintyShapeError,
     UnsupportedDimensionError,
 )
 
-from .algebra import mul_value
-from .auxiliary import integrate
 from .filter_objects import Filter, FilterSet
 from .photospectral_objects import (
     PhotospectralCube,
@@ -23,10 +20,12 @@ from .photospectral_objects import (
 from .physical_models import PhysicalModel
 from .reconstructed_objects import (
     ReconstructedSpectralCube,
+    ReconstructedSpectralObject,
     ReconstructedSpectralSet,
     ReconstructedSpectrum,
 )
 from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
+from .uncertainty import Uncertainty
 
 
 # Only `attach_photospectral_obj=True` is specialized below. The `False`
@@ -198,20 +197,38 @@ def get_spectrometry(
     # Spectral range clipping
     if strictly and not np.array_equal(spectral_obj.wavelength_nm, requested_wavelengths):
         spectral_obj.spectral_dist = spectral_obj.get_spectral_dist_at_wavelengths(nm_min, nm_max)
-        spectral_obj.covariance_matrix = spectral_obj.get_covariance_matrix_at_wavelengths(nm_min, nm_max)
+        spectral_obj.uncertainty = spectral_obj.get_uncertainty_at_wavelengths(nm_min, nm_max)
         spectral_obj.wavelength_nm = requested_wavelengths
     # Sanity checks
     if (len_nm := spectral_obj.wavelength_nm.size) != (len_values := len(spectral_obj.spectral_dist)):
         raise InconsistentAxesError(len_nm, len_values, spectral_obj.name)
-    if spectral_obj.covariance_matrix is not None:
-        expected_shape = (len_nm, len_nm, *spectral_obj.spectral_dist.shape[1:])
-        if spectral_obj.covariance_matrix.shape != expected_shape:
-            raise InconsistentUncertaintyShapeError(
-                spectral_obj.covariance_matrix.shape,
-                expected_shape,
-                spectral_obj.name,
-            )
+    if spectral_obj.uncertainty is not None:
+        spectral_obj.uncertainty.validate(spectral_obj.spectral_dist.shape, spectral_obj.name)
     return spectral_obj
+
+
+def _aligned_spectral_data(
+    target: SpectralObject | PhotospectralObject,
+    bandpass: Filter | FilterSet
+) -> tuple[npt.NDArray[np.floating], Uncertainty | None] | None:
+    """
+    Returns target data sampled exactly on `bandpass.wavelength_nm`, when no
+    reconstruction or extrapolation is needed. Avoids copying the whole object.
+    """
+    # Perf: avoid get_spectrometry() deepcopy when the band grid is already
+    # present. Single-filter photometry on a 61 x 100 x 100 cube: 1.88 -> 0.44 ms.
+    if not isinstance(target, SpectralObject) or isinstance(target, ReconstructedSpectralObject):
+        return None
+    wavelengths = np.asarray(bandpass.wavelength_nm)
+    if wavelengths.size == 0:
+        return None
+    indices = np.searchsorted(target.wavelength_nm, wavelengths)
+    if np.any(indices >= target.spectral_size):
+        return None
+    if not np.array_equal(target.wavelength_nm[indices], wavelengths):
+        return None
+    uncertainty = None if target.uncertainty is None else target.uncertainty.select(indices)
+    return target.spectral_dist[indices], uncertainty
 
 
 @overload
@@ -257,38 +274,46 @@ def get_photometry(
     Implementation of convolution between a (photo)spectral object and a filter or a filter set.
     Ignores the uncertainty of filter profiles.
     """
-    # The data is already measured in these filters: do not lose it to a reconstruction round trip.
     if isinstance(target, PhotospectralObject) and isinstance(bandpass, FilterSet) and target.filter_set == bandpass:
+        # The data is already measured in these filters: do not lose it to a reconstruction round trip.
         output = deepcopy(target)
         output.filter_set = bandpass
         return output
-    target = get_spectrometry(target, bandpass.wavelength_nm, strictly=True)
+    aligned = _aligned_spectral_data(target, bandpass)
+    if aligned is None:
+        target = get_spectrometry(target, bandpass.wavelength_nm, strictly=True)
+        sd = target.spectral_dist
+        uncertainty = target.uncertainty
+    else:
+        sd, uncertainty = aligned
     ndim = target.ndim
-    sd = target.spectral_dist
-    cov = target.covariance_matrix
+    spatial_shape = target.spatial_shape
+    n = cast(int, sd.shape[0])
     match bandpass:
         case Filter():
-            value = cast(float, integrate(mul_value(sd, bandpass.spectral_dist), target.nm_step))
+            # Perf: one BLAS dot instead of element-wise product plus sum.
+            # 61 x 100 x 100 cube: 0.67 -> 0.04 ms.
+            value_array = (bandpass.spectral_dist @ sd.reshape(n, -1)).reshape(spatial_shape) * target.nm_step
+            value = float(value_array) if value_array.ndim == 0 else value_array
             error = None
-            if cov is not None:
-                # TODO: check!
+            if uncertainty is not None:
                 error = cast(
                     float | npt.NDArray[np.floating],
-                    np.einsum('i...,ij...,j...->...', bandpass.spectral_dist, cov, bandpass.spectral_dist)
-                    * target.nm_step**2
+                    uncertainty.integrate(bandpass.spectral_dist, target.nm_step),
                 )
-            return value, error
+                if np.ndim(error) == 0:
+                    error = float(error)
+            return cast(float, value), error
         case FilterSet():
-            value = cast(npt.NDArray[np.floating], np.einsum('ij, j... -> i...', bandpass.matrix, sd))
-            # compare! 1D value = integrate(mul_value(sd, bandpass.spectral_dist), nm_step)
-            # compare! 2D value = integrate(sd[:, :, np.newaxis] * bandpass.spectral_dist[:, np.newaxis, :], nm_step).T
-            # 3D: value = np.empty((len(bandpass), *target.spatial_shape))
-                # for i in range(len(bandpass)):
-                #     profile = bandpass.spectral_dist[:,i]
-                #     br[i] = integrate((sd.T * profile).T, nm_step)
-            error = None
-            if cov is not None:
-                error = cast(npt.NDArray[np.floating], np.einsum('ij, jk..., lk -> il...', bandpass.matrix, cov, bandpass.matrix))
+            # Perf: BLAS matmul instead of einsum over spatial axes.
+            # 3 filters on 61 x 100 x 100: 0.77 -> 0.18 ms.
+            value = cast(
+                npt.NDArray[np.floating],
+                (bandpass.matrix @ sd.reshape(n, -1)).reshape(
+                    (len(bandpass), *spatial_shape)
+                ),
+            )
+            error = None if uncertainty is None else uncertainty.propagate(bandpass.matrix)
             match ndim:
                 case 1:
                     return Photospectrum(bandpass, value, error, name=target.name)

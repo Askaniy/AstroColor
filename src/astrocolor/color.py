@@ -18,6 +18,7 @@ from .photospectral_objects import (
 )
 from .reference_spectra import sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
+from .uncertainty import Uncertainty
 
 # CIE 1931 XYZ color matching functions, 2-deg
 # https://cie.co.at/datatable/cie-1931-colour-matching-functions-2-degree-observer
@@ -173,8 +174,8 @@ DimensionallyCorrectType = TypeVar('DimensionallyCorrectType', bound='SpectralOb
 class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject]:
     """
     This class stores a color brightness array (`self.spectral_dist`) with values
-    in the 0-1 range, its uncertainty (`covariance_matrix`),
-    postprocessing attributes, color system, and provides conversion methods.
+    in the 0-1 range, its `uncertainty`, postprocessing attributes, color system,
+    and provides conversion methods.
 
     The brightness array is required to be of length 3 along the first axis.
     The indices correspond to the red, green and blue channel respectively.
@@ -193,22 +194,39 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
     def __init__(
         self,
         spectral_dist: npt.NDArray[np.floating],
-        covariance_matrix: npt.NDArray[np.floating] | None = None,
+        uncertainty: npt.ArrayLike | Uncertainty | None = None,
         color_system: ColorSystem = xyz_color_system
     ) -> None:
         """
         ColorObject requires a brightness array and corresponding color system.
-        Default color space is CIE 1931 XYZ. Covariance matrix is optional.
+        Default color space is CIE 1931 XYZ. Uncertainty is optional.
         """
         self.spectral_dist: npt.NDArray[np.floating] = spectral_dist
-        self.covariance_matrix: npt.NDArray[np.floating] | None = covariance_matrix
+        self.uncertainty: Uncertainty | None = (
+            None if uncertainty is None
+            else Uncertainty.from_input(uncertainty, spectral_dist.shape)
+        )
         self._color_system: ColorSystem = color_system
+
+    @property
+    def covariance_matrix(self) -> npt.NDArray[np.floating] | None:
+        """ Returns the full covariance matrix, materialized on access. """
+        if self.uncertainty is None:
+            return None
+        return self.uncertainty.covariance_matrix
+
+    @property
+    def standard_deviation(self) -> npt.NDArray[np.floating] | None:
+        """ Returns standard deviations, or None if there is no uncertainty. """
+        if self.uncertainty is None:
+            return None
+        return self.uncertainty.standard_deviation
 
     @classmethod
     def from_spectral_data(cls, data: DimensionallyCorrectType) -> Self:
         """ Convolves a (photo)spectral object with the CIE 1931 XYZ color matching functions """
         photometry = get_photometry(data, xyz_cmf)
-        return cls(photometry.spectral_dist, photometry.covariance_matrix, xyz_color_system)
+        return cls(photometry.spectral_dist, photometry.uncertainty, xyz_color_system)
 
     def to_color_system(self, new_color_system: ColorSystem) -> Self:
         """
@@ -219,8 +237,13 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
         xyz_values, xyz_covariance = self._color_system.rgb_to_xyz(
             self.spectral_dist, self.covariance_matrix
         )
-        output.spectral_dist, output.covariance_matrix = \
-            new_color_system.xyz_to_rgb(xyz_values, xyz_covariance)
+        output.spectral_dist, rgb_covariance = new_color_system.xyz_to_rgb(
+            xyz_values, xyz_covariance
+        )
+        output.uncertainty = (
+            None if rgb_covariance is None
+            else Uncertainty.from_covariance(rgb_covariance, output.spectral_dist.shape)
+        )
         if np.any(output.spectral_dist < 0):
             # We're not in the color system gamut: approximate by desaturating
             # 1D implementation: rgb -= np.min(rgb)
@@ -309,6 +332,8 @@ class ColorLine(ColorObject[SpectralSet | PhotospectralSet]):
     def __init__(self, *args, **kwargs):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
         super().__init__(*args, **kwargs)  # pyright: ignore[reportUnknownArgumentType]
         self.spectral_dist: npt.NDArray[np.floating] = np.atleast_2d(self.spectral_dist) # interprets color points as lines
+        if self.uncertainty is not None:
+            self.uncertainty: Uncertainty | None = self.uncertainty.reshape_spatial(self.spectral_dist.shape[1:])
 
     @property
     def size(self) -> int:
@@ -325,6 +350,8 @@ class ColorImage(ColorObject[SpectralCube | PhotospectralCube]):
     def __init__(self, *args, **kwargs):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
         super().__init__(*args, **kwargs)  # pyright: ignore[reportUnknownArgumentType]
         self.spectral_dist: npt.NDArray[np.floating] = np.atleast_3d(self.spectral_dist) # interprets color points and lines as images
+        if self.uncertainty is not None:
+            self.uncertainty: Uncertainty | None = self.uncertainty.reshape_spatial(self.spectral_dist.shape[1:])
 
     @override
     @classmethod
@@ -380,10 +407,8 @@ class ColorImage(ColorObject[SpectralCube | PhotospectralCube]):
         output.spectral_dist = np.repeat(
             np.repeat(output.spectral_dist, times, axis=1), times, axis=2
         )
-        if output.covariance_matrix is not None:
-            output.covariance_matrix = np.repeat(
-                np.repeat(output.covariance_matrix, times, axis=2), times, axis=3
-            )
+        if output.uncertainty is not None:
+            output.uncertainty = output.uncertainty.repeat_spatial(times)
         return output
 
     def downscale(
@@ -392,8 +417,9 @@ class ColorImage(ColorObject[SpectralCube | PhotospectralCube]):
     ) -> 'ColorImage':
         """ Brings the resolution of the image to approximately match the number of pixels """
         output = deepcopy(self)
-        output.spectral_dist, output.covariance_matrix = \
-            spatial_downscaling(output.spectral_dist, output.covariance_matrix, pixels_limit)
+        output.spectral_dist = spatial_downscaling(output.spectral_dist, None, pixels_limit)[0]
+        if output.uncertainty is not None:
+            output.uncertainty = output.uncertainty.downscale_spatial(pixels_limit)
         return output
 
     @property

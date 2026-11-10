@@ -1,15 +1,9 @@
-from collections.abc import Callable
-from copy import deepcopy
+from copy import copy, deepcopy
 from typing import Self, cast, override
 
 import numpy as np
 import numpy.typing as npt
 
-from .algebra import (
-    get_standard_deviation,
-    make_diagonal_covariance,
-    propagate_covariance,
-)
 from .auxiliary import (
     extrapolating,
     grid_endpoints_preprocessing,
@@ -28,6 +22,8 @@ from .core import (
     Cube,
     Item,
     Set,
+    UncertaintyHandler,
+    ValueHandler,
     nm_red_limit,
     nm_step,
     spectral_dist_dtype,
@@ -46,6 +42,7 @@ from .errors import (
     non_finite_values_warning,
     zero_brightness_warning,
 )
+from .uncertainty import Uncertainty
 
 
 def _extend_covariance(
@@ -88,8 +85,9 @@ class SpectralObject(BaseObject):
     Attributes:
     - `wavelength_nm` (NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
+    - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
     - `standard_deviation` (NDArray): optional array of standard deviations
-    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
+    - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
     """
 
@@ -97,7 +95,7 @@ class SpectralObject(BaseObject):
         self,
         wavelength_nm: npt.ArrayLike,
         spectral_dist: npt.ArrayLike,
-        uncertainty: npt.ArrayLike | None = None,
+        uncertainty: npt.ArrayLike | Uncertainty | None = None,
         name: object = None,
         is_emission_spectrum: bool = False
     ) -> None:
@@ -113,6 +111,7 @@ class SpectralObject(BaseObject):
         - `is_emission_spectrum` (bool): if `True`, creates an emission spectral object from the spectral lines
         """
         self.name: object = name
+        self.uncertainty: Uncertainty | None = None
         # Spatial axis check
         sd: npt.NDArray[np.floating] = np.array(spectral_dist, dtype=spectral_dist_dtype)
         if self.ndim != sd.ndim:
@@ -126,69 +125,40 @@ class SpectralObject(BaseObject):
         if (len_nm := nm.size) != (len_values := len(sd)):
             raise InconsistentAxesError(len_nm, len_values, name)
         # Uncertainty check
-        if Config.ignore_uncertainty_for_cubes and self.ndim == 3:
-            uncertainty = None
-        if uncertainty is not None:
-            uncertainty = np.array(uncertainty, dtype=spectral_dist_dtype)
-        uncertainty = cast(npt.NDArray[np.floating] | None, uncertainty)
-        if uncertainty is not None and (len_error := len(uncertainty)) != len_values:
-            raise InconsistentUncertaintySizeError(len_error, len_values, name)
-        is_cov_matrix = False
-        if uncertainty is not None:
-            is_cov_matrix = self._classify_uncertainty(uncertainty, sd.shape, name)
+        if Config.ignore_uncertainty_for_cubes and self.ndim == 3 or uncertainty is None:
+            uncertainty_obj = None
+        else:
+            uncertainty_obj = Uncertainty.from_input(uncertainty, sd.shape, name)
         # Non-finite wavelengths cannot be recovered, so the affected points are removed.
         finite_nm = np.isfinite(nm)
         if not np.all(finite_nm):
             non_finite_values_warning('wavelength', name, 'removed')
             nm = nm[finite_nm]
             sd = sd[finite_nm]
-            if uncertainty is not None:
-                if is_cov_matrix:
-                    uncertainty = uncertainty[np.ix_(finite_nm, finite_nm)]
-                else:
-                    uncertainty = uncertainty[finite_nm]
+            if uncertainty_obj is not None:
+                uncertainty_obj = uncertainty_obj.select(finite_nm)
             len_values = len(sd)
             if len_values == 0:
                 stub = self.stub(name)
                 self.wavelength_nm = stub.wavelength_nm
                 self.spectral_dist = stub.spectral_dist
-                self.covariance_matrix = stub.covariance_matrix
+                self.uncertainty = stub.uncertainty
                 return
         # Fast increasing check
         if np.any(nm[:-1] > nm[1:]):
             order = np.argsort(nm)
             nm = nm[order]
             sd = sd[order]
-            if uncertainty is not None:
-                if is_cov_matrix:
-                    uncertainty = uncertainty[np.ix_(order, order)]
-                else:
-                    uncertainty = uncertainty[order]
+            if uncertainty_obj is not None:
+                uncertainty_obj = uncertainty_obj.select(order)
         # Red limit check
         if nm[-1] > nm_red_limit:
             mask = np.where(nm < nm_red_limit + nm_step)[0] # with reserve to be averaged
             nm = nm[mask]
             sd = sd[mask]
-            if uncertainty is not None:
-                if is_cov_matrix:
-                    uncertainty = uncertainty[np.ix_(mask, mask)]
-                else:
-                    uncertainty = uncertainty[mask]
-        # A shared covariance matrix is expanded over the spatial axes.
-        if uncertainty is not None:
-            if is_cov_matrix:
-                if uncertainty.ndim == 2 and sd.ndim > 1:
-                    uncertainty = np.broadcast_to(
-                        uncertainty.reshape((len_values, len_values, *((1,) * (sd.ndim - 1)))),
-                        (len_values, len_values, *sd.shape[1:]),
-                    ).copy()
-                self._validate_covariance(uncertainty, sd.shape, name)
-            else:
-                self._validate_standard_deviation(uncertainty, sd.shape, name)
-        # Assign type of the edges
-        std_values = None
-        if uncertainty is not None:
-            std_values = get_standard_deviation(uncertainty) if is_cov_matrix else uncertainty
+            if uncertainty_obj is not None:
+                uncertainty_obj = uncertainty_obj.select(mask)
+        # Standard deviations are only needed when downscaling cannot use the covariance.
         nm_0 = cast(float, nm[0])
         nm_1 = cast(float, nm[-1])
         if is_emission_spectrum:
@@ -213,11 +183,9 @@ class SpectralObject(BaseObject):
                 npt.NDArray[np.floating],
                 np.einsum('mi,i...->m...', kernel_matrix, sd),
             )
-            self.covariance_matrix: npt.NDArray[np.floating] | None = None
-            if uncertainty is not None:
-                if not is_cov_matrix:
-                    uncertainty = make_diagonal_covariance(uncertainty)
-                self.covariance_matrix = propagate_covariance(uncertainty, kernel_matrix)
+            self.uncertainty = None
+            if uncertainty_obj is not None:
+                self.uncertainty = uncertainty_obj.propagate(kernel_matrix)
         else:
             # Spectral grid check to be a uniform 5 nm grid
             diff = np.diff(nm)
@@ -227,11 +195,9 @@ class SpectralObject(BaseObject):
                 nm_uniform = self.uniform_grid(nm_0, nm_1)
                 if diff.mean() >= self.nm_step:
                     # Option 1: loose spectral grid, increasing resolution
-                    if uncertainty is not None:
-                        cov = uncertainty if is_cov_matrix else make_diagonal_covariance(uncertainty)
+                    if uncertainty_obj is not None:
                         operator = interpolation_matrix(nm, nm_uniform, nm_step)
-                        uncertainty = propagate_covariance(cov, operator)
-                        is_cov_matrix = True
+                        uncertainty_obj = uncertainty_obj.propagate(operator)
                     sd = interpolate(nm, sd, nm_uniform, nm_step)
                 elif nm[-1] - nm[0] < 2 * nm_step:
                     # Option 2: a very narrow spectrum
@@ -239,46 +205,40 @@ class SpectralObject(BaseObject):
                     nm_uniform = template.wavelength_nm
                     integral = cast(npt.NDArray[np.floating], np.sum(0.5 * (sd[:-1] + sd[1:]) * diff, axis=0)) # Riemann sum
                     sd = cast(npt.NDArray[np.floating], template.spectral_dist * integral)
-                    if uncertainty is not None:
-                        cov = uncertainty if is_cov_matrix else make_diagonal_covariance(uncertainty)
+                    if uncertainty_obj is not None:
                         weights = np.zeros(nm.size, dtype=np.float64)
                         weights[:-1] += 0.5 * diff
                         weights[1:] += 0.5 * diff
-                        quadratic = cast(
-                            npt.NDArray[np.floating],
-                            np.einsum('i...,ij...,j...->...', weights, cov, weights),
-                        )
+                        quadratic = uncertainty_obj.integrate(weights)
                         template_sd = template.spectral_dist
-                        uncertainty = cast(
+                        covariance = cast(
                             npt.NDArray[np.floating],
                             template_sd[:, np.newaxis, ...]
                             * template_sd[np.newaxis, :, ...]
                             * quadratic[np.newaxis, np.newaxis, ...],
                         )
-                        is_cov_matrix = True
+                        uncertainty_obj = Uncertainty.from_covariance(covariance, sd.shape)
                 elif diff.max() < nm_step:
                     # Option 3: dense spectral grid -> flux-conserving binning cumulative-integral (CDF) method
-                    if uncertainty is not None:
-                        cov = uncertainty if is_cov_matrix else make_diagonal_covariance(uncertainty)
+                    if uncertainty_obj is not None:
                         operator = spectral_binning_matrix(nm, nm_uniform, nm_step, diff, nm.size)
-                        uncertainty = propagate_covariance(cov, operator)
-                        is_cov_matrix = True
+                        uncertainty_obj = uncertainty_obj.propagate(operator)
                     sd, _ = spectral_binning(nm, sd, None, nm_uniform, nm_step, diff)
                 else:
                     # Option 4: dense spectral grid with gaps -> convolution with variable core
-                    if is_cov_matrix:
-                        erasing_correlations_warning(name)
-                        uncertainty = cast(npt.NDArray[np.floating], std_values)
-                        is_cov_matrix = False
-                    sd, uncertainty = spectral_downscaling(nm, sd, uncertainty, nm_uniform, nm_step)
+                    std_values = None
+                    if uncertainty_obj is not None:
+                        if uncertainty_obj.is_covariance:
+                            erasing_correlations_warning(name)
+                        std_values = uncertainty_obj.standard_deviation
+                    sd, std_values = spectral_downscaling(nm, sd, std_values, nm_uniform, nm_step)
+                    uncertainty_obj = (
+                        None if std_values is None
+                        else Uncertainty.from_standard_deviation(std_values, sd.shape, name)
+                    )
             self.wavelength_nm = nm_uniform
             self.spectral_dist = sd
-            if uncertainty is None:
-                self.covariance_matrix = None
-            elif is_cov_matrix:
-                self.covariance_matrix = uncertainty
-            else:
-                self.covariance_matrix = make_diagonal_covariance(uncertainty)
+            self.uncertainty = uncertainty_obj
 
         # Negative brightness values check
         # Not used because color matching functions may have negative values
@@ -321,7 +281,7 @@ class SpectralObject(BaseObject):
             raise InconsistentDimensionError(cls.ndim - 1, sd0.ndim, name)
         non_finite = ~np.isfinite(sd0)
         if np.any(non_finite):
-            sd0[non_finite] = 0.0
+            sd0[non_finite] = 0.
             non_finite_values_warning('intensity', name)
         # Uncertainty check
         std0 = None
@@ -355,7 +315,7 @@ class SpectralObject(BaseObject):
         if std0 is not None:
             std1 = sd1 * sd0 / nm_step
         sd1 = sd1 * sd0 / nm_step
-        return cls(nm1, sd1, std1, name=name)
+        return cls._from_computed_arrays(nm1, sd1, std1, name)
 
     def integrate(self) -> float | npt.NDArray[np.floating]:
         """
@@ -372,7 +332,7 @@ class SpectralObject(BaseObject):
         """ Divides SpectralObject by its integral """
         result = self.normalized()
         self.spectral_dist = result.spectral_dist
-        self.covariance_matrix = result.covariance_matrix
+        self.uncertainty = result.uncertainty
 
     @override
     def convert_from_photon_spectral_density(self) -> Self:
@@ -438,7 +398,7 @@ class SpectralObject(BaseObject):
         start: float,
         end: float
     ) -> npt.NDArray[np.floating]:
-        """ Returns standard deviation values over a range of wavelengths (endpoints included) """
+        """ Returns brightness values over a range of wavelengths (endpoints included) """
         start, end = grid_endpoints_preprocessing(start, end, nm_step)
         mask = (self.wavelength_nm >= start) & (self.wavelength_nm <= end)
         intersection = self.spectral_dist[mask]
@@ -448,22 +408,21 @@ class SpectralObject(BaseObject):
             empty_spectral_intersection_warning(nm_0, nm_1, start, end)
         return intersection
 
-    def get_covariance_matrix_at_wavelengths(
+    def get_uncertainty_at_wavelengths(
         self,
         start: float,
         end: float
-    ) -> npt.NDArray[np.floating] | None:
-        """ Returns standard deviation values over a range of wavelengths (endpoints included) """
-        if self.covariance_matrix is None:
+    ) -> Uncertainty | None:
+        """ Returns uncertainty over a range of wavelengths (endpoints included). """
+        if self.uncertainty is None:
             return None
-        else:
-            start, end = grid_endpoints_preprocessing(start, end, nm_step)
-            slice_indices = np.where((self.wavelength_nm >= start) & (self.wavelength_nm <= end))[0]
-            if len(slice_indices) == 0:
-                nm_0 = cast(int, self.wavelength_nm[0])
-                nm_1 = cast(int, self.wavelength_nm[-1])
-                empty_spectral_intersection_warning(nm_0, nm_1, start, end)
-            return self.covariance_matrix[np.ix_(slice_indices, slice_indices)]
+        start, end = grid_endpoints_preprocessing(start, end, nm_step)
+        slice_indices = np.where((self.wavelength_nm >= start) & (self.wavelength_nm <= end))[0]
+        if len(slice_indices) == 0:
+            nm_0 = cast(int, self.wavelength_nm[0])
+            nm_1 = cast(int, self.wavelength_nm[-1])
+            empty_spectral_intersection_warning(nm_0, nm_1, start, end)
+        return self.uncertainty.select(slice_indices)
 
     def determine_at_trusted_wavelengths(self,
         requested_wavelengths: npt.NDArray[np.integer],
@@ -475,6 +434,9 @@ class SpectralObject(BaseObject):
         """
         requested_wavelengths = np.asarray(requested_wavelengths)
         old_wavelengths = self.wavelength_nm
+        uncertainty = (
+            None if self.uncertainty is None else self.uncertainty.compact()
+        )
         # No resampling or extrapolation is needed. Keeping the original
         # covariance here is important: get_spectrometry(strictly=True)
         # clips the result afterwards, and its slicing preserves correlations.
@@ -483,31 +445,40 @@ class SpectralObject(BaseObject):
             and requested_wavelengths[0] >= old_wavelengths[0]
             and requested_wavelengths[-1] <= old_wavelengths[-1]
         ):
-            return deepcopy(self)
+            output = copy(self)
+            output.wavelength_nm = self.wavelength_nm.copy()
+            output.spectral_dist = self.spectral_dist.copy()
+            if uncertainty is not None:
+                output.uncertainty = deepcopy(uncertainty)
+            return output
         # Preparing standard deviation for the extrapolated points
-        old_covariance = self.covariance_matrix
+        old_uncertainty = uncertainty
         std = None
-        if old_covariance is not None:
-            std = get_standard_deviation(old_covariance)
+        if old_uncertainty is not None:
+            std = old_uncertainty.standard_deviation
         # Extrapolating
         nm, br, std = extrapolating(old_wavelengths, self.spectral_dist, std, requested_wavelengths, nm_step)
         # Creating new object
-        obj = deepcopy(self)
+        obj = copy(self)
         obj.wavelength_nm = nm
         obj.spectral_dist = br
-        if old_covariance is None:
-            obj.covariance_matrix = None
+        if old_uncertainty is None or std is None:
+            obj.uncertainty = None
+        elif not old_uncertainty.is_covariance:
+            # Uncorrelated input stays uncorrelated after extrapolation.
+            obj.uncertainty = Uncertainty.from_standard_deviation(std, br.shape, self.name)
         else:
             try:
-                obj.covariance_matrix = _extend_covariance(
-                    old_covariance, old_wavelengths, nm, std
+                covariance = _extend_covariance(
+                    old_uncertainty.covariance_input(), old_wavelengths, nm, std
                 )
+                obj.uncertainty = Uncertainty.from_covariance(covariance, br.shape, self.name)
             except ValueError:
                 # Defensive fallback: the grid mapping is not exact, so the
                 # extrapolated points cannot be placed into the old block.
-                if not is_diagonal(old_covariance):
+                if not is_diagonal(old_uncertainty.covariance_input()):
                     erasing_correlations_warning(self.name)
-                obj.covariance_matrix = make_diagonal_covariance(std) if std is not None else None
+                obj.uncertainty = Uncertainty.from_standard_deviation(std, br.shape, self.name)
         return obj
 
     def edges_to_zero(self) -> None:
@@ -529,14 +500,8 @@ class SpectralObject(BaseObject):
             self.wavelength_nm = np.concatenate((new_wl, self.wavelength_nm))
             zeros_left = np.zeros(self.spatial_shape, dtype=wavelength_nm_dtype)
             self.spectral_dist = np.concatenate((zeros_left[np.newaxis], self.spectral_dist), axis=0)
-            if self.covariance_matrix is not None:
-                n = cast(int, self.covariance_matrix.shape[0])
-                extended = np.zeros(
-                    (n + 1, n + 1, *self.covariance_matrix.shape[2:]),
-                    dtype=self.covariance_matrix.dtype,
-                )
-                extended[1:, 1:] = self.covariance_matrix
-                self.covariance_matrix = extended
+            if self.uncertainty is not None:
+                self.uncertainty = self.uncertainty.pad_spectral(left=True)
         elif not is_stub:
             sd_1 = cast(npt.NDArray[np.floating], self.spectral_dist[1])
             if not sd_1.any():
@@ -550,8 +515,8 @@ class SpectralObject(BaseObject):
                 if idx is not None:
                     self.wavelength_nm = self.wavelength_nm[idx:]
                     self.spectral_dist = self.spectral_dist[idx:]
-                    if self.covariance_matrix is not None:
-                        self.covariance_matrix = self.covariance_matrix[idx:, idx:]
+                    if self.uncertainty is not None:
+                        self.uncertainty = self.uncertainty.select(slice(idx, None))
         # else: exactly one zero on the left — nothing to do
         # - Right edge (index -1 along spectral axis)
         sd_1 = cast(npt.NDArray[np.floating], self.spectral_dist[-1])
@@ -561,14 +526,8 @@ class SpectralObject(BaseObject):
             self.wavelength_nm = np.concatenate((self.wavelength_nm, new_wl))
             zeros_right = np.zeros(self.spatial_shape, dtype=wavelength_nm_dtype)
             self.spectral_dist = np.concatenate((self.spectral_dist, zeros_right[np.newaxis]), axis=0)
-            if self.covariance_matrix is not None:
-                n = cast(int, self.covariance_matrix.shape[0])
-                extended = np.zeros(
-                    (n + 1, n + 1, *self.covariance_matrix.shape[2:]),
-                    dtype=self.covariance_matrix.dtype,
-                )
-                extended[:-1, :-1] = self.covariance_matrix
-                self.covariance_matrix = extended
+            if self.uncertainty is not None:
+                self.uncertainty = self.uncertainty.pad_spectral(left=False)
         elif not is_stub:
             sd_2 = cast(npt.NDArray[np.floating], self.spectral_dist[-2])
             if not sd_2.any():
@@ -582,8 +541,8 @@ class SpectralObject(BaseObject):
                 if idx is not None:
                     self.wavelength_nm = self.wavelength_nm[:idx]
                     self.spectral_dist = self.spectral_dist[:idx]
-                    if self.covariance_matrix is not None:
-                        self.covariance_matrix = self.covariance_matrix[:idx, :idx]
+                    if self.uncertainty is not None:
+                        self.uncertainty = self.uncertainty.select(slice(None, idx))
         # else: exactly one zero on the right -> nothing to do
 
     def is_zero_edged(self) -> bool:
@@ -592,12 +551,23 @@ class SpectralObject(BaseObject):
         sd_1 = cast(npt.NDArray[np.floating], self.spectral_dist[-1])
         return not (sd_0.any() or sd_1.any())
 
+    @classmethod
+    def _from_computed_arrays(
+        cls,
+        wavelength_nm: npt.ArrayLike,
+        spectral_dist: npt.NDArray[np.floating],
+        uncertainty: Uncertainty | npt.ArrayLike | None,
+        name: object = None
+    ) -> Self:
+        """ Builds an operation result, keeping subclass-specific constructors. """
+        return cls(wavelength_nm, spectral_dist, uncertainty, name=name)
+
     @override
     def _apply_element_wise_operation(
         self,
         other: 'BaseObject',
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray[np.floating]],
-        error_handling: Callable[[npt.ArrayLike, npt.ArrayLike | None, npt.ArrayLike, npt.ArrayLike | None], npt.NDArray[np.floating] | None]
+        value_handling: ValueHandler,
+        uncertainty_handling: UncertaintyHandler
     ) -> 'SpectralObject':
         """
         Returns a new SpectralObject formed from element-wise operation between SpectralObjects
@@ -608,6 +578,23 @@ class SpectralObject(BaseObject):
         """
         if isinstance(other, SpectralObject):
             higher_dim = (self, other)[self.ndim < other.ndim]
+            # Perf: identical grids skip intersection slicing and constructor copies.
+            # cube + cube (61 x 100 x 100): 9.72 -> 0.44 ms.
+            if np.array_equal(self.wavelength_nm, other.wavelength_nm):
+                value = value_handling(self.spectral_dist, other.spectral_dist)
+                uncertainty = uncertainty_handling(
+                    self.spectral_dist, self.uncertainty,
+                    other.spectral_dist, other.uncertainty,
+                )
+                if type(higher_dim) in (Spectrum, SpectralSet, SpectralCube):
+                    output = copy(higher_dim)
+                    output.wavelength_nm = higher_dim.wavelength_nm.copy()
+                    output.spectral_dist = value
+                    output.uncertainty = uncertainty
+                    return output
+                return higher_dim._from_computed_arrays(
+                    higher_dim.wavelength_nm, value, uncertainty, higher_dim.name
+                )
             self_nm_0 = cast(int, self.wavelength_nm[0])
             self_nm_1 = cast(int, self.wavelength_nm[-1])
             other_nm_0 = cast(int, other.wavelength_nm[0])
@@ -625,8 +612,15 @@ class SpectralObject(BaseObject):
                 value1 = self.get_spectral_dist_at_wavelengths(start, end)
                 value2 = other.get_spectral_dist_at_wavelengths(start, end)
                 value = value_handling(value1, value2)
-                error = error_handling(value1, self.get_covariance_matrix_at_wavelengths(start, end), value2, other.get_covariance_matrix_at_wavelengths(start, end))
-                return higher_dim.__class__(self.uniform_grid(start, end), value, error, name=higher_dim.name)
+                uncertainty = uncertainty_handling(
+                    value1,
+                    self.get_uncertainty_at_wavelengths(start, end),
+                    value2,
+                    other.get_uncertainty_at_wavelengths(start, end),
+                )
+                return higher_dim._from_computed_arrays(
+                    self.uniform_grid(start, end), value, uncertainty, higher_dim.name
+                )
         else:
             return NotImplemented
 
@@ -638,7 +632,8 @@ class Spectrum(SpectralObject, Item['SpectralSet']):
     Attributes:
     - `wavelength_nm` (NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
+    - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
+    - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
     """
 
@@ -650,7 +645,8 @@ class SpectralSet(SpectralObject, Set['Spectrum', 'SpectralCube']):
     Attributes:
     - `wavelength_nm` (NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
+    - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
+    - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
     - `size` (int): spatial axis length
     """
@@ -663,7 +659,8 @@ class SpectralCube(SpectralObject, Cube['SpectralSet']):
     Attributes:
     - `wavelength_nm` (NDArray): spectral axis, list of wavelengths in nanometers on a uniform grid
     - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
+    - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
+    - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length
@@ -673,8 +670,10 @@ class SpectralCube(SpectralObject, Cube['SpectralSet']):
     @override
     def flatten(self) -> SpectralSet:
         """ Returns a SpectralSet with linearized spatial axis """
-        value = self.spectral_dist.reshape(self.spectral_size, self.spatial_size)
-        error = None
-        if self.covariance_matrix is not None:
-            error = self.covariance_matrix.reshape(self.spectral_size, self.spectral_size, self.spatial_size)
-        return SpectralSet(self.wavelength_nm, value, error, self.name)
+        # Perf: trusted construction skips validation and extra copies.
+        # cube.flatten() on 61 x 100 x 100: 1.18 -> 0.37 ms.
+        value = self.spectral_dist.reshape(self.spectral_size, self.spatial_size).copy()
+        uncertainty = None
+        if self.uncertainty is not None:
+            uncertainty = deepcopy(self.uncertainty.reshape_spatial((self.spatial_size,)))
+        return SpectralSet._from_trusted_arrays(self.wavelength_nm, value, uncertainty, self.name)

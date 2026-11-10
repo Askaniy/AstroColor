@@ -1,21 +1,20 @@
 """ Experimental support of some photometric models used in TrueColorTools """
 
+from collections.abc import Callable
 from typing import Final, cast, override
 
 import numpy as np
 import numpy.typing as npt
 from scipy.interpolate import CloughTocher2DInterpolator, PchipInterpolator
 
-from .algebra import (
-    mul_error,
-    mul_value,
-)
+from .algebra import mul_value
 from .auxiliary import (
     integrate,
     parse_value_std,
 )
+from .uncertainty import combine_covariance_terms
 
-# ------------ Phase Photometry Section ------------
+type PhaseFunction = Callable[[float | npt.ArrayLike], float | npt.NDArray[np.floating]]
 
 class PhotometricModel:
     """
@@ -26,10 +25,10 @@ class PhotometricModel:
     phase_integral: tuple[float, float | None] | None = None
 
     def __init__(self,
-        params: dict[str, float | tuple[float]] = {},
+        params: dict[str, float | tuple[float]] | None = None,
         filter_or_nm: str | float = ''
     ) -> None:
-        self.params: dict[str, float | tuple[float]] = params
+        self.params: dict[str, float | tuple[float]] = {} if params is None else params
         self.filter_or_nm: str | float = filter_or_nm
         self._integrate()
 
@@ -37,14 +36,24 @@ class PhotometricModel:
         """ Analytically or numerically computes usable values from a model parameters """
         raise NotImplementedError('Must be implemented in the inherited classes.')
 
-    def phase_function(self, alpha: float | npt.ArrayLike): # input in radians!
+    def phase_function(
+        self,
+        alpha: float | npt.ArrayLike
+    ) -> float | npt.NDArray[np.floating]: # input in radians!
+        _ = alpha
         raise NotImplementedError('Must be implemented in the inherited classes.')
 
     @property
     def spherical_albedo(self):
         if self.geometric_albedo is not None and self.phase_integral is not None:
             a = mul_value(self.geometric_albedo[0], self.phase_integral[0])
-            a_std = mul_error(self.geometric_albedo[0], self.geometric_albedo[1], self.phase_integral[0], self.phase_integral[1])
+            a_variance = combine_covariance_terms(
+                None if self.geometric_albedo[1] is None else self.geometric_albedo[1]**2,
+                self.phase_integral[0],
+                None if self.phase_integral[1] is None else self.phase_integral[1]**2,
+                self.geometric_albedo[0],
+            )
+            a_std = None if a_variance is None else float(np.sqrt(a_variance))
             return a, a_std
         else:
             return None
@@ -96,25 +105,30 @@ class PhaseCoefficient(PhotometricModel):
     The error propagation formula was used to handle the uncertainty.
     """
 
-    _k: Final = 180 / np.pi * 0.4 * cast(float, np.log(10)) # ≈ 52.77
+    _k: Final[float] = 180 / np.pi * 0.4 * cast(float, np.log(10)) # ≈ 52.77
 
     @override
     def _integrate(self) -> None:
         beta, beta_std = parse_value_std(self.params['beta'])
         beta *= self._k
-        _exp = np.exp(-np.pi * beta)
+        _exp = cast(float, np.exp(-np.pi * beta))
         denominator = 1 + beta * beta
         phase_integral = 2 * (1 + _exp) / denominator
         if beta_std is not None:
-            phase_integral_std = beta_std * 2 * self._k * (np.pi * _exp + beta * phase_integral) / denominator
+            phase_integral_std = (
+                beta_std * 2 * self._k * (np.pi * _exp + beta * phase_integral) / denominator
+            )
         else:
             phase_integral_std = None
-        self.phase_integral = (phase_integral, phase_integral_std)
+        self.phase_integral: tuple[float, float | None] | None = (phase_integral, phase_integral_std)
 
     @override
-    def phase_function(self, alpha: float | npt.ArrayLike):
+    def phase_function(
+        self,
+        alpha: float | npt.ArrayLike
+    ) -> float | npt.NDArray[np.floating]:
         beta, _ = parse_value_std(self.params['beta'])
-        return np.exp(-self._k * beta * np.array(alpha))
+        return cast(npt.NDArray[np.floating], np.exp(-self._k * beta * np.asarray(alpha)))
         # equivalent to 10**(-0.4 * beta * alpha / np.pi * 180)
 
 
@@ -124,29 +138,47 @@ class Exponentials(PhotometricModel):
     Usually one (like phase coefficient), two (Akimov, 1988) or three (Velikodsky, 2011) are used.
     """
 
-    _A: npt.NDArray[np.floating] | None = None
+    _a: npt.NDArray[np.floating] | None = None
     _mu: npt.NDArray[np.floating] | None = None
 
     @override
     def _integrate(self) -> None:
         n_exponentials = len(self.params) // 2
-        self._A = np.empty(n_exponentials)
-        self._mu = np.empty(n_exponentials)
+        amplitudes = np.empty(n_exponentials, dtype=np.float64)
+        mu = np.empty(n_exponentials, dtype=np.float64)
         for i in range(n_exponentials):
-            self._A[i] = parse_value_std(self.params[f'A_{i+1}'])[0]
-            self._mu[i] = parse_value_std(self.params[f'mu_{i+1}'])[0]
-        if (zero_phase_angle := self._A.sum()) != 1:
+            amplitudes[i] = parse_value_std(self.params[f'A_{i+1}'])[0]
+            mu[i] = parse_value_std(self.params[f'mu_{i+1}'])[0]
+        self._a = amplitudes
+        self._mu = mu
+        zero_phase_angle = cast(float, amplitudes.sum())
+        if zero_phase_angle != 1:
             # if function was not normalized, it shows geometric albedo at 0 phase angle
-            self.geometric_albedo = zero_phase_angle, None
-        self.phase_integral = 2 * np.sum(self._A * (1 + np.exp(-self._mu * np.pi)) / (1 + self._mu**2)) / zero_phase_angle, None
+            self.geometric_albedo: tuple[float, float | None] | None = zero_phase_angle, None
+        integral = cast(
+            float,
+            2 * np.sum(amplitudes * (1 + np.exp(-mu * np.pi)) / (1 + mu**2)) / zero_phase_angle,
+        )
+        self.phase_integral: tuple[float, float | None] | None = integral, None
 
     @override
-    def phase_function(self, alpha: float | npt.ArrayLike):
-        phi = np.sum(self._A[:, np.newaxis] * np.exp(-self._mu[:, np.newaxis] * alpha), axis=0)
-        if phi.size == 1:
-            phi = phi[0]
+    def phase_function(
+        self,
+        alpha: float | npt.ArrayLike
+    ) -> float | npt.NDArray[np.floating]:
+        amplitudes = self._a
+        mu = self._mu
+        if amplitudes is None or mu is None:
+            raise ValueError('The exponential phase function has not been integrated yet')
+        alpha = np.asarray(alpha, dtype=np.float64)
+        phi = cast(
+            npt.NDArray[np.floating],
+            np.sum(amplitudes[:, np.newaxis] * np.exp(-mu[:, np.newaxis] * alpha), axis=0),
+        )
         if self.geometric_albedo is not None:
-           phi /= self.geometric_albedo[0]
+            phi = phi / self.geometric_albedo[0]
+        if phi.size == 1:
+            return float(cast(float, phi.reshape(-1)[0]))
         return phi
 
 
@@ -165,12 +197,15 @@ class HG(PhotometricModel):
         g, g_std = parse_value_std(self.params['G'])
         q = 0.290 + 0.684 * g
         q_std = None if g_std is None else 0.684 * g_std
-        self.phase_integral = (q, q_std)
+        self.phase_integral: tuple[float, float | None] | None = (q, q_std)
 
     @override
-    def phase_function(self, alpha: float | npt.ArrayLike):
+    def phase_function(
+        self,
+        alpha: float | npt.ArrayLike
+    ) -> float | npt.NDArray[np.floating]:
         g, _ = parse_value_std(self.params['G'])
-        alpha = np.array(alpha)
+        alpha = np.asarray(alpha, dtype=np.float64)
         alpha2 = 0.5 * alpha
         sin_alpha = np.sin(alpha)
         tan_alpha2 = np.tan(alpha2)
@@ -268,12 +303,16 @@ class HG1G2(PhotometricModel):
             if g2_std is None:
                 g2_std = 0
             q_std = 0.4061 * g1_std + 0.8092 * g2_std
-        self.phase_integral = (q, q_std)
+        self.phase_integral: tuple[float, float | None] | None = (q, q_std)
 
     @override
-    def phase_function(self, alpha: float | npt.ArrayLike):
+    def phase_function(
+        self,
+        alpha: float | npt.ArrayLike
+    ) -> float | npt.NDArray[np.floating]:
         g1, _ = parse_value_std(self.params['G_1'])
         g2, _ = parse_value_std(self.params['G_2'])
+        alpha = np.asarray(alpha, dtype=np.float64)
         return g1 * self.hg1g2_phi1(alpha) + g2 * self.hg1g2_phi2(alpha) + (1 - g1 - g2) * self.hg1g2_phi3(alpha)
 
 
@@ -294,14 +333,14 @@ class Hapke(PhotometricModel):
     # analytic expressions for the physical albedo and integral phase function could not be obtained.
     # Hence, the integration was done numerically for values of θ up to 60°."
 
-    _alpha: Final = np.array([
+    _alpha: Final[npt.NDArray[np.floating]] = np.array([
         0, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90,
         100, 110, 120, 130, 140, 150, 160, 170, 180
     ]) / 180 * np.pi
 
-    _theta: Final = np.array([0, 10, 20, 30, 40, 50, 60]) / 180 * np.pi
+    _theta: Final[npt.NDArray[np.floating]] = np.array([0, 10, 20, 30, 40, 50, 60]) / 180 * np.pi
 
-    _k: Final = np.array([
+    _k: Final[npt.NDArray[np.floating]] = np.array([
         [1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00],
         [1.00, 0.997, 0.991, 0.984, 0.974, 0.961, 0.943],
         [1.00, 0.994, 0.981, 0.965, 0.944, 0.918, 0.881],
@@ -325,7 +364,12 @@ class Hapke(PhotometricModel):
         [1.00, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     ])
 
-    _A, _B = np.meshgrid(_alpha, _theta, indexing='ij')
+    _A: Final[npt.NDArray[np.floating]] = cast(
+        npt.NDArray[np.floating], np.meshgrid(_alpha, _theta, indexing='ij')[0]
+    )
+    _B: Final[npt.NDArray[np.floating]] = cast(
+        npt.NDArray[np.floating], np.meshgrid(_alpha, _theta, indexing='ij')[1]
+    )
     hapke_k: Final = CloughTocher2DInterpolator(np.column_stack([_A.ravel(), _B.ravel()]), _k.ravel())
 
     @staticmethod
@@ -334,7 +378,7 @@ class Hapke(PhotometricModel):
         return (1 - b**2) * ((1 - c) * (1 + 2*b*np.cos(alpha) + b**2)**(-1.5) + c * (1 - 2*b*np.cos(alpha) + b**2)**(-1.5))
 
     @override
-    def _integrate(self):
+    def _integrate(self) -> None:
         w, _ = parse_value_std(self.params['w']) # single particle scattering albedo
         bo, _ = parse_value_std(self.params['bo']) # amplitude of opposition surge
         h, _ = parse_value_std(self.params['h']) # width of opposition surge
@@ -345,16 +389,16 @@ class Hapke(PhotometricModel):
         r0 = (1 - gamma) / (1 + gamma) # bihemispherical reflectance
         # geometric albedo:
         C = 1 - r0 * (0.048 * theta + 0.0041 * theta**2) - r0**2 * (0.33 * theta + 0.0049 * theta**2)
-        self.geometric_albedo = (
+        self.geometric_albedo: tuple[float, float | None] | None = (
             cast(float, w / 8 * ((1 + bo) * self.henyey_greenstein(0, b, c) - 1) + C * 0.5 * r0 * (1 + r0 / 3)),
             None
         )
         # phase function:
-        def phase_function(alpha: float | npt.ArrayLike):
+        def phase_function(alpha: float | npt.ArrayLike) -> float | npt.NDArray[np.floating]:
             # without this check the output would be nan
-            alpha = np.array(alpha, dtype='float')
-            mask = alpha == 0
-            phi = np.empty_like(alpha)
+            alpha = np.asarray(alpha, dtype=np.float64)
+            mask = cast(npt.NDArray[np.bool_], alpha == 0)
+            phi = cast(npt.NDArray[np.floating], np.empty_like(alpha))
             phi[mask] = 1.
             alpha = alpha[~mask]
             alpha2 = alpha * 0.5
@@ -362,13 +406,27 @@ class Hapke(PhotometricModel):
             phi[~mask] = w / 8 * ((1 + B) * self.henyey_greenstein(alpha, b, c) - 1) + 0.5 * r0 * (1 - r0)
             phi[~mask] *= 1 + np.sin(alpha2) * np.tan(alpha2) * np.log(np.tan(0.5 * alpha2))
             phi[~mask] += 2/3 * r0**2 * (np.sin(alpha) + (np.pi - alpha) * np.cos(alpha)) / np.pi
-            phi[~mask] *= self.hapke_k(alpha, theta) * phi[~mask] / self.geometric_albedo[0]
+            if self.geometric_albedo is None:
+                raise ValueError('The Hapke model has not been integrated yet')
+            theta_array = np.full_like(alpha, theta)
+            phi[~mask] *= self.hapke_k(alpha, theta_array) * phi[~mask] / self.geometric_albedo[0]
             return phi
-        self.phase_function = phase_function
+        self._phase_function = phase_function
         # Numerical calculation of spherical albedo
         step = 0.01
         a = np.arange(0, np.pi, step) # 0°-180° phase angle array (radians)
-        self.phase_integral = (
+        self.phase_integral: tuple[float, float | None] | None = (
             2 * cast(float, integrate(phase_function(a) * np.sin(a), step=step, precisely=True)),
             None
         )
+
+    _phase_function: PhaseFunction | None = None
+
+    @override
+    def phase_function(
+        self,
+        alpha: float | npt.ArrayLike
+    ) -> float | npt.NDArray[np.floating]:
+        if self._phase_function is None:
+            raise ValueError('The Hapke model has not been integrated yet')
+        return self._phase_function(alpha)

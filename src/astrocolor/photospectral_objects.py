@@ -1,22 +1,29 @@
-from collections.abc import Callable
 from copy import deepcopy
 from typing import Self, cast, override
 
 import numpy as np
 import numpy.typing as npt
 
-from .algebra import make_diagonal_covariance, make_same_ndim
+from .algebra import make_same_ndim
 from .config import Config
-from .core import BaseObject, Cube, Item, Set, spectral_dist_dtype
+from .core import (
+    BaseObject,
+    Cube,
+    Item,
+    Set,
+    UncertaintyHandler,
+    ValueHandler,
+    spectral_dist_dtype,
+)
 from .errors import (
     InconsistentAxesError,
     InconsistentDimensionError,
-    InconsistentUncertaintySizeError,
     non_finite_values_warning,
 )
 
 # No dependency on .spectral_objects to avoid a cycle!
 from .filter_objects import FilterSet
+from .uncertainty import Uncertainty
 
 
 class PhotospectralObject(BaseObject):
@@ -34,7 +41,8 @@ class PhotospectralObject(BaseObject):
     - `filter_set` (FilterSet): instance of the class storing filter profiles
     - `wavelength_nm` (NDArray): shortcut for filter_set.wavelength_nm, the definition range
     - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
+    - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
+    - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
     """
 
@@ -42,7 +50,7 @@ class PhotospectralObject(BaseObject):
         self,
         filter_set: FilterSet,
         spectral_dist: npt.ArrayLike,
-        uncertainty: npt.ArrayLike | None = None,
+        uncertainty: npt.ArrayLike | Uncertainty | None = None,
         name: object = None
     ) -> None:
         """
@@ -53,46 +61,26 @@ class PhotospectralObject(BaseObject):
         - `name` (object): human-readable identifier
         """
         self.name: object = name
+        self.uncertainty: Uncertainty | None = None
         # Spatial axis check
         self.spectral_dist: npt.NDArray[np.floating] = np.array(spectral_dist, dtype=spectral_dist_dtype)
         if self.ndim != self.spectral_dist.ndim:
             raise InconsistentDimensionError(self.ndim, self.spectral_dist.ndim, self.name)
         non_finite = ~np.isfinite(self.spectral_dist)
         if np.any(non_finite):
-            self.spectral_dist[non_finite] = 0.0
+            self.spectral_dist[non_finite] = 0.
             non_finite_values_warning('spectral_dist', self.name)
         # Spectral axis check
         self.filter_set: FilterSet = filter_set
         if (len_filters := len(self.filter_set)) != (len_values := len(self.spectral_dist)):
             raise InconsistentAxesError(len_filters, len_values, self.name)
         # Uncertainty check
-        self.covariance_matrix: npt.NDArray[np.floating] | None = None
-        if Config.ignore_uncertainty_for_cubes and self.ndim == 3:
-            uncertainty = None
-        if uncertainty is not None:
-            uncertainty = np.array(uncertainty, dtype=spectral_dist_dtype)
-            if (len_error := len(uncertainty)) != len_values:
-                raise InconsistentUncertaintySizeError(len_error, len_values, name)
-            is_cov_matrix = self._classify_uncertainty(
+        if Config.ignore_uncertainty_for_cubes and self.ndim == 3 or uncertainty is None:
+            self.uncertainty = None
+        else:
+            self.uncertainty = Uncertainty.from_input(
                 uncertainty, self.spectral_dist.shape, name
             )
-            if is_cov_matrix:
-                if uncertainty.ndim == 2 and self.spectral_dist.ndim > 1:
-                    uncertainty = np.broadcast_to(
-                        uncertainty.reshape((
-                            len_values,
-                            len_values,
-                            *((1,) * (self.spectral_dist.ndim - 1)),
-                        )),
-                        (len_values, len_values, *self.spectral_dist.shape[1:]),
-                    ).copy()
-                self._validate_covariance(uncertainty, self.spectral_dist.shape, name)
-                self.covariance_matrix = uncertainty
-            else:
-                self._validate_standard_deviation(
-                    uncertainty, self.spectral_dist.shape, name
-                )
-                self.covariance_matrix = make_diagonal_covariance(uncertainty)
 
     @override
     @classmethod
@@ -147,8 +135,8 @@ class PhotospectralObject(BaseObject):
     def _apply_element_wise_operation(
         self,
         other: 'BaseObject',
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray[np.floating]],
-        error_handling: Callable[[npt.ArrayLike, npt.ArrayLike | None, npt.ArrayLike, npt.ArrayLike | None], npt.NDArray[np.floating] | None]
+        value_handling: ValueHandler,
+        uncertainty_handling: UncertaintyHandler
     ) -> 'PhotospectralObject':
         """
         Returns a new PhotospectralObject formed from a linear element-wise
@@ -172,16 +160,19 @@ class PhotospectralObject(BaseObject):
         else:
             return NotImplemented
         value = value_handling(self.spectral_dist, other.spectral_dist)
-        error = error_handling(self.spectral_dist, self.covariance_matrix, other.spectral_dist, other.covariance_matrix)
+        uncertainty = uncertainty_handling(
+            self.spectral_dist, self.uncertainty,
+            other.spectral_dist, other.uncertainty,
+        )
         higher_dim = (self, other)[self.ndim < other.ndim]
-        return higher_dim.__class__(filter_set, value, error, name=higher_dim.name)
+        return higher_dim.__class__(filter_set, value, uncertainty, name=higher_dim.name)
 
     @override
     def _apply_spectral_operation(
         self,
         other: 'BaseObject',
-        value_handling: Callable[[npt.ArrayLike, npt.ArrayLike], npt.NDArray[np.floating]],
-        error_handling: Callable[[npt.ArrayLike, npt.ArrayLike | None, npt.ArrayLike, npt.ArrayLike | None], npt.NDArray[np.floating] | None]
+        value_handling: ValueHandler,
+        uncertainty_handling: UncertaintyHandler
     ) -> 'PhotospectralObject':
         """
         Returns a new PhotospectralObject formed from an operation that is
@@ -216,15 +207,15 @@ class PhotospectralObject(BaseObject):
         left_value, right_value = make_same_ndim(left.spectral_dist, right.spectral_dist)
         value = value_handling(left_value, right_value)
         # Confidence bands for spectral sets and cubes are not computed by the reconstruction.
-        error = None
+        uncertainty = None
         if left.ndim == 1 and right.ndim == 1:
-            error = error_handling(
-                left.spectral_dist, left.covariance_matrix,
-                right.spectral_dist, right.covariance_matrix
+            uncertainty = uncertainty_handling(
+                left.spectral_dist, left.uncertainty,
+                right.spectral_dist, right.uncertainty,
             )
         higher = left if left.ndim >= right.ndim else right
         product_class = (Spectrum, SpectralSet, SpectralCube)[higher.ndim - 1]
-        product = product_class(target_nm, value, error, name=higher.name)
+        product = product_class(target_nm, value, uncertainty, name=higher.name)
         return get_photometry(product, filter_set)
 
     @override
@@ -252,7 +243,8 @@ class Photospectrum(PhotospectralObject, Item['PhotospectralSet']):
     - `filter_set` (FilterSet): instance of the class storing filter profiles
     - `wavelength_nm` (NDArray): shortcut for filter_set.wavelength_nm, the definition range
     - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
+    - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
+    - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
     """
 
@@ -265,7 +257,8 @@ class PhotospectralSet(PhotospectralObject, Set['Photospectrum', 'PhotospectralC
     - `filter_set` (FilterSet): instance of the class storing filter profiles
     - `wavelength_nm` (NDArray): shortcut for filter_set.wavelength_nm, the definition range
     - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
+    - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
+    - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
     - `size` (int): spatial axis length
     """
@@ -279,7 +272,8 @@ class PhotospectralCube(PhotospectralObject, Cube['PhotospectralSet']):
     - `filter_set` (FilterSet): instance of the class storing filter profiles
     - `wavelength_nm` (NDArray): shortcut for filter_set.wavelength_nm, the definition range
     - `spectral_dist` (NDArray): array of "brightness" in energy density units (not a photon counter)
-    - `covariance_matrix` (NDArray): optional matrix that stores uncertainty and its correlations
+    - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
+    - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length
@@ -289,8 +283,10 @@ class PhotospectralCube(PhotospectralObject, Cube['PhotospectralSet']):
     @override
     def flatten(self) -> PhotospectralSet:
         """ Returns a PhotospectralSet with linearized spatial axis """
-        value = self.spectral_dist.reshape(self.spectral_size, self.spatial_size)
-        error = None
-        if self.covariance_matrix is not None:
-            error = self.covariance_matrix.reshape(self.spectral_size, self.spectral_size, self.spatial_size)
-        return PhotospectralSet(self.filter_set, value, error, self.name)
+        value = self.spectral_dist.reshape(self.spectral_size, self.spatial_size).copy()
+        uncertainty = None
+        if self.uncertainty is not None:
+            uncertainty = deepcopy(self.uncertainty.reshape_spatial((self.spatial_size,)))
+        output = PhotospectralSet._from_trusted_arrays(self.filter_set.wavelength_nm, value, uncertainty, self.name)
+        output.filter_set = self.filter_set
+        return output
