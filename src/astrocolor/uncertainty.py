@@ -27,6 +27,7 @@ from .config import Config
 from .errors import (
     InconsistentUncertaintyShapeError,
     InconsistentUncertaintySizeError,
+    NegativeVarianceError,
     non_finite_values_warning,
 )
 
@@ -346,7 +347,7 @@ class Uncertainty:
         diagonal = np.diagonal(covariance, axis1=0, axis2=1)
         scale = max(1.0, float(cast(float, np.max(np.abs(covariance)))))
         if np.any(diagonal < -1e-10 * scale):
-            raise ValueError(f'Covariance matrix contains negative variances for "{name}"')
+            raise NegativeVarianceError(name)
 
     def validate(self, data_shape: tuple[int, ...], name: object = None) -> None:
         """ Checks that the storage matches the shape of the data it describes. """

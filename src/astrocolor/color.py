@@ -18,7 +18,7 @@ from .photospectral_objects import (
 )
 from .reference_spectra import sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
-from .uncertainty import Uncertainty
+from .uncertainty import Uncertainty, propagate_covariance
 
 # CIE 1931 XYZ color matching functions, 2-deg
 # https://cie.co.at/datatable/cie-1931-colour-matching-functions-2-degree-observer
@@ -106,7 +106,7 @@ class ColorSystem:
             error1 = None
         else:
             # 1D implementation: cov_rgb = self.inv_matrix @ cov_xyz @ self.inv_matrix.T
-            error1 = cast(npt.NDArray[np.floating], np.einsum('ij, jk..., kl -> il...', self.inv_matrix, error0, self.inv_matrix))
+            error1 = propagate_covariance(error0, self.inv_matrix)
         return value1, error1
 
     def rgb_to_xyz(
@@ -120,8 +120,8 @@ class ColorSystem:
         if error0 is None:
             error1 = None
         else:
-            # 1D implementation: cov_rgb = self.matrix @ cov_xyz @ self.matrix.T
-            error1 = cast(npt.NDArray[np.floating], np.einsum('ij, jk..., kl -> il...', self.matrix, error0, self.matrix))
+            # 1D implementation: cov_xyz = self.matrix @ cov_rgb @ self.matrix.T
+            error1 = propagate_covariance(error0, self.matrix)
         return value1, error1
 
     @staticmethod

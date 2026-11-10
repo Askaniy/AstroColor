@@ -38,6 +38,13 @@ class InconsistentUncertaintyShapeError(AstroColorError, ValueError):
             msg += f' for "{name}"'
         super().__init__(msg + '. It cannot be a standard deviation or a covariance matrix.')
 
+class NegativeVarianceError(AstroColorError, ValueError):
+    def __init__(self, name: object = None):
+        msg = 'Covariance matrix contains negative variances'
+        if name is not None:
+            msg += f' for "{name}"'
+        super().__init__(msg + '.')
+
 class FilterNotFoundError(AstroColorError):
     def __init__(self, filter_id: str):
         super().__init__(f'Filter "{filter_id}" not available locally or online.')

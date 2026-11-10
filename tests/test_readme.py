@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 import astrocolor as ac
 
@@ -13,7 +14,7 @@ def test_photometry():
     )
     bessell_V = ac.Filter.get('Generic/Bessell.V')
     flux_value, flux_error = ac.get_photometry(spectrum, bessell_V)
-    assert flux_value == 2.5167967171270256
+    assert flux_value == pytest.approx(2.5167967171270256)
     assert flux_error is None
 
     # Block 2

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 import astrocolor as ac
+from astrocolor.errors import NegativeVarianceError
 from astrocolor.uncertainty import Uncertainty
 
 
@@ -289,3 +290,29 @@ def test_ignore_correlations_still_validates_covariance(monkeypatch: pytest.Monk
 
     with pytest.raises(ValueError):
         _ = ac.Spectrum(nm, np.ones(nm.size), covariance)
+
+
+def test_negative_covariance_raises_typed_error_without_none_name():
+    nm = np.arange(500, 521, 5)
+    covariance = np.eye(nm.size)
+    covariance[0, 0] = -1.
+
+    with pytest.raises(NegativeVarianceError) as exc_info:
+        _ = ac.Spectrum(nm, np.ones(nm.size), covariance)
+
+    message = str(exc_info.value)
+    assert message == 'Covariance matrix contains negative variances.'
+    assert '"None"' not in message
+
+
+def test_negative_covariance_error_keeps_object_name():
+    nm = np.arange(500, 521, 5)
+    covariance = np.eye(nm.size)
+    covariance[0, 0] = -1.
+
+    with pytest.raises(NegativeVarianceError) as exc_info:
+        _ = ac.Spectrum(nm, np.ones(nm.size), covariance, name='broken object')
+
+    assert str(exc_info.value) == (
+        'Covariance matrix contains negative variances for "broken object".'
+    )
