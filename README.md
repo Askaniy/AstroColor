@@ -83,7 +83,7 @@ color_html = color.to_html()  # '#ecfeff'
 
 - Models
 ```py
-bb_7000K = ac.get_spectrometry(ac.BlackBodyModel(7000), [400, 500])
+bb_7000K = ac.get_spectrometry(ac.BlackBodyModel(7000), [400, 450])
 ```
 
 
@@ -132,6 +132,34 @@ custom_settings = ac.ColorSettings(
     scale_factor=0.5
 )
 custom_rgb = color.render(custom_settings)
+```
+
+Custom white points and color spaces can be passed to `ColorSystem` directly; no registration is required. A white point can be defined by CIE xy coordinates or derived from a spectrum:
+
+```py
+custom_white = ac.WhitePoint.from_xy('Custom D50', 0.34567, 0.35850)
+spectral_white = ac.WhitePoint.from_spectrum('Sun-like', ac.sun_tsis1_hsrs)
+custom_space = ac.ColorSpace(
+    name='Custom sRGB',
+    primaries=ac.ColorSystem.supported_color_spaces['sRGB'].primaries,
+    white_point=custom_white,
+    transfer_function=ac.transfer_functions.srgb,
+)
+custom_system = ac.ColorSystem(custom_space)
+```
+
+`spectral_dist` of a color object is always linear. If the input already carries a transfer function, pass `gamma_corrected=True` to the constructor; the values are decoded immediately, and `to_color_system()` then performs only the linear matrix conversion:
+
+```py
+srgb_d65 = ac.ColorSystem('sRGB')
+srgb_e = ac.ColorSystem('sRGB', 'Illuminant E')
+encoded_color = ac.ColorPoint(
+    [0.5, 0.25, 0.1],
+    color_system=srgb_d65,
+    gamma_corrected=True,
+)
+linear_rgb = encoded_color.to_color_system(srgb_e).spectral_dist
+display_rgb = srgb_e.encode(linear_rgb)
 ```
 
 

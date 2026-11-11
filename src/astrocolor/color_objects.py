@@ -1,6 +1,23 @@
+"""
+Color containers and the display pipeline.
+
+`ColorObject` stores linear color values together with their `ColorSystem` and
+optional `Uncertainty`. The first axis always contains the three color
+channels; the remaining spatial axes distinguish `ColorPoint`, `ColorLine` and
+`ColorImage`. Objects are created from linear data, from a spectrum via
+`from_spectral_data()`, or with `get_color()`.
+
+`ColorSettings` describes presentation rather than stored data: target color
+system, transfer function, brightness normalization and scaling. `render()` and
+`to_html()` never modify the object, so the same linear color can be displayed
+in several ways. `to_color_system()` changes the stored color system.
+
+`spectral_dist` is always linear. Pass `gamma_corrected=True` to the constructor
+when the input values are transfer-encoded; they are decoded immediately.
+"""
+
 from copy import deepcopy
 from dataclasses import dataclass
-from math import ceil
 from time import monotonic
 from typing import Self, TypeVar, cast, overload, override
 
@@ -75,25 +92,47 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
     The brightness array is required to be of length 3 along the first axis.
     The indices correspond to the red, green and blue channel respectively.
 
-    The values stay linear; use `render()` or `to_html()` for display output.
+    `spectral_dist` is always linear, including when the constructor receives
+    gamma-corrected values. Use `render()` or `to_html()` for display output.
     `color_system` is a frozen attribute, change it with `to_color_system()`.
     """
 
     def __init__(
         self,
-        spectral_dist: npt.NDArray[np.floating],
+        spectral_dist: npt.ArrayLike,
         uncertainty: npt.ArrayLike | Uncertainty | None = None,
-        color_system: ColorSystem = xyz_color_system
+        color_system: ColorSystem = xyz_color_system,
+        *,
+        gamma_corrected: bool = False,
     ) -> None:
         """
         ColorObject requires a brightness array and corresponding color system.
         Default color space is CIE 1931 XYZ. Uncertainty is optional.
+
+        `spectral_dist` is always stored linear. Set `gamma_corrected=True`
+        when the input is display-encoded in `color_system`; it is decoded
+        immediately. Covariance propagation through that nonlinear step is a
+        separate, not yet implemented operation.
         """
-        self.spectral_dist: npt.NDArray[np.floating] = spectral_dist
-        self.uncertainty: Uncertainty | None = (
+        values = np.asarray(spectral_dist, dtype=np.float64)
+        uncertainty_obj = (
             None if uncertainty is None
-            else Uncertainty.from_input(uncertainty, spectral_dist.shape)
+            else Uncertainty.from_input(uncertainty, values.shape)
         )
+        # `spectral_dist` is stored linear, so encoded input is decoded here.
+        if gamma_corrected:
+            if uncertainty_obj is None:
+                values = color_system.decode(values)
+            else:
+                covariance = uncertainty_obj.covariance_matrix
+                decoded_covariance = color_system.decode_covariance(values, covariance)
+                values = color_system.decode(values)
+                uncertainty_obj = Uncertainty.from_covariance(
+                    decoded_covariance,
+                    values.shape,
+                )
+        self.spectral_dist: npt.NDArray[np.floating] = values
+        self.uncertainty: Uncertainty | None = uncertainty_obj
         self._color_system: ColorSystem = color_system
 
     @property
@@ -119,10 +158,20 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
     def to_color_system(self, new_color_system: ColorSystem) -> Self:
         """
         Return a new ColorObject with changed color system.
+
+        `spectral_dist` is linear, so only the RGB <-> XYZ matrices are applied;
+        transfer functions are not involved. If the target system defines the
+        same transform as the current one, no matrix conversion is performed.
+
         Attention! For saturated colors, color system conversion is not always reversible!
         """
+        source_system = self._color_system
         output = deepcopy(self)
-        xyz_values, xyz_covariance = self._color_system.rgb_to_xyz(
+        output._color_system = new_color_system
+        if new_color_system == source_system:
+            return output
+
+        xyz_values, xyz_covariance = source_system.rgb_to_xyz(
             self.spectral_dist, self.covariance_matrix
         )
         output.spectral_dist, rgb_covariance = new_color_system.xyz_to_rgb(
@@ -132,12 +181,11 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
             None if rgb_covariance is None
             else Uncertainty.from_covariance(rgb_covariance, output.spectral_dist.shape)
         )
-        if np.any(output.spectral_dist < 0):
+        minimum = cast(npt.NDArray[np.floating], np.min(output.spectral_dist, axis=0))
+        if np.any(minimum < 0):
             # We're not in the color system gamut: approximate by desaturating
             # 1D implementation: rgb -= np.min(rgb)
-            negative_mask = cast(npt.NDArray[np.bool], np.any(output.spectral_dist < 0, axis=0))
-            output.spectral_dist[:, negative_mask] -= output.spectral_dist.min(axis=0)[negative_mask]
-        output._color_system = new_color_system
+            output.spectral_dist -= np.minimum(minimum, 0.)
         return output
 
     def render(
@@ -151,11 +199,12 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
         The object itself is not modified.
         """
         color = self
-        if self.color_system is not settings.color_system:
+        if self.color_system != settings.color_system:
             color = self.to_color_system(settings.color_system)
         arr = np.nan_to_num(color.spectral_dist, copy=True)
-        if settings.maximize_brightness and arr.max() != 0:
-            arr /= cast(float, arr.max())
+        maximum = cast(float, arr.max())
+        if settings.maximize_brightness and maximum != 0:
+            arr /= maximum
         if settings.scale_factor != 1:
             arr *= settings.scale_factor
         if settings.gamma_correction:
@@ -251,22 +300,18 @@ class ColorImage(ColorObject[SpectralCube | PhotospectralCube]):
         flatten_cube = data.flatten()
         flatten_img = np.empty((3, px_num))
         flatten_cov: npt.NDArray[np.floating] | None = None
-        batch_num = ceil(px_num / px_limit)
-        for i in range(batch_num):
-            j = i + 1
-            x0 = i * px_limit
-            x1 = j * px_limit
-            try:
-                batch = flatten_cube[x0:x1]
-            except IndexError:
-                batch = flatten_cube[x0:]
-            batch_color = ColorLine.from_spectral_data(batch)
+        batches = range(0, px_num, px_limit)
+        batch_num = len(batches)
+        for batch_index, x0 in enumerate(batches, start=1):
+            x1 = min(x0 + px_limit, px_num)
+            batch_color = ColorLine.from_spectral_data(flatten_cube[x0:x1])
             flatten_img[:, x0:x1] = batch_color.spectral_dist
-            if batch_color.covariance_matrix is not None:
+            covariance = batch_color.covariance_matrix
+            if covariance is not None:
                 if flatten_cov is None:
                     flatten_cov = np.zeros((3, 3, px_num))
-                flatten_cov[:, :, x0:x1] = batch_color.covariance_matrix
-            print(f'Progress: {j} / {batch_num}')
+                flatten_cov[:, :, x0:x1] = covariance
+            print(f'Progress: {batch_index} / {batch_num}')
         # End of processing, summarizing
         time = monotonic() - start_time
         speed = px_num / time
@@ -373,6 +418,6 @@ def get_color(
             color = ColorImage.from_spectral_data(cast(SpectralCube | PhotospectralCube, data))
         case _:
             raise ValueError(f'Unsupported color data dimensionality: {data.ndim}')
-    if color_system is xyz_color_system:
+    if color.color_system is color_system:
         return color
     return color.to_color_system(color_system)

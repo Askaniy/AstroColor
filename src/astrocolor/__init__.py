@@ -1,3 +1,4 @@
+from . import transfer_functions
 from .celestial_objects import CelestialObject
 from .color_objects import (
     DEFAULT_SETTINGS,
@@ -12,7 +13,6 @@ from .color_standards import (
     Chromaticity,
     ColorSpace,
     ColorSystem,
-    TransferFunction,
     WhitePoint,
     default_color_system,
     visible_range,
@@ -39,6 +39,7 @@ from .reconstructed_objects import (
 )
 from .reference_spectra import sun_calspec, sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import SpectralCube, SpectralSet, Spectrum
+from .transfer_functions import TransferFunction
 from .uncertainty import Uncertainty
 
 # API namespace
@@ -82,6 +83,7 @@ __all__ = (
     'spectral_reconstruction',
     'sun_calspec',
     'sun_tsis1_hsrs',
+    'transfer_functions',
     'vega_calspec',
     'visible_range',
     'xyz_cmf',
