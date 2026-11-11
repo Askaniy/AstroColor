@@ -7,7 +7,7 @@ channels; the remaining spatial axes distinguish `ColorPoint`, `ColorLine` and
 `ColorImage`. Objects are created from linear data, from a spectrum via
 `from_spectral_data()`, or with `get_color()`.
 
-`ColorSettings` describes presentation rather than stored data: target color
+`DisplaySettings` describes presentation rather than stored data: target color
 system, transfer function, brightness normalization and scaling. `render()` and
 `to_html()` never modify the object, so the same linear color can be displayed
 in several ways. `to_color_system()` changes the stored color system.
@@ -32,6 +32,7 @@ from .color_standards import (
     xyz_color_system,
 )
 from .config import Config
+from .errors import InvalidColorChannelsError
 from .measurements import get_photometry
 from .photospectral_objects import (
     PhotospectralCube,
@@ -44,7 +45,7 @@ from .uncertainty import Uncertainty
 
 
 @dataclass(frozen=True)
-class ColorSettings:
+class DisplaySettings:
     """
     Settings for converting linear color data into display-ready values.
 
@@ -54,7 +55,7 @@ class ColorSettings:
     - `gamma_correction`: apply the transfer function of the target color
       space. Each color space uses its own curve (sRGB, gamma 2.2, ProPhoto,
       Rec. 709, etc.); linear spaces use the identity.
-    - `maximize_brightness`: normalize the output to the brightest channel.
+    - `maximize_brightness`: normalize the output to its brightest value.
     - `scale_factor`: multiply the output by a non-negative constant.
     """
 
@@ -66,7 +67,7 @@ class ColorSettings:
     def __post_init__(self) -> None:
         factor = float(self.scale_factor)
         if not np.isfinite(factor) or factor < 0:
-            raise ValueError('ColorSettings.scale_factor must be a finite non-negative number.')
+            raise ValueError('DisplaySettings.scale_factor must be a finite non-negative number.')
         object.__setattr__(self, 'scale_factor', factor)
 
 
@@ -75,8 +76,8 @@ class ColorSettings:
 # - chromatic adaptation to illuminant E white point
 # - sRGB transfer function
 # - full brightness
-DEFAULT_SETTINGS = ColorSettings()
-LINEAR_SETTINGS = ColorSettings(gamma_correction=False, maximize_brightness=False)
+DEFAULT_SETTINGS = DisplaySettings()
+LINEAR_SETTINGS = DisplaySettings(gamma_correction=False, maximize_brightness=False)
 
 
 # For type checkers, this type specifies that each color class
@@ -90,7 +91,8 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
     and display methods.
 
     The brightness array is required to be of length 3 along the first axis.
-    The indices correspond to the red, green and blue channel respectively.
+    The indices correspond to the three channels of `color_system` (RGB, XYZ,
+    or another supported system).
 
     `spectral_dist` is always linear, including when the constructor receives
     gamma-corrected values. Use `render()` or `to_html()` for display output.
@@ -113,8 +115,14 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
         when the input is display-encoded in `color_system`; it is decoded
         immediately. Covariance propagation through that nonlinear step is a
         separate, not yet implemented operation.
+
+        Raises:
+        - `InvalidColorChannelsError`: if the first axis does not contain
+          exactly three color channels.
         """
         values = np.asarray(spectral_dist, dtype=np.float64)
+        if values.ndim == 0 or values.shape[0] != 3:
+            raise InvalidColorChannelsError(values.shape)
         uncertainty_obj = (
             None if uncertainty is None
             else Uncertainty.from_input(uncertainty, values.shape)
@@ -190,7 +198,7 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
 
     def render(
         self,
-        settings: ColorSettings = DEFAULT_SETTINGS,
+        settings: DisplaySettings = DEFAULT_SETTINGS,
     ) -> npt.NDArray[np.floating]:
         """
         Returns a display-ready array: converts the color to `settings.color_system`,
@@ -227,7 +235,7 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
 
 class ColorPoint(ColorObject[Spectrum | Photospectrum]):
     """
-    Class to work with a point of red, green and blue channels.
+    Class to work with a point of three color channels.
     Stores linear brightness values in the `spectral_dist` attribute, numpy array of shape (3).
     Use `render()` or `to_html()` for display-ready values.
     """
@@ -236,7 +244,7 @@ class ColorPoint(ColorObject[Spectrum | Photospectrum]):
         self,
         bit: int,
         clip: bool = False,
-        settings: ColorSettings = DEFAULT_SETTINGS,
+        settings: DisplaySettings = DEFAULT_SETTINGS,
     ) -> npt.NDArray[np.floating]:
         """ Returns display-ready color array, scaled to the appropriate power of two (not rounded) """
         factor = cast(int, 2**bit) - 1
@@ -245,14 +253,14 @@ class ColorPoint(ColorObject[Spectrum | Photospectrum]):
             arr = np.clip(arr, 0, 1)
         return arr * factor
 
-    def to_html(self, settings: ColorSettings = DEFAULT_SETTINGS) -> str:
-        """ Converts linear rgb values to a display-ready HTML hexadecimal string """
+    def to_html(self, settings: DisplaySettings = DEFAULT_SETTINGS) -> str:
+        """ Converts linear color values to a display-ready HTML hexadecimal string """
         return '#{:02x}{:02x}{:02x}'.format(*self.to_bit(8, clip=True, settings=settings).round().astype('int'))  # pyright: ignore[reportAny]
 
 
 class ColorLine(ColorObject[SpectralSet | PhotospectralSet]):
     """
-    Class to work with a line of red, green and blue channels.
+    Class to work with a line of three color channels.
     Stores linear brightness values in the `spectral_dist` attribute, numpy array of shape (3, X).
     Use `render()` for display-ready values.
     """
@@ -271,7 +279,7 @@ class ColorLine(ColorObject[SpectralSet | PhotospectralSet]):
 
 class ColorImage(ColorObject[SpectralCube | PhotospectralCube]):
     """
-    Class to work with an image of red, green and blue channels.
+    Class to work with an image of three color channels.
     Stores linear brightness values in the `spectral_dist` attribute, numpy array of shape (3, X, Y).
     Use `render()` for display-ready values.
     """

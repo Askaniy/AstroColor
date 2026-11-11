@@ -1,3 +1,10 @@
+"""
+SVO Filter Profile Service client and VOTable parser.
+
+The module downloads filter profiles and extracts wavelengths, transmissions
+and detector metadata; `Filter` uses it to build cached filter objects.
+"""
+
 import ssl
 import xml.etree.ElementTree as ET
 from urllib.error import HTTPError, URLError
@@ -90,7 +97,7 @@ def get_profile(xml_content: ET.Element, filter_id: str) -> tuple[npt.NDArray[np
     return np.array(wavelengths, dtype=np.float64), np.array(transmissions, dtype=np.float64)
 
 def get_parameter(root: ET.Element, target: str, default: str = '') -> str:
-    """ Extract WavelengthUnit and DetectorType from SVO FPS VOTable PARAM elements """
+    """ Extract the value of a named PARAM element from an SVO FPS VOTable response """
     param = root.find(f".//PARAM[@name='{target}']")
     if param is not None:
         result = param.get('value')

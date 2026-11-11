@@ -1,3 +1,10 @@
+"""High-level representation of celestial bodies from database-style input.
+
+`CelestialObject` parses TrueColorTools-style records into continuous or
+photometric data, builds geometric and spherical albedo, and selects a
+photometric phase-function model.
+"""
+
 from collections.abc import Iterable, Mapping, Sequence
 from numbers import Real
 from typing import Literal, cast
@@ -74,7 +81,8 @@ class CelestialObject:
 
     Supported parameter names are equivalent to the keys of a TrueColorTools
     (https://github.com/Askaniy/TrueColorTools) database entry, except `tags`
-    and `file`, which are handled outside this class.
+    and `file`. Those are database metadata and must be removed before passing
+    an entry to the constructor.
 
     Attributes:
     - `name` (object): human-readable identifier
@@ -394,8 +402,8 @@ class CelestialObject:
         - `phase_function` (Sequence): model name, parameters and optional normalization location
 
         Returns:
-        - Initialized photometric model (a `DefaultModel` and a `PhaseFunctionWarning`
-          if the input is unsupported).
+        - Initialized photometric model. If the input is unsupported, a
+          `DefaultModel` is returned and a `PhaseFunctionWarning` is emitted.
         """
         if phase_function is None:
             return DefaultModel()
@@ -515,12 +523,13 @@ class CelestialObject:
         Returns the albedo-scaled spectrum as the first argument, and the status as the second one.
 
         If the albedo type is not specified, internal "unscaled" spectral data has the highest priority,
-        geometric data has the second priority, and spherical albedo data returns with the lowest priority.
+        geometric data has the second priority, and spherical albedo data has the lowest priority.
 
         The status interpretation: "estimated = "
         - `True` means albedo was estimated using some assumptions
         - `False` means the requested albedo spectrum is known or calculated without assumptions
-        - `None` means the spectral distribution has no physical meaning of albedo
+        - `None` means no specific albedo was requested, the requested albedo is unavailable,
+          or the spectral distribution has no physical meaning of albedo
 
         Args:
         - `albedo_type` (`"geometric"`, `"spherical"` or None): requested albedo type
@@ -556,6 +565,6 @@ class CelestialObject:
             return self.spectral_data_unscaled, None
         if self.spectral_data_geometric is not None:
             return self.spectral_data_geometric, None
-        if self.spectral_data_geometric is not None:
-            return self.spectral_data_geometric, None
+        if self.spectral_data_spherical is not None:
+            return self.spectral_data_spherical, None
         return Spectrum.stub(name=self.name), None

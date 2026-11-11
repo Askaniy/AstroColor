@@ -11,9 +11,9 @@ access; internal code uses `variance`, `covariance_input()` and `propagate()`
 to avoid that allocation.
 
 `Config.ignore_correlations` disables correlation handling: covariance inputs
-are reduced to their diagonal and operations stay compact. The flag is read at
-construction/operation time, so an existing object is compacted on its next
-operation.
+are reduced to their diagonal, and operations on an existing full-covariance
+object produce compact results. The flag is read at construction/operation
+time; the stored representation of the source object is not changed.
 """
 
 from math import ceil, sqrt
@@ -200,7 +200,7 @@ class Uncertainty:
 
     The compact representation stores only variances `(n, *spatial)` while the
     spectral axis is uncorrelated. A full covariance matrix `(n, n, *spatial)`
-    is stored only after a linear operation creates correlations between
+    is stored when the input or an operation introduces correlations between
     spectral points. A shared covariance matrix may also be stored as `(n, n)`
     and broadcast over spatial axes when needed.
 
@@ -210,9 +210,9 @@ class Uncertainty:
     representation. Use `from_covariance()` or `from_input()` to replace it.
 
     When `Config.ignore_correlations` is True, covariance inputs are reduced to
-    their diagonal at construction and operations keep the compact form. The
-    flag is checked dynamically, so an existing full-covariance object is
-    compacted on its next operation.
+    their diagonal at construction and operations on a full-covariance object
+    produce compact results. The flag is checked dynamically; the stored
+    representation itself is not changed until it is replaced.
     """
 
     __slots__: tuple[str, ...] = ('_covariance_matrix', '_data_shape', '_variance')
@@ -305,7 +305,7 @@ class Uncertainty:
     ) -> Self:
         """
         Classifies an input as standard deviations or a covariance matrix,
-        validates it, and returns the compact `Uncertainty`.
+        validates it, and returns the corresponding `Uncertainty`.
 
         A shared `(n, n)` covariance is accepted for objects with spatial axes
         and is stored once. With `Config.ignore_correlations=True`, only its

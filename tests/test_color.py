@@ -6,8 +6,14 @@ import numpy.typing as npt
 import pytest
 
 import astrocolor as ac
+from astrocolor.errors import InvalidColorChannelsError
 
 # === Color System Tests ===
+
+def test_invalid_color_channels():
+    for color_type in (ac.ColorPoint, ac.ColorLine, ac.ColorImage):
+        with pytest.raises(InvalidColorChannelsError, match='three channels'):
+            _ = color_type([1., 2.])
 
 def test_color_of_flat_spectrum():
     nm = np.arange(200, 800, 5)
@@ -354,7 +360,7 @@ class TestGammaCorrectedInput:
         assert converted.color_system is target
         # The returned object stays linear; render()/encode() produce display values.
         np.testing.assert_allclose(
-            converted.render(ac.ColorSettings(color_system=target, maximize_brightness=False)),
+            converted.render(ac.DisplaySettings(color_system=target, maximize_brightness=False)),
             target.encode(expected),
         )
         # Treating the same encoded values as linear must give a different result.
@@ -431,7 +437,7 @@ class TestGamutHandling:
         assert np.all(converted >= 0)
 
 
-class TestColorSettings:
+class TestDisplaySettings:
     """ Display settings and the render pipeline. """
 
     def test_default_settings_use_recommended_color_system(self):
@@ -459,14 +465,14 @@ class TestColorSettings:
 
     def test_render_custom_color_system(self):
         color = ac.ColorPoint.from_spectral_data(ac.sun_tsis1_hsrs)
-        rendered = color.render(ac.ColorSettings(color_system=ac.xyz_color_system))
+        rendered = color.render(ac.DisplaySettings(color_system=ac.xyz_color_system))
         raw = color.spectral_dist
         raw_max = cast(float, raw.max())
         np.testing.assert_allclose(rendered, raw / raw_max)
 
     def test_render_scale_factor_and_no_maximize(self):
         color = ac.get_color(ac.sun_tsis1_hsrs)
-        settings = ac.ColorSettings(maximize_brightness=False, scale_factor=0.5)
+        settings = ac.DisplaySettings(maximize_brightness=False, scale_factor=0.5)
         np.testing.assert_allclose(
             color.render(settings),
             ac.default_color_system.encode(color.spectral_dist * 0.5),
@@ -475,7 +481,7 @@ class TestColorSettings:
     def test_render_uses_target_color_space_transfer_function(self):
         adobe = ac.ColorSystem('Adobe RGB')
         color = ac.ColorPoint(np.full(3, 0.5), color_system=adobe)
-        rendered = color.render(ac.ColorSettings(color_system=adobe, maximize_brightness=False))
+        rendered = color.render(ac.DisplaySettings(color_system=adobe, maximize_brightness=False))
         np.testing.assert_allclose(rendered, math.pow(0.5, 1./2.2), rtol=1e-15)
 
     def test_render_does_not_modify_object(self):
@@ -490,7 +496,7 @@ class TestColorSettings:
             np.ones((3, 2, 2)) * 0.5,
             color_system=ac.default_color_system,
         )
-        rendered = image.render(ac.ColorSettings(maximize_brightness=False))
+        rendered = image.render(ac.DisplaySettings(maximize_brightness=False))
         expected = ac.default_color_system.encode(np.ones((3, 2, 2)) * 0.5)
         np.testing.assert_allclose(rendered, expected)
         assert rendered.shape == (3, 2, 2)
@@ -498,7 +504,7 @@ class TestColorSettings:
     def test_invalid_scale_factor(self):
         for value in (-1.0, float('nan'), float('inf')):
             with pytest.raises(ValueError):
-                _ = ac.ColorSettings(scale_factor=value)
+                _ = ac.DisplaySettings(scale_factor=value)
 
 
 class TestGetColor:

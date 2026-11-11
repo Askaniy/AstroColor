@@ -96,3 +96,16 @@ def test_reconstructed_object_requires_photometry():
         _ = ac.ReconstructedSpectrum([500, 505], [1., 1.])  # pyright: ignore[reportCallIssue]
     with pytest.raises(ValueError, match='require source photospectral_obj'):
         _ = ac.ReconstructedSpectrum([500, 505], [1., 1.], photospectral_obj=None)
+
+
+def test_flatten_reconstructed_cube(ubv_filterset: ac.FilterSet):
+    nm = ubv_filterset.wavelength_nm
+    cube = ac.PhotospectralCube(ubv_filterset, np.ones((3, 2, 2)), name='test cube')
+    reconstructed = ac.get_spectrometry(cube, nm, strictly=True)
+    assert isinstance(reconstructed, ac.ReconstructedSpectralCube)
+
+    flattened = reconstructed.flatten()
+    assert isinstance(flattened, ac.ReconstructedSpectralSet)
+    assert flattened.spectral_dist.shape == (nm.size, 4)
+    assert flattened.photospectral_obj.spatial_shape == (4,)
+    np.testing.assert_allclose(flattened.spectral_dist, reconstructed.spectral_dist.reshape(nm.size, 4))

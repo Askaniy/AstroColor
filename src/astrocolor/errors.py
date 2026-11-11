@@ -1,3 +1,10 @@
+"""
+Library exceptions and warning helpers.
+
+The exceptions describe invalid dimensions, axes, uncertainties and filter
+lookups; the helpers emit warnings for recoverable data problems.
+"""
+
 import warnings
 
 # Errors
@@ -9,6 +16,12 @@ class UnsupportedDimensionError(AstroColorError, ValueError):
     def __init__(self, ndim_received: int, name: object = None):
         subject = f'data array of {name}' if name else 'data array'
         super().__init__(f'The {subject} must have a dimension of 1, 2, or 3, not {ndim_received}.')
+
+class InvalidColorChannelsError(AstroColorError, ValueError):
+    def __init__(self, shape: tuple[int, ...]):
+        super().__init__(
+            f'Color data must have exactly three channels along the first axis, not shape {shape}.'
+        )
 
 class InconsistentDimensionError(AstroColorError, ValueError):
     def __init__(self, ndim_expected: int, ndim_received: int, name: object = None):

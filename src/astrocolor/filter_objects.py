@@ -1,3 +1,11 @@
+"""
+Filter profiles and filter sets.
+
+`Filter` loads, normalizes and caches SVO FPS profiles. `FilterSet` packs
+several profiles on a common wavelength grid and exposes their matrix form for
+synthetic photometry.
+"""
+
 from collections.abc import Sequence
 from copy import deepcopy
 from functools import lru_cache
@@ -38,7 +46,7 @@ class FilterObject(SpectralObject):
 
     def convert_for_photon_counter(self) -> Self:
         """
-        Modifies the filter profile to account for photon-counting observation.
+        Returns a new filter profile adjusted for a photon-counting observation.
         See "Standard Photometric Systems" by Bessell, Michael S. (2005).
         """
         return (self * self.wavelength_nm).normalized()
@@ -49,7 +57,8 @@ class FilterObject(SpectralObject):
         attach_photospectral_obj: bool = True
     ) -> Self:
         """
-        Directly uses the provided wavelength grid to create a new object. Non-strict!
+        Extends the filter profile to cover the requested wavelength grid,
+        filling the new range with zeros. Non-strict.
         See `get_spectrometry()` for the general case.
         """
         obj = deepcopy(self)
@@ -104,7 +113,7 @@ class Filter(FilterObject, Spectrum):
     """
     Stores a filter profile as a normalized, edge-zeroed `Spectrum`.
 
-    A `Filter` is created through the classmethod `get()` which supports an optional cache.
+    A `Filter` is created through the classmethod `get()`, which uses an internal cache.
     Direct construction via `__init__()` always creates a new object (no caching).
 
     Attributes:

@@ -1,3 +1,12 @@
+"""
+Synthetic photometry, spectrometry and photometric scaling.
+
+`get_photometry()` integrates (photo)spectral data through filters,
+`get_spectrometry()` reconstructs or resamples spectra, and
+`scale_to_match_value()` applies a brightness constraint at a filter or
+wavelength.
+"""
+
 from collections.abc import Sequence
 from copy import deepcopy
 from typing import Literal, cast, overload
@@ -29,10 +38,10 @@ from .uncertainty import Uncertainty
 
 
 # Only `attach_photospectral_obj=True` is specialized below. The `False`
-# case falls back to `SpectralObject`: an already reconstructed input can
-# preserve its reconstructed class when no source photometry is stored, and
-# a separate required `Literal[False]` overload cannot follow the defaulted
-# `strictly` parameter without changing the public signature.
+# case falls back to `SpectralObject`: photospectral inputs are returned as
+# plain spectra/sets/cubes without attached source photometry. A separate
+# required `Literal[False]` overload cannot follow the defaulted `strictly`
+# parameter without changing the public signature.
 @overload
 def get_spectrometry(
     target: Filter,
@@ -166,7 +175,7 @@ def get_spectrometry(
     attach_photospectral_obj: bool = True
 ) -> SpectralObject | ReconstructedSpectrum | ReconstructedSpectralSet | ReconstructedSpectralCube:
     """
-    Returns a new SpectralObject, guaranteeing that the specified wavelength range
+    Returns a new object, guaranteeing that the specified wavelength range
     has been determined or reconstructed for it.
     If `strictly=True`, then the new object is defined exclusively
     on the specified wavelength range.
@@ -176,15 +185,14 @@ def get_spectrometry(
     Args:
     - requested_wavelengths: Wavelength values to determine at.
     - strictly: If True, clip the result to the exact requested range.
-    - attach_photospectral_obj: If True (default), photospectral inputs are
-      returned as reconstructed objects that keep a reference to the source
-      photometry. If False, they are returned as plain Spectrum/SpectralSet/
-      SpectralCube. An already reconstructed object without stored source
-      photometry keeps its reconstructed class. This controls only the
-      returned object's type and metadata, not the reconstructed values.
+    - attach_photospectral_obj: If True (default), photospectral inputs and
+      reconstructed objects keep a reference to the source photometry. If
+      False, they are returned as plain Spectrum/SpectralSet/SpectralCube.
+      This controls only the returned object's type and metadata, not the
+      reconstructed values.
 
     Returns:
-    - A new SpectralObject with data determined at the specified wavelengths.
+    - A new object with data determined at the specified wavelengths.
 
     Example:
     ```

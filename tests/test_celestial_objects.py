@@ -723,6 +723,16 @@ class TestGetSpectralData:
         assert spectral_data is obj.spectral_data_unscaled
         assert estimated is None
 
+    def test_spherical_fallback(self):
+        obj = ac.CelestialObject(
+            'test',
+            filters=BVR,
+            sd_spherical=[0.01, 0.02, 0.03],
+        )
+        spectral_data, estimated = obj.get_spectral_data()
+        assert spectral_data is obj.spectral_data_spherical
+        assert estimated is None
+
     def test_albedo_only_object(self):
         obj = ac.CelestialObject(
             'test',

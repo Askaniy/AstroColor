@@ -38,21 +38,57 @@ def test_color():
     color_html = color.to_html()
     assert color_html == '#ecfeff'
 
+def test_models():
+    bb_7000K = ac.get_spectrometry(ac.BlackBodyModel(7000), [400, 450])
+    np.testing.assert_equal(bb_7000K.wavelength_nm, [400, 405, 410, 415, 420, 425, 430, 435, 440, 445, 450])
+    np.testing.assert_allclose(
+        bb_7000K.spectral_dist,
+        [
+            68731.39230746, 68848.04077054, 68911.83231492, 68925.20601463,
+            68890.57885667, 68810.33686959, 68686.82746675, 68522.35290187,
+            68319.16473884, 68079.45924271, 67805.37360451
+        ]
+    )
+
+def test_celestial_objects():
+    mercury = ac.CelestialObject(
+        name='Mercury',
+        filter_set='Generic/Bessell',
+        filters=['U', 'B', 'V', 'R'],
+        sd_geometric=[0.087, 0.105, 0.142, 0.172],
+        spherical_albedo=['Generic/Bessell.V', 0.07],
+    )
+    geometric, estimated = mercury.get_spectral_data('geometric')
+    assert isinstance(geometric, ac.Photospectrum)
+    assert estimated is False
+    flux, _ = ac.get_photometry(geometric, ac.Filter.get('Generic/Bessell.V'))
+    assert flux == pytest.approx(0.142, abs=0.001)
+
+def test_photometric_models():
+    hg = ac.photometric_models.HG({'G': 0.2})
+    phase_integral = hg.phase_integral
+    assert phase_integral is not None
+    q, q_std = phase_integral
+    assert q == pytest.approx(0.4268)
+    assert q_std is None
+    spherical, estimated = hg.estimate_spherical_albedo((0.14, 0.01))
+    assert spherical == pytest.approx(0.14 * q)
+    assert estimated is False
+
 def test_color_output():
-    color = ac.get_color(ac.sun_tsis1_hsrs)
-    linear_rgb = color.spectral_dist
-    display_rgb = color.render()
+    color_obj = ac.get_color(ac.sun_tsis1_hsrs)
+    linear_rgb = color_obj.spectral_dist  # internal linear sRGB/E
+    display_rgb = color_obj.render()      # sRGB/E + gamma + maximize
     assert linear_rgb.shape == (3,)
     assert display_rgb.shape == (3,)
 
-    color_system = ac.ColorSystem('sRGB', 'Sun')
-    custom_settings = ac.ColorSettings(
-        color_system=color_system,
+    display_settings = ac.DisplaySettings(
+        color_system=ac.ColorSystem('sRGB', 'Sun'),
         maximize_brightness=False,
         scale_factor=0.5
     )
-    custom_rgb = color.render(custom_settings)
-    assert custom_rgb.shape == (3,)
+    display_rgb = color_obj.render(display_settings)
+    assert display_rgb.shape == (3,)
 
 def test_custom_color_standards():
     custom_white = ac.WhitePoint.from_xy('Custom D50', 0.34567, 0.35850)
@@ -80,31 +116,3 @@ def test_gamma_corrected_conversion():
     expected = srgb_e.inv_matrix @ srgb_d65.matrix @ srgb_d65.decode([0.5, 0.25, 0.1])
     np.testing.assert_allclose(linear_rgb, expected)
     np.testing.assert_allclose(display_rgb, srgb_e.encode(expected))
-
-def test_uncertainty():
-    spectrum = ac.Spectrum(
-        wavelength_nm=[500, 505, 510, 515],
-        spectral_dist=[1, 2, 3, 4],
-        uncertainty=[0.1, 0.1, 0.1, 0.1],
-    )
-    assert spectrum.uncertainty is not None
-    assert not spectrum.uncertainty.is_covariance
-    std = spectrum.standard_deviation
-    full = spectrum.covariance_matrix
-    assert std is not None
-    np.testing.assert_allclose(std, [0.1, 0.1, 0.1, 0.1])
-    assert full is not None
-    assert full.shape == (4, 4)
-    assert spectrum.uncertainty.nbytes == std.nbytes
-
-def test_models():
-    bb_7000K = ac.get_spectrometry(ac.BlackBodyModel(7000), [400, 450])
-    np.testing.assert_equal(bb_7000K.wavelength_nm, [400, 405, 410, 415, 420, 425, 430, 435, 440, 445, 450])
-    np.testing.assert_allclose(
-        bb_7000K.spectral_dist,
-        [
-            68731.39230746, 68848.04077054, 68911.83231492, 68925.20601463,
-            68890.57885667, 68810.33686959, 68686.82746675, 68522.35290187,
-            68319.16473884, 68079.45924271, 67805.37360451
-        ]
-    )

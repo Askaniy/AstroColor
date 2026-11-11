@@ -1,4 +1,12 @@
-from . import transfer_functions
+"""
+Public API for photometric conversions, spectral reconstruction and color.
+
+The package re-exports its core user-facing classes and functions here;
+specialized APIs such as `transfer_functions` and `photometric_models` are
+available as submodules.
+"""
+
+from . import photometric_models, transfer_functions
 from .celestial_objects import CelestialObject
 from .color_objects import (
     DEFAULT_SETTINGS,
@@ -6,7 +14,7 @@ from .color_objects import (
     ColorImage,
     ColorLine,
     ColorPoint,
-    ColorSettings,
+    DisplaySettings,
     get_color,
 )
 from .color_standards import (
@@ -22,13 +30,6 @@ from .color_standards import (
 from .config import Config
 from .filter_objects import Filter, FilterSet
 from .measurements import get_photometry, get_spectrometry, scale_to_match_value
-from .photometric_models import (
-    HG,
-    HG1G2,
-    Exponentials,
-    Hapke,
-    PhaseCoefficient,
-)
 from .photospectral_objects import PhotospectralCube, PhotospectralSet, Photospectrum
 from .physical_models import BlackBodyModel
 from .reconstructed_objects import (
@@ -45,8 +46,6 @@ from .uncertainty import Uncertainty
 # API namespace
 __all__ = (
     'DEFAULT_SETTINGS',
-    'HG',
-    'HG1G2',
     'LINEAR_SETTINGS',
     'BlackBodyModel',
     'CelestialObject',
@@ -54,15 +53,12 @@ __all__ = (
     'ColorImage',
     'ColorLine',
     'ColorPoint',
-    'ColorSettings',
     'ColorSpace',
     'ColorSystem',
     'Config',
-    'Exponentials',
+    'DisplaySettings',
     'Filter',
     'FilterSet',
-    'Hapke',
-    'PhaseCoefficient',
     'PhotospectralCube',
     'PhotospectralSet',
     'Photospectrum',
@@ -79,6 +75,7 @@ __all__ = (
     'get_color',
     'get_photometry',
     'get_spectrometry',
+    'photometric_models',
     'scale_to_match_value',
     'spectral_reconstruction',
     'sun_calspec',

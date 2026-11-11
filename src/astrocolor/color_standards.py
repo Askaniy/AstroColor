@@ -508,7 +508,11 @@ class ColorSystem:
         values: npt.NDArray[np.floating],
         covariance: npt.NDArray[np.floating],
     ) -> npt.NDArray[np.floating]:
-        """ Propagates covariance through the transfer function: linear -> display. """
+        """
+        Propagates covariance through the transfer function: linear -> display.
+
+        Not implemented yet; this currently raises `NotImplementedError`.
+        """
         return self.transfer_function.encode_covariance(values, covariance)
 
     def decode_covariance(
@@ -516,7 +520,11 @@ class ColorSystem:
         values: npt.NDArray[np.floating],
         covariance: npt.NDArray[np.floating],
     ) -> npt.NDArray[np.floating]:
-        """ Propagates covariance through the inverse transfer function: display -> linear. """
+        """
+        Propagates covariance through the inverse transfer function: display -> linear.
+
+        Not implemented yet; this currently raises `NotImplementedError`.
+        """
         return self.transfer_function.decode_covariance(values, covariance)
 
 

@@ -10,7 +10,7 @@ def test_package_imports_in_fresh_interpreter():
         [
             sys.executable,
             '-c',
-            'import astrocolor; import astrocolor.measurements; import astrocolor.reconstructed_objects; import astrocolor.transfer_functions',
+            'import astrocolor; import astrocolor.measurements; import astrocolor.photometric_models; import astrocolor.reconstructed_objects; import astrocolor.transfer_functions',
         ],
         check=False,
         capture_output=True,

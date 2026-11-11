@@ -1,3 +1,10 @@
+"""
+Bundled reference spectra of the Sun and Vega.
+
+CALSPEC and TSIS-1 HSRS data are exposed as `Spectrum` objects for calibration,
+white-point construction and color calculations.
+"""
+
 # Reference spectra of Sun and Vega
 
 # CALSPEC: composite ultraviolet and optical absolute calibrated reference spectra of the HST standards

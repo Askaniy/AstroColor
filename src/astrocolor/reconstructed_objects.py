@@ -1,3 +1,11 @@
+"""
+Continuous spectra reconstructed from photometry.
+
+`ReconstructedSpectralObject` stores the Tikhonov-regularized spectrum together
+with its source photometry; `spectral_reconstruction()` solves the inverse
+problem on a requested wavelength grid.
+"""
+
 from copy import deepcopy
 from typing import Self, TypeVar, cast, override
 
@@ -87,7 +95,6 @@ class ReconstructedSpectralObject[PhotospectralType: PhotospectralObject](Spectr
         - `spectral_dist` (ArrayLike): array of "brightness" in energy density units (not a photon counter)
         - `uncertainty`: (ArrayLike): optional array of standard deviations or covariance matrix
         - `name` (object): human-readable identifier
-        - `is_emission_spectrum` (bool): if `True`, creates an emission spectral object from the spectral lines
         - `photospectral_obj` (PhotospectralObject): required source photometry
         """
         if photospectral_obj is None:
@@ -153,7 +160,7 @@ class ReconstructedSpectrum(ReconstructedSpectralObject[Photospectrum], Item['Re
     - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
     - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
-    - `photospectral_obj` (Photospectrum): optional, a way to store the pre-reconstructed data
+    - `photospectral_obj` (Photospectrum): source photometry
     """
 
 
@@ -167,8 +174,8 @@ class ReconstructedSpectralSet(ReconstructedSpectralObject[PhotospectralSet], Se
     - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
     - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
-    - `photospectral_obj` (PhotospectralSet): optional, a way to store the pre-reconstructed data
-    - `size` (int): spatial axis length
+    - `photospectral_obj` (PhotospectralSet): source photometry
+    - `spatial_size` (int): spatial axis length
     """
 
 
@@ -182,16 +189,22 @@ class ReconstructedSpectralCube(ReconstructedSpectralObject[PhotospectralCube], 
     - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
     - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
-    - `photospectral_obj` (PhotospectralCube): optional, a way to store the pre-reconstructed data
+    - `photospectral_obj` (PhotospectralCube): source photometry
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length
-    - `size` (int): number of pixels
+    - `spatial_size` (int): number of pixels
     """
 
     @override
     def flatten(self) -> ReconstructedSpectralSet:
-        """ Returns a SpectralSet with linearized spatial axis """
-        output = super().flatten()
+        """ Returns a ReconstructedSpectralSet with linearized spatial axis. """
+        value = self.spectral_dist.reshape(self.spectral_size, self.spatial_size).copy()
+        uncertainty = None
+        if self.uncertainty is not None:
+            uncertainty = deepcopy(self.uncertainty.reshape_spatial((self.spatial_size,)))
+        output = ReconstructedSpectralSet._from_trusted_arrays(
+            self.wavelength_nm, value, uncertainty, self.name
+        )
         output.photospectral_obj = self.photospectral_obj.flatten()
         return output
 
@@ -199,7 +212,8 @@ class ReconstructedSpectralCube(ReconstructedSpectralObject[PhotospectralCube], 
 def spectral_reconstruction(
     photospectral_obj: PhotospectralObject,
     requested_wavelengths: npt.ArrayLike,
-    spectral_reconstruction_mode: str = '',  # pyright: ignore[reportUnusedParameter]
+    # Reserved for future reconstruction modes:
+    # spectral_reconstruction_mode: str = '',
     attach_photospectral_obj: bool = True
 ) -> SpectralObject | ReconstructedSpectralObject[PhotospectralObject]:
     """
@@ -212,7 +226,7 @@ def spectral_reconstruction(
     and second-order differential operators for the Tikhonov matrix.
     That is, it tries to minimize height variations and curvature in the spectrum.
 
-    Confidence bands for spectral sets and cubes are not computed by default.
+    Confidence bands are computed only for 1D spectra.
     """
     br0 = photospectral_obj.spectral_dist
     filter_set = _filter_set_at_requested_wavelengths(photospectral_obj.filter_set, requested_wavelengths)
@@ -249,13 +263,13 @@ def spectral_reconstruction(
         else:
             br1 = cast(npt.NDArray[np.floating], solve(right_matrix, left_vector))
         if photospectral_obj.ndim == 3:
-            # Reshape spectral cube back from square
+            # Reshape the flattened pixels back to the spatial axes
             br1 = br1.reshape(-1, *photospectral_obj.spatial_shape)
         if photospectral_obj.ndim == 1 and br1.min() < 0:
             # To avoid negative spectra, a lower bound is set and iterative
             # optimization is performed using quadratic programming methods.
             # The processing speed drops by a factor of about five,
-            # so the use is blocked for spectral squares and cubes:
+            # so the use is blocked for spectral sets and cubes:
             # background noise near zero can be most of the pixels.
             # TODO: RECHECK! MAY CONTAIN ERRORS!
             def objective(vector: npt.NDArray[np.floating]):
@@ -278,7 +292,7 @@ def spectral_reconstruction(
             br1 = cast(npt.NDArray[np.floating], result.x)
         if photospectral_obj.ndim == 1 and cov0 is not None:
             # Measurement confidence band calculation
-            # Confidence bands for spectral squares and cubes are not computed to save computational resources
+            # Confidence bands for spectral sets and cubes are not computed to save computational resources
             if right_matrix_inv is None:
                 right_matrix_inv = np.linalg.inv(right_matrix)
             operator = right_matrix_inv @ filter_matrix.T

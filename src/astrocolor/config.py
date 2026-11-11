@@ -1,3 +1,10 @@
+"""
+Global settings for paths, network access and uncertainty handling.
+
+`Config` controls filter lookup locations, SVO FPS downloads, cube batching
+and whether correlations or cube uncertainties are processed.
+"""
+
 import os
 import platform
 from pathlib import Path
@@ -17,9 +24,9 @@ class Config:
     ignore_uncertainty_for_cubes: bool = True
 
     # Ignore correlations between spectral points. Covariance matrices are
-    # reduced to their diagonal, and uncertainty propagation stays compact.
-    # The flag is read dynamically; existing objects are compacted on their
-    # next operation. Explicit covariance_matrix access still materializes.
+    # reduced to their diagonal, and operations on existing objects produce
+    # compact results without modifying the stored representation.
+    # Explicit covariance_matrix access still materializes the matrix.
     ignore_correlations: bool = False
 
     # Fetch filters from Spanish Virtual Observatory Filter Profile Service (SVO FPS)

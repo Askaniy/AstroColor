@@ -1,3 +1,11 @@
+"""
+Shared spectral grid and dimensional base classes.
+
+`UniformSpectralGrid` defines the fixed wavelength grid, `BaseObject` provides
+the common data model and operators, and `Item`, `Set` and `Cube` add 1D/2D/3D
+spatial behavior.
+"""
+
 from collections.abc import Callable, Iterator
 from copy import copy, deepcopy
 from math import prod
@@ -216,7 +224,7 @@ class BaseObject(UniformSpectralGrid):
         - uncertainty_handling: Function to handle the uncertainty propagation.
 
         Returns:
-        - A new SpectralObject with the element-wise operation applied.
+        - A new (photo)spectral object with the element-wise operation applied.
         """
         raise NotImplementedError('Implemented in the inherited classes.')
 
@@ -256,7 +264,7 @@ class BaseObject(UniformSpectralGrid):
         - uncertainty_handling: Function to handle the uncertainty propagation.
 
         Returns:
-        - A new SpectralObject with the scalar operation applied.
+        - A new (photo)spectral object with the scalar operation applied.
         """
         # Perf: shallow copy avoids copying the full spectral array; the result
         # gets a new array below. cube * scalar (61 x 100 x 100): 3.68 -> 0.44 ms.
@@ -270,7 +278,7 @@ class BaseObject(UniformSpectralGrid):
         Implements the addition operator.
 
         Returns:
-        - A new SpectralObject with element-wise or scalar addition applied.
+        - A new (photo)spectral object with element-wise or scalar addition applied.
         """
         if isinstance(other, BaseObject):
             return self._apply_element_wise_operation(other, add_value, add_uncertainty)
@@ -282,7 +290,7 @@ class BaseObject(UniformSpectralGrid):
         Implements the subtraction operator.
 
         Returns:
-        - A new SpectralObject with element-wise or scalar subtraction applied.
+        - A new (photo)spectral object with element-wise or scalar subtraction applied.
         """
         if isinstance(other, BaseObject):
             return self._apply_element_wise_operation(other, sub_value, sub_uncertainty)

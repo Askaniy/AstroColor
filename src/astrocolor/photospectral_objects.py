@@ -1,3 +1,11 @@
+"""
+Photometric measurements through filter sets.
+
+`PhotospectralObject` stores one value per filter with optional spatial axes;
+`Photospectrum`, `PhotospectralSet` and `PhotospectralCube` cover 1D, 2D and 3D
+data. Multiplication and division operate on reconstructed spectra.
+"""
+
 from copy import deepcopy
 from typing import Self, cast, override
 
@@ -260,7 +268,7 @@ class PhotospectralSet(PhotospectralObject, Set['Photospectrum', 'PhotospectralC
     - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
     - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
-    - `size` (int): spatial axis length
+    - `spatial_size` (int): spatial axis length
     """
 
 
@@ -277,7 +285,7 @@ class PhotospectralCube(PhotospectralObject, Cube['PhotospectralSet']):
     - `name` (object): human-readable identifier
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length
-    - `size` (int): number of pixels
+    - `spatial_size` (int): number of pixels
     """
 
     @override

@@ -1,3 +1,10 @@
+"""
+Analytic physical spectrum models.
+
+`BlackBodyModel` evaluates Planck radiance on a requested wavelength grid,
+with optional Doppler and gravitational redshift factors.
+"""
+
 from typing import Final, cast, override
 
 import numpy as np
@@ -31,7 +38,7 @@ c = 299792458 # Speed of light
 k = 1.381e-23 # Boltzmann constant
 
 class BlackBodyModel(PhysicalModel):
-    """ Creates a PhysicalModel object based on Planck's law and redshift formulas """
+    """ Planck-law spectrum with optional Doppler and gravitational redshift factors. """
 
     const1: Final[float] = 2 * h * c * c # * np.pi to get exitance (W/m2) in the assumption of Lambertian surface
     const2: Final[float] = h * c / k

@@ -1,4 +1,10 @@
-""" Experimental support of some photometric models used in TrueColorTools """
+"""
+Photometric phase-function models and albedo estimates.
+
+The module provides the `HG`, `HG1G2`, `PhaseCoefficient`, `Exponentials` and
+`Hapke` models. The concrete models implement a phase function and derive the
+phase integral and, where defined, geometric/spherical albedo values.
+"""
 
 from collections.abc import Callable
 from typing import Final, cast, override
@@ -14,12 +20,24 @@ from .auxiliary import (
 )
 from .uncertainty import combine_covariance_terms
 
+__all__ = (
+    'HG',
+    'HG1G2',
+    'DefaultModel',
+    'Exponentials',
+    'Hapke',
+    'PhaseCoefficient',
+    'PhotometricModel',
+)
+
 type PhaseFunction = Callable[[float | npt.ArrayLike], float | npt.NDArray[np.floating]]
 
 class PhotometricModel:
     """
-    Class to store a photometric model parameters,
-    calculate their phase functions and albedo.
+    Base class for photometric phase-function models.
+
+    Stores the model parameters and an optional normalization filter or
+    wavelength; subclasses implement the phase function and derived values.
     """
     geometric_albedo: tuple[float, float | None] | None = None
     phase_integral: tuple[float, float | None] | None = None
@@ -184,9 +202,11 @@ class Exponentials(PhotometricModel):
 
 class HG(PhotometricModel):
     """
-    Two-parameter magnitude system model:
-    - H: “reduced magnitude” at zero phase angle
-    - G: “slope parameter” that describes the shape of the phase curve
+    Two-parameter magnitude system model (Bowell et al., 1989).
+
+    `G` is the slope parameter that shapes the phase curve. `H`, the reduced
+    magnitude at zero phase angle, sets the absolute brightness and is not part
+    of the normalized phase function.
 
     See Bowell et al. (1989). Application of photometric models to asteroids.
     https://ui.adsabs.harvard.edu/abs/1989aste.conf..524B/abstract
@@ -225,10 +245,11 @@ class HG(PhotometricModel):
 
 class HG1G2(PhotometricModel):
     """
-    Three-parameter magnitude system model:
-    - H: “reduced magnitude” at zero phase angle
-    - G1: the first “slope parameter”
-    - G2: the second “slope parameter”
+    Three-parameter magnitude system model (Muinonen et al., 2010).
+
+    `G_1` and `G_2` are the slope parameters used by the normalized phase
+    function. `H`, the reduced magnitude at zero phase angle, sets the absolute
+    brightness and is handled separately.
 
     See Muinonen et al. (2010). A three-parameter magnitude phase function for asteroids.
     https://www.sciencedirect.com/science/article/abs/pii/S001910351000151X

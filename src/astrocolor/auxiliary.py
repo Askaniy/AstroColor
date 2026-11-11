@@ -1,3 +1,10 @@
+"""
+Low-level numerical and parsing helpers for spectral data.
+
+Includes uniform grids, integration, interpolation and extrapolation,
+resampling, redshift conversions, and database value parsing.
+"""
+
 from collections.abc import Iterable, Mapping, Sequence
 from math import ceil, sqrt
 from typing import Literal, cast, overload
@@ -79,7 +86,7 @@ def integrate(
 ) -> float | npt.NDArray[np.floating]:
     """
     Integration along the spectral axis.
-    Uses the rectangle method by default and Riemann sum with midpoint in the "precise" mode.
+    Uses the rectangle method by default and the trapezoidal rule in the "precise" mode.
 
     It is the inaccurate method that is most often used. Not because of speed, but because
     it is equivalent to matrix multiplication, which is used in spectrum reconstruction.
@@ -87,13 +94,13 @@ def integrate(
     one hundredth of a factor.
     """
     if precisely:
-        sum = 0.5 * cast(float | npt.NDArray[np.floating], np.sum(array[:-1] + array[1:], axis=0)) # Riemann sum
+        sum = 0.5 * cast(float | npt.NDArray[np.floating], np.sum(array[:-1] + array[1:], axis=0)) # Trapezoidal rule
     else:
         sum = cast(float | npt.NDArray[np.floating], np.sum(array, axis=0)) # rectangle method
     return sum * step
 
 def is_smooth(array: npt.NDArray[np.floating]) -> bool:
-    """ Boolean function, checks the second derivative for sign reversal, a simple criterion for smoothness """
+    """ Checks that the second derivative keeps a constant sign, a simple smoothness criterion. """
     diff2 = np.diff(np.diff(array, axis=0), axis=0)
     return bool(np.all(diff2 <= 0) | np.all(diff2 >= 0))
 
@@ -115,7 +122,7 @@ def spectral_binning_matrix(
     # Cumulative distribution function of the identity basis
     basis = np.eye(n, dtype=np.float64)
     br_cdf = np.zeros((n, n), dtype=np.float64)
-    br_cdf[1:] = np.cumsum(0.5 * (basis[:-1] + basis[1:]) * nm0_diff, axis=0) # Riemann sum
+    br_cdf[1:] = np.cumsum(0.5 * (basis[:-1] + basis[1:]) * nm0_diff, axis=0) # Trapezoidal rule
     return np.diff(
         linear_interp(nm0, br_cdf, nm1_edges, extrap_mode='linear'), axis=0
     ) / step

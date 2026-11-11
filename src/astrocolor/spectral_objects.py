@@ -1,3 +1,11 @@
+"""
+Continuous spectra and their 1D/2D/3D containers.
+
+`SpectralObject` stores a uniform wavelength grid and an energy spectral
+distribution. `Spectrum`, `SpectralSet` and `SpectralCube` cover a single
+spectrum, a line of spectra and a spectral cube.
+"""
+
 from copy import copy, deepcopy
 from typing import Self, cast, override
 
@@ -203,7 +211,7 @@ class SpectralObject(BaseObject):
                     # Option 2: a very narrow spectrum
                     template = self.monochromatic(cast(float, np.average(nm, weights=sd)))
                     nm_uniform = template.wavelength_nm
-                    integral = cast(npt.NDArray[np.floating], np.sum(0.5 * (sd[:-1] + sd[1:]) * diff, axis=0)) # Riemann sum
+                    integral = cast(npt.NDArray[np.floating], np.sum(0.5 * (sd[:-1] + sd[1:]) * diff, axis=0)) # Trapezoidal rule
                     sd = cast(npt.NDArray[np.floating], template.spectral_dist * integral)
                     if uncertainty_obj is not None:
                         weights = np.zeros(nm.size, dtype=np.float64)
@@ -429,8 +437,9 @@ class SpectralObject(BaseObject):
         attach_photospectral_obj: bool = True  # pyright: ignore[reportUnusedParameter]
     ) -> Self:
         """
-        Directly uses the provided wavelength grid to create a new object.
-        See `get_spectrometry()` for the general case.
+        Returns a copy covering the requested wavelength range, resampling or
+        extrapolating only when the range extends beyond the current grid.
+        Non-strict. See `get_spectrometry()` for the general case.
         """
         requested_wavelengths = np.asarray(requested_wavelengths)
         old_wavelengths = self.wavelength_nm
@@ -648,7 +657,7 @@ class SpectralSet(SpectralObject, Set['Spectrum', 'SpectralCube']):
     - `uncertainty` (Uncertainty): optional compact uncertainty (variance or covariance)
     - `covariance_matrix` (NDArray): optional full matrix, materialized on access
     - `name` (object): human-readable identifier
-    - `size` (int): spatial axis length
+    - `spatial_size` (int): spatial axis length
     """
 
 
@@ -664,7 +673,7 @@ class SpectralCube(SpectralObject, Cube['SpectralSet']):
     - `name` (object): human-readable identifier
     - `width` (int): horizontal spatial axis length
     - `height` (int): vertical spatial axis length
-    - `size` (int): number of pixels
+    - `spatial_size` (int): number of pixels
     """
 
     @override

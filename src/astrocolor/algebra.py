@@ -1,3 +1,10 @@
+"""
+Broadcasting and element-wise arithmetic shared by the data classes.
+
+The helpers align spectral and spatial axes before applying basic operations
+and define division behavior at zero.
+"""
+
 import numpy as np
 import numpy.typing as npt
 
