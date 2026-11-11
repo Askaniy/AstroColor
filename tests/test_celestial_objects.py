@@ -106,7 +106,7 @@ class TestSpectralSources:
         np.testing.assert_allclose(np.diag(covariance), np.full(NM.size, 0.01))
 
     def test_spectral_dist_with_std(self):
-        sd = [[value, 0.1 * value] for value in cast(list[float], SD.tolist())]
+        sd = [[value, 0.1 * value] for value in SD.tolist()]
         obj = ac.CelestialObject('test', wavelength_nm=NM, spectral_dist=sd)
         assert obj.spectral_data_unscaled is not None
         std = obj.spectral_data_unscaled.standard_deviation
@@ -1077,11 +1077,11 @@ class TestFullCycleRoundtrip:
         mc_photometry = cast(ac.PhotospectralSet, reconstruct_bvri(photospectral_set, filter_set))
         mc_photometry *= ac.sun_tsis1_hsrs
         mc_photometry /= ac.vega_calspec
-        mc_flux = np.asarray(mc_photometry.spectral_dist, dtype=np.float64)
-        b = np.asarray(mc_flux[0], dtype=np.float64)
-        v = np.asarray(mc_flux[1], dtype=np.float64)
-        r = np.asarray(mc_flux[2], dtype=np.float64)
-        i = np.asarray(mc_flux[3], dtype=np.float64)
+        mc_flux: npt.NDArray[np.float64] = np.asarray(mc_photometry.spectral_dist, dtype=np.float64)
+        b = mc_flux[0, :]
+        v = mc_flux[1, :]
+        r = mc_flux[2, :]
+        i = mc_flux[3, :]
         mc_b_v = -2.5 * np.log10(b / v)
         mc_v_r = -2.5 * np.log10(v / r)
         mc_r_i = -2.5 * np.log10(r / i)

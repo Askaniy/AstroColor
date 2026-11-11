@@ -189,7 +189,7 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
             None if rgb_covariance is None
             else Uncertainty.from_covariance(rgb_covariance, output.spectral_dist.shape)
         )
-        minimum = cast(npt.NDArray[np.floating], np.min(output.spectral_dist, axis=0))
+        minimum = np.min(output.spectral_dist, axis=0)
         if np.any(minimum < 0):
             # We're not in the color system gamut: approximate by desaturating
             # 1D implementation: rgb -= np.min(rgb)
@@ -210,7 +210,7 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
         if self.color_system != settings.color_system:
             color = self.to_color_system(settings.color_system)
         arr = np.nan_to_num(color.spectral_dist, copy=True)
-        maximum = cast(float, arr.max())
+        maximum = float(arr.max())
         if settings.maximize_brightness and maximum != 0:
             arr /= maximum
         if settings.scale_factor != 1:

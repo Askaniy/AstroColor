@@ -33,8 +33,9 @@ def get_extremal_grid_endpoints(
     Returns:
     - Tuple of (v_min, v_max) clamped to [0, upper_limit].
     """
-    v_min = cast(float, np.min(requested_grid))
-    v_max = cast(float, np.max(requested_grid))
+    grid = np.asarray(requested_grid, dtype=np.float64)
+    v_min = float(np.min(grid))
+    v_max = float(np.max(grid))
     if lower_limit is not None:
         v_min = max(v_min, lower_limit)
     if upper_limit is not None:

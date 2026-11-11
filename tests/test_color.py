@@ -307,13 +307,13 @@ class TestColorSystemTransferFunctions:
 
     def test_piecewise_curves_keep_their_standard_constants(self):
         value = 0.5
-        assert ac.transfer_functions.prophoto.encode(value) == pytest.approx(value**(1./1.8))
+        assert ac.transfer_functions.prophoto.encode(value) == pytest.approx(math.pow(value, 1./1.8))
         assert ac.transfer_functions.rec709.encode(value) == pytest.approx(
-            1.099 * value**0.45 - 0.099
+            1.099 * math.pow(value, 0.45) - 0.099
         )
         alpha = 1.09929682680944
         assert ac.transfer_functions.rec2020.encode(value) == pytest.approx(
-            alpha * value**0.45 - (alpha - 1.)
+            alpha * math.pow(value, 0.45) - (alpha - 1.)
         )
 
     def test_linear_spaces_use_identity_transfer_function(self):
@@ -432,7 +432,7 @@ class TestGamutHandling:
         raw = target.xyz_to_rgb(xyz)[0]
 
         np.testing.assert_allclose(converted[:, 0], raw[:, 0])
-        minimum = cast(float, raw[:, 1].min())
+        minimum = float(raw[:, 1].min())
         np.testing.assert_allclose(converted[:, 1], raw[:, 1] - minimum)
         assert np.all(converted >= 0)
 
@@ -467,7 +467,7 @@ class TestDisplaySettings:
         color = ac.ColorPoint.from_spectral_data(ac.sun_tsis1_hsrs)
         rendered = color.render(ac.DisplaySettings(color_system=ac.xyz_color_system))
         raw = color.spectral_dist
-        raw_max = cast(float, raw.max())
+        raw_max = float(raw.max())
         np.testing.assert_allclose(rendered, raw / raw_max)
 
     def test_render_scale_factor_and_no_maximize(self):

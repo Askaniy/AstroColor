@@ -208,7 +208,7 @@ class TestColorIndices:
         assert std is not None
         mag_std = self._mag_std(std, irradiance)
         np.testing.assert_allclose(mag_std**2, (0.0098, 0.0002, 0.0002))
-        assert cast(float, (mag_std**2).min()) == pytest.approx(0.0002)
+        assert float((mag_std**2).min()) == pytest.approx(0.0002)
 
     def test_branching_tree(self):
         filters, irradiance, std = color_indices_parser(

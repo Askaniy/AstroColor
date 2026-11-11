@@ -189,10 +189,7 @@ class Exponentials(PhotometricModel):
         if amplitudes is None or mu is None:
             raise ValueError('The exponential phase function has not been integrated yet')
         alpha = np.asarray(alpha, dtype=np.float64)
-        phi = cast(
-            npt.NDArray[np.floating],
-            np.sum(amplitudes[:, np.newaxis] * np.exp(-mu[:, np.newaxis] * alpha), axis=0),
-        )
+        phi = np.sum(amplitudes[:, np.newaxis] * np.exp(-mu[:, np.newaxis] * alpha), axis=0)
         if self.geometric_albedo is not None:
             phi = phi / self.geometric_albedo[0]
         if phi.size == 1:

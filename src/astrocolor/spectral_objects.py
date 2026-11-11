@@ -366,9 +366,9 @@ class SpectralObject(BaseObject):
             case 1:
                 sd = self.spectral_dist
             case 2:
-                sd = cast(npt.NDArray[np.floating], np.mean(self.spectral_dist, axis=1))
+                sd = np.mean(self.spectral_dist, axis=1)
             case 3:
-                sd = cast(npt.NDArray[np.floating], np.mean(self.spectral_dist, axis=(1, 2)))
+                sd = np.mean(self.spectral_dist, axis=(1, 2))
             case _:
                 raise UnsupportedDimensionError(self.ndim, name=self.name)
         return Spectrum(self.wavelength_nm, sd, name=self.name)

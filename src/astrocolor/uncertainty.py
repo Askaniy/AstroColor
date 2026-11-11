@@ -612,9 +612,8 @@ class Uncertainty:
             npt.NDArray[np.floating],
             np.matmul(weighted.transpose(2, 0, 1), weighted.transpose(2, 1, 0)),
         )
-        return cast(
-            npt.NDArray[np.floating],
-            batched.transpose(1, 2, 0).reshape((matrix.shape[0], matrix.shape[0], *self.spatial_shape)),
+        return batched.transpose(1, 2, 0).reshape(
+            (matrix.shape[0], matrix.shape[0], *self.spatial_shape)
         )
 
     def integrate(
