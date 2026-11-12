@@ -11,6 +11,7 @@ from typing import Literal, cast, overload
 
 import numpy as np
 import numpy.typing as npt
+from scipy.sparse import csr_matrix
 
 from .errors import UnsupportedDimensionError
 
@@ -105,6 +106,93 @@ def is_smooth(array: npt.NDArray[np.floating]) -> bool:
     diff2 = np.diff(np.diff(array, axis=0), axis=0)
     return bool(np.all(diff2 <= 0) | np.all(diff2 >= 0))
 
+def _spectral_binning_edges(
+    nm0: npt.NDArray[np.integer | np.floating],
+    nm1: npt.NDArray[np.integer | np.floating],
+    step: float,
+    nm0_diff: npt.NDArray[np.integer | np.floating]
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.integer], npt.NDArray[np.floating]]:
+    """
+    Returns the bin edges and their positions inside the input grid.
+
+    `intervals[k]` is the input segment containing edge `k`, and `fractions[k]`
+    is its relative position inside that segment. Values outside the input
+    range are linearly extrapolated through the first or last segment.
+    """
+    nm0 = np.asarray(nm0, dtype=np.float64)
+    nm1 = np.asarray(nm1, dtype=np.float64)
+    nm0_diff = np.asarray(nm0_diff, dtype=np.float64)
+    n = nm0.size
+    if n < 2:
+        raise ValueError('nm0 must contain at least 2 elements for binning')
+    if nm0_diff.size != n - 1:
+        raise ValueError(
+            f'nm0_diff must contain {n - 1} intervals, not {nm0_diff.size}'
+        )
+    edges = np.empty(nm1.size + 1, dtype=np.float64)
+    edges[:-1] = nm1 - 0.5 * step
+    edges[-1] = nm1[-1] + 0.5 * step
+    # `side='right'` maps an edge exactly on a node to the next segment with a
+    # zero fraction, matching `linear_interp()`.
+    indices = np.searchsorted(nm0, edges, side='right')
+    intervals = np.clip(indices - 1, 0, n - 2)
+    fractions = (edges - nm0[intervals]) / nm0_diff[intervals]
+    return (
+        edges,
+        cast(npt.NDArray[np.integer], intervals),
+        cast(npt.NDArray[np.floating], fractions),
+    )
+
+
+def spectral_binning_operator(
+    nm0: npt.NDArray[np.integer | np.floating],
+    nm1: npt.NDArray[np.integer | np.floating],
+    step: float,
+    nm0_diff: npt.NDArray[np.integer | np.floating]
+) -> csr_matrix:
+    """
+    Builds the binning operator `A` such that `br1 = A @ br0` as a sparse matrix.
+
+    Each output bin touches only the input segments that cross its two edges,
+    so the operator has O(n + m) non-zero elements instead of an `n x n`
+    identity matrix. This is the fast path used for dense non-uniform grids.
+    """
+    _, intervals, fractions = _spectral_binning_edges(nm0, nm1, step, nm0_diff)
+    diffs = np.asarray(nm0_diff, dtype=np.float64)
+    output_size = np.asarray(nm1).size
+    rows: list[int] = []
+    columns: list[int] = []
+    values: list[float] = []
+    for output_index in range(output_size):
+        left_interval = cast(int, intervals[output_index])
+        right_interval = cast(int, intervals[output_index + 1])
+        left_fraction = cast(float, fractions[output_index])
+        right_fraction = cast(float, fractions[output_index + 1])
+        if left_interval == right_interval:
+            contributions: tuple[tuple[int, float], ...] = (
+                (left_interval, right_fraction - left_fraction),
+            )
+        else:
+            contributions = (
+                (left_interval, 1. - left_fraction),
+                *((interval, 1.) for interval in range(left_interval + 1, right_interval)),
+                (right_interval, right_fraction),
+            )
+        for interval, weight in contributions:
+            if weight == 0.:
+                continue
+            coefficient = 0.5 * cast(float, diffs[interval]) * weight / step
+            rows.extend((output_index, output_index))
+            columns.extend((interval, interval + 1))
+            values.extend((coefficient, coefficient))
+    if not values:
+        return csr_matrix((output_size, diffs.size + 1), dtype=np.float64)
+    return csr_matrix(
+        (np.asarray(values, dtype=np.float64), (rows, columns)),
+        shape=(output_size, diffs.size + 1),
+    )
+
+
 def spectral_binning_matrix(
     nm0: npt.NDArray[np.integer | np.floating],
     nm1: npt.NDArray[np.integer | np.floating],
@@ -115,18 +203,16 @@ def spectral_binning_matrix(
     """
     Builds the linear operator of the cumulative-integral binning:
     `br1 = A @ br0`. The operator does not depend on the spatial axes.
+
+    The operator is assembled directly from input segments, without an
+    intermediate `n x n` identity matrix. Use `spectral_binning_operator()`
+    when only the action of the operator is needed.
     """
-    # Computing bin edges assuming that nm1 is a uniform grid
-    half_step = 0.5 * step
-    nm1_edges = np.append(nm1 - half_step, cast(int, nm1[-1]) + half_step)
-    nm0_diff = stretch(nm0_diff, (n,))
-    # Cumulative distribution function of the identity basis
-    basis = np.eye(n, dtype=np.float64)
-    br_cdf = np.zeros((n, n), dtype=np.float64)
-    br_cdf[1:] = np.cumsum(0.5 * (basis[:-1] + basis[1:]) * nm0_diff, axis=0) # Trapezoidal rule
-    return np.diff(
-        linear_interp(nm0, br_cdf, nm1_edges, extrap_mode='linear'), axis=0
-    ) / step
+    del n  # kept in the signature for backward compatibility
+    return cast(
+        npt.NDArray[np.floating],
+        spectral_binning_operator(nm0, nm1, step, nm0_diff).toarray(),
+    )
 
 
 def spectral_binning(
@@ -138,24 +224,34 @@ def spectral_binning(
     nm0_diff: npt.NDArray[np.integer | np.floating]
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
     """
-    Cumulative-integral binning method for a uniform grid. Fast (O(N) complexity), vectorized.
+    Cumulative-integral binning method for a uniform grid. O(n + m) for values,
+    vectorized, and does not materialize an `n x n` operator.
     Requires at least one measurement per bin; otherwise use `spectral_downscaling()`.
 
     Standard deviations are propagated through the same linear operator as the
     values, so independent errors are combined by their variances rather than
     by the standard deviations themselves.
     """
-    weights = spectral_binning_matrix(nm0, nm1, step, nm0_diff, cast(int, br0.shape[0]))
-    br1 = cast(npt.NDArray[np.floating], np.einsum('ai,i...->a...', weights, br0))
+    n = cast(int, br0.shape[0])
+    spatial_shape = br0.shape[1:]
+    edges, _, _ = _spectral_binning_edges(nm0, nm1, step, nm0_diff)
+    diffs = np.asarray(nm0_diff, dtype=np.float64)
+    # Cumulative trapezoidal integral at the input nodes.
+    cdf = np.empty((n, *spatial_shape), dtype=np.float64)
+    cdf[0] = 0.
+    increments = 0.5 * (br0[:-1] + br0[1:])
+    increments *= diffs.reshape((-1, *((1,) * len(spatial_shape))))
+    _ = np.cumsum(increments, axis=0, out=cdf[1:])
+    edge_cdf = linear_interp(nm0, cdf, edges, extrap_mode='linear')
+    br1 = np.diff(edge_cdf, axis=0) / step
     std1 = None
     if std0 is not None:
-        variance1 = cast(
-            npt.NDArray[np.floating],
-            np.einsum('ai,i...->a...', weights**2, std0**2),
-        )
+        operator = spectral_binning_operator(nm0, nm1, step, nm0_diff)
+        variance0 = np.asarray(std0, dtype=np.float64)**2
+        variance1 = operator.multiply(operator) @ variance0.reshape(n, -1)
         std1 = cast(
             npt.NDArray[np.floating],
-            np.sqrt(np.maximum(variance1, 0)),
+            np.sqrt(np.maximum(variance1, 0)).reshape((np.asarray(nm1).size, *spatial_shape)),
         )
     return br1, std1
 

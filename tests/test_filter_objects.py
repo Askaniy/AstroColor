@@ -25,6 +25,28 @@ def test_filter_set_getitem():
     np.testing.assert_equal(extracted.wavelength_nm, v.wavelength_nm)
     np.testing.assert_allclose(extracted.spectral_dist, v.spectral_dist)
 
+
+def test_cached_filters_are_equal_hashable_copies():
+    first = ac.Filter.get('Generic/Bessell.V')
+    second = ac.Filter.get('Generic/Bessell.V')
+
+    assert first is not second
+    assert first == second
+    assert hash(first) == hash(second)
+    assert len({first, second}) == 1
+    assert {first: 'V'}[second] == 'V'
+
+
+def test_cached_filter_sets_are_equal_hashable_copies():
+    first = ac.FilterSet.get('Generic/Bessell.U', 'Generic/Bessell.B', 'Generic/Bessell.V')
+    second = ac.FilterSet.get('Generic/Bessell.U', 'Generic/Bessell.B', 'Generic/Bessell.V')
+
+    assert first is not second
+    assert first == second
+    assert hash(first) == hash(second)
+    assert len({first, second}) == 1
+    assert {first: 'UBV'}[second] == 'UBV'
+
 # - tests for mean values
 
 def test_mean_nm_spectra():

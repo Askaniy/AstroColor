@@ -21,6 +21,7 @@ from typing import Self, cast, override
 
 import numpy as np
 import numpy.typing as npt
+from scipy.sparse import csr_matrix, issparse
 
 from .algebra import broadcast_means
 from .config import Config
@@ -540,7 +541,7 @@ class Uncertainty:
             covariance = np.repeat(covariance, times, axis=axis)
         return self.from_covariance_unchecked(covariance, new_shape)
 
-    def propagate(self, matrix: npt.ArrayLike) -> Self:
+    def propagate(self, matrix: npt.ArrayLike | csr_matrix) -> Self:
         """
         Applies a linear operator to the uncertainty:
         `C_out = matrix @ C_in @ matrix.T`.
@@ -550,8 +551,16 @@ class Uncertainty:
         result is a full covariance matrix. With `Config.ignore_correlations`
         enabled, only the resulting diagonal variance is computed and the
         result always stays compact.
+
+        Sparse operators are applied without densifying them, which keeps
+        dense-grid spectral binning at O(n + m) memory.
         """
-        matrix = np.asarray(matrix, dtype=np.float64)
+        if issparse(matrix):
+            return self._propagate_sparse(matrix)
+        matrix = cast(
+            npt.NDArray[np.floating],
+            np.asarray(matrix, dtype=np.float64),
+        )
         if matrix.ndim != 2:
             raise ValueError(f'Linear operator must have 2 dimensions, not {matrix.ndim}')
         if matrix.shape[1] != self.spectral_size:
@@ -576,6 +585,102 @@ class Uncertainty:
             return self.from_covariance_unchecked(covariance, new_shape)
         covariance = cast(npt.NDArray[np.floating], self._covariance_matrix)
         return self.from_covariance_unchecked(propagate_covariance(covariance, matrix), new_shape)
+
+    def _propagate_sparse(self, matrix: csr_matrix) -> Self:
+        """ Applies a sparse linear operator without materializing it as dense. """
+        if matrix.shape[1] != self.spectral_size:
+            raise ValueError(
+                f'Linear operator shape {matrix.shape} does not match the covariance size {self.spectral_size}'
+            )
+        output_size = matrix.shape[0]
+        new_shape = (output_size, *self.spatial_shape)
+        if Config.ignore_correlations:
+            n = self.spectral_size
+            flattened = self.variance.reshape(n, -1)
+            propagated = matrix.multiply(matrix) @ flattened
+            return self.from_variance_unchecked(
+                np.asarray(propagated).reshape(new_shape), new_shape
+            )
+        if self._variance is not None:
+            diagonal = self._sparse_diagonal_operator(matrix)
+            if diagonal is not None:
+                values, columns = diagonal
+                scaled = values.reshape((-1, *((1,) * len(self.spatial_shape))))
+                variance = self._variance[columns] * scaled**2
+                return self.from_variance_unchecked(variance, new_shape)
+            covariance = self._propagate_sparse_diagonal(matrix)
+            return self.from_covariance_unchecked(covariance, new_shape)
+        covariance = cast(npt.NDArray[np.floating], self._covariance_matrix)
+        return self.from_covariance_unchecked(
+            self._propagate_sparse_covariance(matrix, covariance), new_shape
+        )
+
+    def _sparse_diagonal_operator(
+        self,
+        matrix: csr_matrix
+    ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.integer]] | None:
+        """
+        Sparse counterpart of `_diagonal_operator()`: every output point must
+        depend on a single distinct input point.
+        """
+        operator = matrix.tocsr()
+        row_counts = cast(npt.NDArray[np.integer], np.diff(operator.indptr))
+        column_counts = cast(
+            npt.NDArray[np.integer],
+            np.bincount(operator.indices, minlength=self.spectral_size),
+        )
+        if (
+            np.all(cast(npt.NDArray[np.bool_], row_counts == 1))
+            and np.all(column_counts <= 1)
+        ):
+            return operator.data, cast(npt.NDArray[np.integer], operator.indices)
+        return None
+
+    def _propagate_sparse_diagonal(self, matrix: csr_matrix) -> npt.NDArray[np.floating]:
+        """
+        Computes `matrix @ diag(variance) @ matrix.T` for a sparse operator
+        without densifying it.
+        """
+        variance = cast(npt.NDArray[np.floating], self._variance)
+        n = self.spectral_size
+        flattened = np.sqrt(variance.reshape(n, -1))
+        output_size = matrix.shape[0]
+        pixel_count = cast(int, flattened.shape[1])
+        covariance = np.empty(
+            (output_size, output_size, pixel_count), dtype=np.float64
+        )
+        for index in range(pixel_count):
+            weighted = matrix.multiply(flattened[:, index][np.newaxis, :]).tocsr()
+            covariance[:, :, index] = (weighted @ weighted.T).toarray()
+        return cast(
+            npt.NDArray[np.floating],
+            covariance.reshape((output_size, output_size, *self.spatial_shape)),
+        )
+
+    def _propagate_sparse_covariance(
+        self,
+        matrix: csr_matrix,
+        covariance: npt.NDArray[np.floating]
+    ) -> npt.NDArray[np.floating]:
+        """ Computes `matrix @ covariance @ matrix.T` for a sparse operator. """
+        n = self.spectral_size
+        output_size = matrix.shape[0]
+        matrix_t = matrix.T.tocsr()
+        spatial_shape = covariance.shape[2:]
+        if not spatial_shape:
+            return cast(
+                npt.NDArray[np.floating],
+                matrix @ covariance @ matrix_t,
+            )
+        flattened = covariance.reshape(n, n, -1)
+        pixel_count = flattened.shape[2]
+        result = np.empty(
+            (output_size, output_size, pixel_count), dtype=np.float64
+        )
+        for index in range(pixel_count):
+            intermediate = matrix @ flattened[:, :, index]
+            result[:, :, index] = intermediate @ matrix_t
+        return result.reshape((output_size, output_size, *spatial_shape))
 
     def _diagonal_operator(
         self,

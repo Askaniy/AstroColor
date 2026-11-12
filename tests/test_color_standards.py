@@ -171,6 +171,8 @@ class TestColorSystemEquality:
         same_system = ac.ColorSystem('sRGB', 'Illuminant E')
         assert system == same_system
         assert hash(system) == hash(same_system)
+        assert len({system, same_system}) == 1
+        assert {system: 'sRGB/E'}[same_system] == 'sRGB/E'
         assert ac.ColorSystem('sRGB') != ac.ColorSystem('sRGB', 'Illuminant E')
 
     def test_conversion_to_equal_system_skips_matrix_work(self):

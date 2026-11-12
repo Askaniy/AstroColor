@@ -321,6 +321,17 @@ class BaseObject(UniformSpectralGrid):
         else:
             return self._apply_scalar_operation(other, div_value, div_uncertainty)
 
+    def _comparison_wavelengths(self) -> npt.ArrayLike | None:
+        """
+        Returns the wavelength axis used by `__eq__` and `__hash__`.
+
+        Photospectral objects do not store their own wavelength array and
+        override this method to expose the filter-set grid.
+        """
+        if self.wavelength_nm is NotImplemented:
+            return None
+        return self.wavelength_nm
+
     @override
     def __eq__(self, other: object) -> bool:
         """
@@ -330,8 +341,42 @@ class BaseObject(UniformSpectralGrid):
         - True if both wavelength and spectral distribution arrays are equal.
         """
         if isinstance(other, BaseObject):
-            return np.array_equal(self.wavelength_nm, other.wavelength_nm) and np.array_equal(self.spectral_dist, other.spectral_dist)
+            self_wavelengths = self._comparison_wavelengths()
+            other_wavelengths = other._comparison_wavelengths()
+            if self_wavelengths is None or other_wavelengths is None:
+                return False
+            return np.array_equal(self_wavelengths, other_wavelengths) and np.array_equal(self.spectral_dist, other.spectral_dist)
         return False
+
+    @override
+    def __hash__(self) -> int:
+        """
+        Hashes the spectral data consistently with `__eq__`.
+
+        Wavelengths and values are converted to a canonical representation
+        before hashing, so equal objects hash equally regardless of their
+        input array dtype or signed zeros. Names and uncertainties are ignored
+        because `__eq__` ignores them too.
+
+        Objects remain mutable; do not modify an object while it is used as a
+        dictionary key or set member.
+        """
+        wavelengths = self._comparison_wavelengths()
+        if wavelengths is None:
+            # A BaseObject without a wavelength axis cannot be compared by
+            # content, so fall back to identity semantics for hashing.
+            return object.__hash__(self)
+        wavelength_array = np.ascontiguousarray(wavelengths, dtype=np.float64)
+        values = np.ascontiguousarray(self.spectral_dist, dtype=np.float64)
+        # `+ 0.` turns -0. into 0., which compares equal but has other bytes.
+        wavelength_array = wavelength_array + 0.
+        values = values + 0.
+        return hash((
+            wavelength_array.shape,
+            wavelength_array.tobytes(),
+            values.shape,
+            values.tobytes(),
+        ))
 
     def _generate_repr_config(self) -> dict[str, str]:
         """ Generates default configuration for string representation in __repr__() """

@@ -91,6 +91,11 @@ class PhotospectralObject(BaseObject):
             )
 
     @override
+    def _comparison_wavelengths(self) -> npt.ArrayLike:
+        """ Photospectral objects use the filter-set grid as their spectral axis. """
+        return self.filter_set.wavelength_nm
+
+    @override
     @classmethod
     def stub(cls, name: object = None) -> Self:
         """ Initializes an object in case of the data problems """

@@ -144,3 +144,98 @@ class TestNonFiniteValues:
         np.testing.assert_allclose(np.delete(spectrum.standard_deviation, 3), 0.1)
         assert spectrum.covariance_matrix is not None
         assert np.all(np.isfinite(spectrum.covariance_matrix))
+
+
+class TestHashing:
+
+    def test_hash_is_consistent_with_equality(self):
+        integer_spectrum = ac.Spectrum([500, 505, 510], [1., 2., 3.], name='first')
+        float_spectrum = ac.Spectrum(
+            np.array([500., 505., 510.]),
+            np.array([1., 2., 3.]),
+            name='second',
+        )
+
+        assert integer_spectrum == float_spectrum
+        assert hash(integer_spectrum) == hash(float_spectrum)
+        assert len({integer_spectrum, float_spectrum}) == 1
+        assert {integer_spectrum: 'value'}[float_spectrum] == 'value'
+
+    def test_signed_zero_hashes_like_zero(self):
+        positive = ac.Spectrum([500, 505, 510], [0., 1., 2.])
+        negative = ac.Spectrum([500, 505, 510], [-0., 1., 2.])
+
+        assert positive == negative
+        assert hash(positive) == hash(negative)
+
+    def test_reference_spectra_are_hashable_and_distinct(self):
+        references = {
+            ac.sun_calspec: 'Sun [CALSPEC]',
+            ac.sun_tsis1_hsrs: 'Sun [TSIS-1 HSRS]',
+            ac.vega_calspec: 'Vega [CALSPEC]',
+        }
+
+        assert len(references) == 3
+        for spectrum, name in references.items():
+            assert spectrum.name == name
+
+    def test_photospectral_objects_hash_by_filter_grid_and_values(
+        self,
+        ubv_filterset: ac.FilterSet,
+    ):
+        first = ac.PhotospectralSet(
+            ubv_filterset,
+            [[1., 2.], [3., 4.], [5., 6.]],
+            name='first',
+        )
+        second = ac.PhotospectralSet(
+            ubv_filterset,
+            [[1., 2.], [3., 4.], [5., 6.]],
+            name='second',
+        )
+
+        assert first == second
+        assert hash(first) == hash(second)
+        assert {first: 'photometry'}[second] == 'photometry'
+
+        other_grid = ac.FilterSet.get('SLOAN/SDSS.g', 'SLOAN/SDSS.r')
+        assert first != ac.Photospectrum(other_grid, [1., 2.])
+
+
+class TestDenseNonUniformBinning:
+
+    def test_dense_grid_does_not_build_the_dense_operator(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        from astrocolor import auxiliary
+
+        def fail(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError('The dense binning operator must not be built')
+
+        monkeypatch.setattr(auxiliary, 'spectral_binning_matrix', fail)
+        nm = np.linspace(300., 3000., 30055)
+
+        spectrum = ac.Spectrum(nm, np.ones_like(nm))
+
+        assert spectrum.wavelength_nm.size == 541
+        np.testing.assert_allclose(spectrum.spectral_dist, 1.)
+
+    def test_dense_grid_with_uncertainty_uses_sparse_operator(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        from astrocolor import auxiliary
+
+        def fail(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError('The dense binning operator must not be built')
+
+        monkeypatch.setattr(auxiliary, 'spectral_binning_matrix', fail)
+        nm = np.linspace(300., 3000., 30055)
+        std = np.full(nm.size, 0.1)
+
+        spectrum = ac.Spectrum(nm, np.ones_like(nm), std)
+
+        assert spectrum.covariance_matrix is not None
+        assert spectrum.covariance_matrix.shape == (541, 541)
+        assert np.all(np.isfinite(spectrum.covariance_matrix))

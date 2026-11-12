@@ -20,7 +20,7 @@ from .auxiliary import (
     interpolation_matrix,
     is_diagonal,
     spectral_binning,
-    spectral_binning_matrix,
+    spectral_binning_operator,
     spectral_downscaling,
     stretch,
 )
@@ -229,7 +229,7 @@ class SpectralObject(BaseObject):
                 elif diff.max() < nm_step:
                     # Option 3: dense spectral grid -> flux-conserving binning cumulative-integral (CDF) method
                     if uncertainty_obj is not None:
-                        operator = spectral_binning_matrix(nm, nm_uniform, nm_step, diff, nm.size)
+                        operator = spectral_binning_operator(nm, nm_uniform, nm_step, diff)
                         uncertainty_obj = uncertainty_obj.propagate(operator)
                     sd, _ = spectral_binning(nm, sd, None, nm_uniform, nm_step, diff)
                 else:
