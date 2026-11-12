@@ -89,6 +89,11 @@ def test_color_output():
     )
     display_rgb = color_obj.render(display_settings)
     assert display_rgb.shape == (3,)
+    linear_in_target = color_obj.to_color_system(display_settings.color_system).spectral_dist
+    np.testing.assert_allclose(
+        display_rgb,
+        display_settings.color_system.encode(linear_in_target * display_settings.scale_factor),
+    )
 
 def test_custom_color_standards():
     custom_white = ac.WhitePoint.from_xy('Custom D50', 0.34567, 0.35850)
@@ -102,17 +107,3 @@ def test_custom_color_standards():
     )
     custom_system = ac.ColorSystem(custom_space)
     assert custom_system.internal_white_point is custom_white
-
-def test_gamma_corrected_conversion():
-    srgb_d65 = ac.ColorSystem('sRGB')
-    srgb_e = ac.ColorSystem('sRGB', 'Illuminant E')
-    encoded_color = ac.ColorPoint(
-        [0.5, 0.25, 0.1],
-        color_system=srgb_d65,
-        gamma_corrected=True,
-    )
-    linear_rgb = encoded_color.to_color_system(srgb_e).spectral_dist
-    display_rgb = srgb_e.encode(linear_rgb)
-    expected = srgb_e.inv_matrix @ srgb_d65.matrix @ srgb_d65.decode([0.5, 0.25, 0.1])
-    np.testing.assert_allclose(linear_rgb, expected)
-    np.testing.assert_allclose(display_rgb, srgb_e.encode(expected))

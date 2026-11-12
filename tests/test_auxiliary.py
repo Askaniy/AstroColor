@@ -21,16 +21,14 @@ from astrocolor.auxiliary import (
 )
 from astrocolor.core import nm_step, wavelength_nm_dtype
 
-np.random.seed(42)
-
-
 # === Auxiliary Utilities Tests ===
 
 
 class TestWavelengthGrids:
 
     # (start, end, expected_first, expected_last)
-    INT_CASES: tuple[tuple[int, int, int, int], ...] = (
+    CASES: tuple[tuple[float, float, int, int], ...] = (
+        # Integer inputs
         (0, 10, 0, 10),
         (0, 9, 0, 10),
         (1, 10, 0, 10),
@@ -40,9 +38,7 @@ class TestWavelengthGrids:
         (0, 5, 0, 5),
         (5, 5, 5, 5),
         (115, 200000, 115, 200000),
-    )
-
-    FLOAT_CASES: tuple[tuple[float, float, int, int], ...] = (
+        # Float inputs
         (0.0, 10.0, 0, 10),
         (0.0, 9.0, 0, 10),
         (1.0, 10.0, 0, 10),
@@ -58,24 +54,19 @@ class TestWavelengthGrids:
         (115.5, 200000.0, 115, 200000),
     )
 
-    @staticmethod
-    def check_case(start: float, end: float, expected_first: int, expected_last: int):
-        actual = grid_endpoints_preprocessing(start, end, nm_step)
-        assert actual == (expected_first, expected_last)
-
     @pytest.mark.parametrize(
         'start, end, expected_first, expected_last',
-        INT_CASES,
+        CASES,
     )
-    def test_old_int_inputs(self, start: float, end: float, expected_first: int, expected_last: int):
-        self.check_case(start, end, expected_first, expected_last)
-
-    @pytest.mark.parametrize(
-        "start, end, expected_first, expected_last",
-        FLOAT_CASES,
-    )
-    def test_old_float_inputs(self, start: float, end: float, expected_first: int, expected_last: int):
-        self.check_case(start, end, expected_first, expected_last)
+    def test_grid_endpoints(
+        self,
+        start: float,
+        end: float,
+        expected_first: int,
+        expected_last: int,
+    ):
+        actual = grid_endpoints_preprocessing(start, end, nm_step)
+        assert actual == (expected_first, expected_last)
 
     def test_grid_reversibility(self):
         old_grid = uniform_grid(400, 600, nm_step, wavelength_nm_dtype)
@@ -338,8 +329,9 @@ class TestSpectralBinning:
 
     def test_spectral_binning(self):
         nm0_len = 100
+        rng = np.random.default_rng(42)
         nm0 = np.sort(
-            np.linspace(402, 650, nm0_len) + np.random.normal(0, 5, nm0_len)
+            np.linspace(402, 650, nm0_len) + rng.normal(0, 5, nm0_len)
         )
         br0 = nm0 / 100
         step = 5  # nm
@@ -459,7 +451,7 @@ class TestLinearInterp:
 
     def test_edge_high_dim_singular(self):
         x0 = np.linspace(0, 4, 5)
-        y0 = np.random.rand(5, 1, 2, 1, 3)
+        y0 = np.random.default_rng(42).random((5, 1, 2, 1, 3))
         x_test = np.array([-0.5, 2.5, 4.5])
         y_const = linear_interp(x0, y0, x_test, extrap_mode='nearest')
         assert y_const.shape == (3, 1, 2, 1, 3)
@@ -507,9 +499,7 @@ class TestReprGenerator1D:
 
     def test_three_elements(self):
         arr = np.array([1.23456, -0.98765, 0.0])
-        result = repr_generator_1D(arr)
-        assert len(result.split(', ')) == 3
-        assert result.startswith('[') and result.endswith(']')
+        assert repr_generator_1D(arr) == '[1.235, -0.988, 0.000]'
 
     def test_four_elements(self):
         arr = np.array([42.7, -99.3, 55.1, 8])
@@ -566,13 +556,11 @@ class TestReprGenerator:
 
     def test_dispatches_to_1d(self):
         arr = np.array([0.5, 1.5])
-        result = repr_generator(arr)
-        assert '0' in result and '.' not in result.split('[')[-1].split(',')[0] or '.500' in result
+        assert repr_generator(arr) == '[0.500, 1.500]'
 
     def test_dispatches_to_2d(self):
         arr = np.array([[0.5, 1.5], [2.5, 3.5]])
-        result = repr_generator(arr)
-        assert '\n' in result
+        assert repr_generator(arr) == '[\n\t[0.500, 1.500],\n\t[2.500, 3.500]\n]'
 
     def test_other_dimensions_returns_generic(self):
         arr_3d = np.ones((2, 3, 4))

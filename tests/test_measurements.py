@@ -9,22 +9,35 @@ class TestGetSpectrometry:
         spectrum = ac.get_spectrometry(v_filter, ac.visible_range, strictly=True)
         assert spectrum.wavelength_nm.size == ac.visible_range.size
         spectrum.edges_to_zero()
-        assert v_filter == spectrum
+        np.testing.assert_equal(spectrum.wavelength_nm, v_filter.wavelength_nm)
+        np.testing.assert_allclose(spectrum.spectral_dist, v_filter.spectral_dist)
 
     def test_filter_set(self, ubv_filterset: ac.FilterSet):
         spectral_set = ac.get_spectrometry(ubv_filterset, ac.visible_range, strictly=True)
-        assert spectral_set.wavelength_nm.size == ac.visible_range.size
+        np.testing.assert_equal(spectral_set.wavelength_nm, ac.visible_range)
+        for index, filter_id in enumerate(('U', 'B', 'V')):
+            expected = ac.get_spectrometry(
+                ac.Filter.get(f'Generic/Bessell.{filter_id}'),
+                ac.visible_range,
+                strictly=True,
+            )
+            np.testing.assert_allclose(
+                spectral_set.spectral_dist[:, index],
+                expected.spectral_dist,
+            )
 
     def test_spectrum(self):
         u_filter = ac.Filter.get('Generic/Bessell.U')
         spectrum0 = ac.Spectrum(u_filter.wavelength_nm, u_filter.spectral_dist)
-        spectrum1 = ac.get_spectrometry(spectrum0, ac.visible_range, strictly=True)
-        assert spectrum1.wavelength_nm.size == ac.visible_range.size
+        spectrum1 = ac.get_spectrometry(spectrum0, spectrum0.wavelength_nm, strictly=True)
+        np.testing.assert_equal(spectrum1.wavelength_nm, spectrum0.wavelength_nm)
+        np.testing.assert_allclose(spectrum1.spectral_dist, spectrum0.spectral_dist)
 
     def test_spectral_set(self, ubv_filterset: ac.FilterSet):
         spectral_set0 = ac.SpectralSet(ubv_filterset.wavelength_nm, ubv_filterset.spectral_dist)
-        spectral_set1 = ac.get_spectrometry(spectral_set0, ac.visible_range, strictly=True)
-        assert spectral_set1.wavelength_nm.size == ac.visible_range.size
+        spectral_set1 = ac.get_spectrometry(spectral_set0, spectral_set0.wavelength_nm, strictly=True)
+        np.testing.assert_equal(spectral_set1.wavelength_nm, spectral_set0.wavelength_nm)
+        np.testing.assert_allclose(spectral_set1.spectral_dist, spectral_set0.spectral_dist)
 
     def test_flat_spectrum(self):
         """ A flat spectrum should remain flat after extrapolation. """

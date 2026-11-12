@@ -20,7 +20,10 @@ def test_filter_edges_extrapolated():
 def test_filter_set_getitem():
     ubv = ac.FilterSet.get('Generic/Bessell.U', 'Generic/Bessell.B', 'Generic/Bessell.V')
     v = ac.Filter.get('Generic/Bessell.V')
-    np.testing.assert_equal(ubv[2].mean_nm(), v.mean_nm())
+    extracted = ubv[2]
+    assert extracted.name == v.name
+    np.testing.assert_equal(extracted.wavelength_nm, v.wavelength_nm)
+    np.testing.assert_allclose(extracted.spectral_dist, v.spectral_dist)
 
 # - tests for mean values
 

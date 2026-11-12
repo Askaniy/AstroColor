@@ -3,8 +3,6 @@ import pytest
 
 import astrocolor as ac
 
-#import matplotlib.pyplot as plt
-
 
 def test_attach_photospectral_obj_is_propagated_to_reconstructed_objects(ubv_filterset: ac.FilterSet):
     nm = ubv_filterset.wavelength_nm
@@ -42,12 +40,6 @@ def test_attach_photospectral_obj_is_propagated_to_reconstructed_objects(ubv_fil
 def test_flat_photospectrum_reconstruction(ubv_filterset: ac.FilterSet):
     photospectrum = ac.Photospectrum(ubv_filterset, (1, 1, 1), name='test photospectrum')
     reconstructed = ac.get_spectrometry(photospectrum, ac.visible_range, strictly=True)
-    # for band in ubv_filterset:
-    #     plt.plot(band.wavelength_nm, band.spectral_dist / band.spectral_dist.max(), '-', color='gray')
-    # plt.plot(photospectrum.filter_set.mean_nm(), photospectrum.spectral_dist, 'o')
-    # plt.plot(reconstructed.wavelength_nm, reconstructed.spectral_dist, '-', color='black')
-    # plt.plot(ac.visible_range, reconstructed.spectral_dist)
-    # plt.show()
     np.testing.assert_allclose(reconstructed.spectral_dist, np.ones(ac.visible_range.size))
 
 

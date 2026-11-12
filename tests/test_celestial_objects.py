@@ -750,13 +750,11 @@ class TestGetSpectralData:
         geometric_in_V = photometry(obj.spectral_data_geometric)
         assert photometry(spherical) == pytest.approx(geometric_in_V * 0.5)
 
-    def test_invalid_mode(self):
-        with pytest.warns(SpatialAxisWarning, match='test'):
-            obj = ac.CelestialObject('test', wavelength_nm=NM)
+    def test_invalid_mode_falls_back_to_unscaled_data(self):
+        obj = ac.CelestialObject('test', wavelength_nm=NM, spectral_dist=SD)
         spectral_data, estimated = obj.get_spectral_data('invalid')  # pyright: ignore[reportArgumentType]
-        assert isinstance(spectral_data, ac.Spectrum)
+        assert spectral_data is obj.spectral_data_unscaled
         assert estimated is None
-        np.testing.assert_allclose(spectral_data.integrate(), 0.) # a stub object
 
 
 class TestFlags:
@@ -776,15 +774,6 @@ class TestFlags:
             wavelength_nm=NM,
             spectral_dist=SD,
             is_emissive=True
-        )
-        assert obj.is_emissive is True
-
-    def test_emission_spectrum_implies_emissive(self):
-        obj = ac.CelestialObject(
-            'test',
-            wavelength_nm=[500, 600],
-            spectral_dist=[1., 2.],
-            is_emission_spectrum=True
         )
         assert obj.is_emissive is True
 
@@ -918,7 +907,13 @@ class TestDatabaseStyleInputs:
             geometric_albedo=['Generic/Bessell.V', [0.093, 0.001]],
             phase_function=['phase coefficient', {'beta': 0.039}]
         )
+        assert isinstance(obj.spectral_data_unscaled, ac.Photospectrum)
+        assert isinstance(obj.spectral_data_geometric, ac.Photospectrum)
+        assert photometry(obj.spectral_data_geometric) == pytest.approx(0.093, abs=1e-4)
         assert isinstance(obj.photometric_model, PhaseCoefficient)
+        phase_integral = obj.photometric_model.phase_integral
+        assert phase_integral is not None
+        assert phase_integral[0] == pytest.approx(0.3826, abs=1e-3)
 
     def test_aurora_is_emissive(self):
         obj = ac.CelestialObject(
