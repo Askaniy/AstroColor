@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from astrocolor import Filter
 from astrocolor.config import Config
 from astrocolor.errors import FilterNetworkError
 from astrocolor.filter_loader import (
@@ -248,3 +249,122 @@ class TestBundledFiltersFolder:
         script_dir = Config.library_folder
         assert str(result).startswith(str(script_dir))
         assert 'filters' in result.parts
+
+
+def _write_profile(folder: Path, group: str, name: str, start_nm: float) -> None:
+    """ Write a small synthetic filter profile for lookup tests. """
+    group_folder = folder / group
+    group_folder.mkdir(parents=True, exist_ok=True)
+    wavelengths = np.arange(start_nm, start_nm + 50, 10.)
+    transmissions = np.array([0., 1., 1., 1., 0.])
+    np.savetxt(group_folder / f'{name}.txt', np.column_stack([wavelengths, transmissions]))
+
+
+class TestFilterCacheConfig:
+    """ Tests that cached filters respect the current lookup configuration. """
+
+    def test_cached_folder_change_invalidates_cache(self, tmp_path: Path):
+        """ A profile reloaded after changing the cache folder must not come from the old cache. """
+        folder_a = tmp_path / 'cached_a'
+        folder_b = tmp_path / 'cached_b'
+        _write_profile(folder_a, 'CacheTest', 'Switch', 400.)
+        _write_profile(folder_b, 'CacheTest', 'Switch', 500.)
+        original = Config.get_cached_filters_folder()
+        try:
+            Config.set_cached_filters_folder(folder_a)
+            first = Filter.get('CacheTest/Switch')
+            Config.set_cached_filters_folder(folder_b)
+            second = Filter.get('CacheTest/Switch')
+        finally:
+            Config.set_cached_filters_folder(original)
+        np.testing.assert_allclose(first.mean_nm(), 420.)
+        np.testing.assert_allclose(second.mean_nm(), 520.)
+
+    def test_custom_folder_change_invalidates_cache(self, tmp_path: Path):
+        """ The custom filters folder is part of the same cache key. """
+        folder_a = tmp_path / 'custom_a'
+        folder_b = tmp_path / 'custom_b'
+        _write_profile(folder_a, 'CacheTest', 'CustomSwitch', 600.)
+        _write_profile(folder_b, 'CacheTest', 'CustomSwitch', 700.)
+        original = Config.get_custom_filters_folder()
+        try:
+            Config.set_custom_filters_folder(folder_a)
+            first = Filter.get('CacheTest/CustomSwitch')
+            Config.set_custom_filters_folder(folder_b)
+            second = Filter.get('CacheTest/CustomSwitch')
+        finally:
+            Config.set_custom_filters_folder(original)
+        np.testing.assert_allclose(first.mean_nm(), 620.)
+        np.testing.assert_allclose(second.mean_nm(), 720.)
+
+    def test_internet_access_change_invalidates_cache(self, tmp_path: Path):
+        """ Enabling network access must not reuse a profile cached while offline. """
+        folder = tmp_path / 'cache'
+        _write_profile(folder, 'CacheTest', 'Network', 800.)
+        original_cached = Config.get_cached_filters_folder()
+        original_internet = Config.allow_internet_access
+        try:
+            Config.set_cached_filters_folder(folder)
+            Config.allow_internet_access = False
+            first = Filter.get('CacheTest/Network')
+            (folder / 'CacheTest' / 'Network.txt').unlink()
+            Config.allow_internet_access = True
+            xml_content = ET.fromstring(b'''<VOTABLE>
+                <RESOURCE type="results"><TABLE>
+                    <PARAM name="WavelengthUnit" value="Nanometer"/>
+                    <PARAM name="DetectorType" value="0"/>
+                </TABLE></RESOURCE>
+            </VOTABLE>''')
+            with (
+                patch('astrocolor.filter_objects.fetch_from_fps_raw', return_value=xml_content),
+                patch(
+                    'astrocolor.filter_objects.get_profile',
+                    return_value=(
+                        np.arange(900., 950., 10.),
+                        np.array([0., 1., 1., 1., 0.]),
+                    ),
+                ),
+            ):
+                second = Filter.get('CacheTest/Network')
+        finally:
+            Config.set_cached_filters_folder(original_cached)
+            Config.allow_internet_access = original_internet
+        np.testing.assert_allclose(first.mean_nm(), 820.)
+        np.testing.assert_allclose(second.mean_nm(), 920.)
+
+
+class TestFilterLookupPriority:
+    """ Tests for the filter lookup precedence. """
+
+    def test_custom_profile_overrides_cached_download(self, tmp_path: Path):
+        """ A custom profile must win over an already cached SVO FPS download. """
+        cached_folder = tmp_path / 'cached'
+        custom_folder = tmp_path / 'custom'
+        _write_profile(cached_folder, 'PriorityTest', 'Priority', 800.)
+        _write_profile(custom_folder, 'PriorityTest', 'Priority', 900.)
+        original_cached = Config.get_cached_filters_folder()
+        original_custom = Config.get_custom_filters_folder()
+        try:
+            Config.set_cached_filters_folder(cached_folder)
+            downloaded = Filter.get('PriorityTest/Priority')
+            Config.set_custom_filters_folder(custom_folder)
+            corrected = Filter.get('PriorityTest/Priority')
+        finally:
+            Config.set_cached_filters_folder(original_cached)
+            Config.set_custom_filters_folder(original_custom)
+        np.testing.assert_allclose(downloaded.mean_nm(), 820.)
+        np.testing.assert_allclose(corrected.mean_nm(), 920.)
+
+    def test_bundled_profile_overrides_custom(self, tmp_path: Path):
+        """ Bundled profiles stay authoritative even when a custom folder is set. """
+        custom_folder = tmp_path / 'custom'
+        _write_profile(custom_folder, 'Generic', 'Bessell.V', 800.)
+        bundled = Filter.get('Generic/Bessell.V')
+        original_custom = Config.get_custom_filters_folder()
+        try:
+            Config.set_custom_filters_folder(custom_folder)
+            selected = Filter.get('Generic/Bessell.V')
+        finally:
+            Config.set_custom_filters_folder(original_custom)
+        np.testing.assert_array_equal(selected.wavelength_nm, bundled.wavelength_nm)
+        np.testing.assert_array_equal(selected.spectral_dist, bundled.spectral_dist)

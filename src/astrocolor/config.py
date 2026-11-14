@@ -129,6 +129,9 @@ class Config:
         """
         Set the directory for user-provided filter files.
 
+        Profiles in this folder take precedence over cached and freshly
+        downloaded SVO FPS profiles, but not over bundled filters.
+
         Pass `None` to disable custom filters (the default).
 
         Raises:

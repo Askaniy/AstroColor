@@ -27,6 +27,24 @@ from .filter_loader import (
 from .spectral_objects import SpectralObject, SpectralSet, Spectrum
 from .uncertainty import Uncertainty
 
+type _FilterCacheKey = tuple[Path, Path, Path | None, bool]
+
+
+def _filter_cache_key() -> _FilterCacheKey:
+    """
+    Snapshot of `Config` settings that affect filter lookup.
+
+    The snapshot is part of the `Filter.get()` cache key, so changing a lookup
+    folder or network access does not return a profile loaded under the old
+    configuration.
+    """
+    return (
+        Config.get_bundled_filters_folder(),
+        Config.get_cached_filters_folder(),
+        Config.get_custom_filters_folder(),
+        Config.allow_internet_access,
+    )
+
 
 class FilterObject(SpectralObject):
     """ Internal class for inheriting filter methods. """
@@ -154,10 +172,11 @@ class Filter(FilterObject, Spectrum):
     def get(filter_id: str) -> 'Filter':
         """
         Use Spanish Virtual Observatory filter ID to create a `Filter` object.
-        Searches: bundled filters → cached downloads → custom folder → SVO FPS
+        Searches: bundled filters → custom folder → cached downloads → SVO FPS
         (network fetch if Config.allow_internet_access is True).
+        The cache respects the current filter lookup configuration.
         """
-        return deepcopy(_cached_get(filter_id))
+        return deepcopy(_cached_get(filter_id, _filter_cache_key()))
 
 
 class FilterSet(FilterObject, SpectralSet):
@@ -266,33 +285,35 @@ class FilterSet(FilterObject, SpectralSet):
 
 
 @lru_cache(maxsize=128)
-def _cached_get(filter_id: str) -> 'Filter':
+def _cached_get(filter_id: str, config_key: _FilterCacheKey) -> 'Filter':
     """
-    Returns a cached filter object.
+    Returns a cached filter object for a filter lookup configuration.
     Search order:
       1. Cached in lru_cache (handled by decorator)
       2. Bundled filters shipped with the library
-      3. Local cache (downloaded from SVO FPS, saved locally if allowed)
-      4. Custom user-provided folder (if Config.get_custom_filters_folder is set)
+      3. Custom user-provided folder (if Config.get_custom_filters_folder is set)
+      4. Local cache (downloaded from SVO FPS, saved locally if allowed)
       5. SVO FPS network fetch (if Config.allow_internet_access is True)
+    `config_key` makes the cache sensitive to changes in these settings.
     This has been separated out to create copies of the results and avoid mutations.
     """
+    bundled_filters_folder, cached_filters_folder, custom_path, allow_internet_access = config_key
 
     try:
         group, name = filter_id.split('/')
     except ValueError as e:
         raise FilterNotFoundError(filter_id) from e
 
-    # Search order: bundled → cached (downloaded) → custom user folder
-    search_folders: list[Path] = [
-        Config.get_bundled_filters_folder() / group,
-        Config.get_cached_filters_folder() / group,
-    ]
+    # Search order: bundled → custom user folder → cached (downloaded)
+    search_folders: list[Path] = [bundled_filters_folder / group]
 
-    # Add custom filters folder only if the user has specified one
-    custom_path = Config.get_custom_filters_folder()
+    # Add custom filters folder only if the user has specified one.
+    # Custom profiles override cached SVO FPS downloads, so they can correct
+    # profiles whose SVO data is wrong without clearing the download cache.
     if custom_path is not None and custom_path.exists():
         search_folders.append(custom_path / group)
+
+    search_folders.append(cached_filters_folder / group)
 
     local_path: Path | None = None
     for folder in search_folders:
@@ -331,7 +352,7 @@ def _cached_get(filter_id: str) -> 'Filter':
 
     else:
         # Local file not found: fetch from SVO FPS and save locally if allowed
-        if not Config.allow_internet_access:
+        if not allow_internet_access:
             raise FilterNotFoundError(filter_id)
 
         try:
@@ -348,7 +369,7 @@ def _cached_get(filter_id: str) -> 'Filter':
                 extension += 'P'
 
             # Save to cache folder for future use
-            cached_group = Config.get_cached_filters_folder() / group
+            cached_group = cached_filters_folder / group
             cached_group.mkdir(parents=True, exist_ok=True)
             np.savetxt(
                 f'{cached_group}/{name}.{extension}',
