@@ -2,7 +2,11 @@ import numpy as np
 import pytest
 
 import astrocolor as ac
-from astrocolor.errors import NegativeVarianceError
+from astrocolor.errors import (
+    NegativeStandardDeviationError,
+    NegativeVarianceError,
+    NonFiniteCovarianceError,
+)
 from astrocolor.uncertainty import Uncertainty
 
 
@@ -305,6 +309,52 @@ def test_negative_covariance_raises_typed_error(name: str | None, expected_messa
     covariance[0, 0] = -1.
 
     with pytest.raises(NegativeVarianceError) as exc_info:
+        _ = ac.Spectrum(nm, np.ones(nm.size), covariance, name=name)
+
+    message = str(exc_info.value)
+    assert message == expected_message
+    assert '"None"' not in message
+
+
+@pytest.mark.parametrize(
+    'name, expected_message',
+    [
+        (None, 'Standard deviations contain negative values.'),
+        ('broken object', 'Standard deviations contain negative values for "broken object".'),
+    ],
+)
+def test_negative_standard_deviation_raises_typed_error(
+    name: str | None,
+    expected_message: str,
+):
+    nm = np.arange(500, 521, 5)
+    std = np.ones(nm.size)
+    std[0] = -1.
+
+    with pytest.raises(NegativeStandardDeviationError) as exc_info:
+        _ = ac.Spectrum(nm, np.ones(nm.size), std, name=name)
+
+    message = str(exc_info.value)
+    assert message == expected_message
+    assert '"None"' not in message
+
+
+@pytest.mark.parametrize(
+    'name, expected_message',
+    [
+        (None, 'Covariance matrix contains non-finite values.'),
+        ('broken object', 'Covariance matrix contains non-finite values for "broken object".'),
+    ],
+)
+def test_non_finite_covariance_raises_typed_error(
+    name: str | None,
+    expected_message: str,
+):
+    nm = np.arange(500, 521, 5)
+    covariance = np.eye(nm.size)
+    covariance[0, 0] = np.nan
+
+    with pytest.raises(NonFiniteCovarianceError) as exc_info:
         _ = ac.Spectrum(nm, np.ones(nm.size), covariance, name=name)
 
     message = str(exc_info.value)

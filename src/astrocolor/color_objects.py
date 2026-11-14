@@ -97,6 +97,7 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
     `spectral_dist` is always linear, including when the constructor receives
     gamma-corrected values. Use `render()` or `to_html()` for display output.
     `color_system` is a frozen attribute, change it with `to_color_system()`.
+    `name` is an optional label used in error and warning messages.
     """
 
     def __init__(
@@ -106,6 +107,7 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
         color_system: ColorSystem = xyz_color_system,
         *,
         gamma_corrected: bool = False,
+        name: object = None,
     ) -> None:
         """
         ColorObject requires a brightness array and corresponding color system.
@@ -116,16 +118,22 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
         immediately. Covariance propagation through that nonlinear step is a
         separate, not yet implemented operation.
 
+        `name` is an optional label for diagnostics; it is not used by the
+        color calculations.
+
         Raises:
         - `InvalidColorChannelsError`: if the first axis does not contain
           exactly three color channels.
+        - `InconsistentUncertaintySizeError`, `InconsistentUncertaintyShapeError`,
+          `NegativeStandardDeviationError`, `NegativeVarianceError`,
+          `NonFiniteCovarianceError`: if the uncertainty input is invalid.
         """
         values = np.asarray(spectral_dist, dtype=np.float64)
         if values.ndim == 0 or values.shape[0] != 3:
-            raise InvalidColorChannelsError(values.shape)
+            raise InvalidColorChannelsError(values.shape, name)
         uncertainty_obj = (
             None if uncertainty is None
-            else Uncertainty.from_input(uncertainty, values.shape)
+            else Uncertainty.from_input(uncertainty, values.shape, name)
         )
         # `spectral_dist` is stored linear, so encoded input is decoded here.
         if gamma_corrected:
@@ -138,9 +146,11 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
                 uncertainty_obj = Uncertainty.from_covariance(
                     decoded_covariance,
                     values.shape,
+                    name,
                 )
         self.spectral_dist: npt.NDArray[np.floating] = values
         self.uncertainty: Uncertainty | None = uncertainty_obj
+        self.name: object = name
         self._color_system: ColorSystem = color_system
 
     @property
@@ -161,7 +171,12 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
     def from_spectral_data(cls, data: DimensionallyCorrectType) -> Self:
         """ Convolves a (photo)spectral object with the CIE 1931 XYZ color matching functions """
         photometry = get_photometry(data, xyz_cmf)
-        return cls(photometry.spectral_dist, photometry.uncertainty, xyz_color_system)
+        return cls(
+            photometry.spectral_dist,
+            photometry.uncertainty,
+            xyz_color_system,
+            name=data.name,
+        )
 
     def to_color_system(self, new_color_system: ColorSystem) -> Self:
         """
@@ -187,7 +202,9 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
         )
         output.uncertainty = (
             None if rgb_covariance is None
-            else Uncertainty.from_covariance(rgb_covariance, output.spectral_dist.shape)
+            else Uncertainty.from_covariance(
+                rgb_covariance, output.spectral_dist.shape, output.name
+            )
         )
         minimum = np.min(output.spectral_dist, axis=0)
         if np.any(minimum < 0):
@@ -329,6 +346,7 @@ class ColorImage(ColorObject[SpectralCube | PhotospectralCube]):
             flatten_img.reshape(3, data.width, data.height),
             covariance,
             color_system=xyz_color_system,
+            name=data.name,
         )
 
     def upscale(

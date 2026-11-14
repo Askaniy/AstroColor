@@ -7,6 +7,14 @@ lookups; the helpers emit warnings for recoverable data problems.
 
 import warnings
 
+
+def _name_suffix(name: object, *, prefix: str = ' for') -> str:
+    """ Formats an optional object name as a message suffix. """
+    if name is None:
+        return ''
+    return f'{prefix} "{name}"'
+
+
 # Errors
 
 class AstroColorError(Exception):
@@ -14,49 +22,45 @@ class AstroColorError(Exception):
 
 class UnsupportedDimensionError(AstroColorError, ValueError):
     def __init__(self, ndim_received: int, name: object = None):
-        subject = f'data array of {name}' if name else 'data array'
+        subject = 'data array' + _name_suffix(name, prefix=' of')
         super().__init__(f'The {subject} must have a dimension of 1, 2, or 3, not {ndim_received}.')
 
 class InvalidColorChannelsError(AstroColorError, ValueError):
-    def __init__(self, shape: tuple[int, ...]):
-        super().__init__(
-            f'Color data must have exactly three channels along the first axis, not shape {shape}.'
-        )
+    def __init__(self, shape: tuple[int, ...], name: object = None):
+        msg = f'Color data must have exactly three channels along the first axis, not shape {shape}'
+        super().__init__(msg + _name_suffix(name) + '.')
 
 class InconsistentDimensionError(AstroColorError, ValueError):
     def __init__(self, ndim_expected: int, ndim_received: int, name: object = None):
         msg = f'The received array dimension ({ndim_received}) differs from the expected one ({ndim_expected})'
-        if name is not None:
-            msg += f' for "{name}"'
-        super().__init__(msg + '.')
+        super().__init__(msg + _name_suffix(name) + '.')
 
 class InconsistentAxesError(AstroColorError, ValueError):
     def __init__(self, len_nm: int, len_values: int, name: object = None):
         msg = f'The spectral axis size does not match the spectral distribution size ({len_nm} vs {len_values})'
-        if name is not None:
-            msg += f' for "{name}"'
-        super().__init__(msg + '.')
+        super().__init__(msg + _name_suffix(name) + '.')
 
 class InconsistentUncertaintySizeError(AstroColorError, ValueError):
     def __init__(self, len_error: int, len_values: int, name: object = None):
         msg = f'The uncertainty array size does not match the spectral distribution size ({len_error} vs {len_values})'
-        if name is not None:
-            msg += f' for "{name}"'
-        super().__init__(msg + '.')
+        super().__init__(msg + _name_suffix(name) + '.')
 
 class InconsistentUncertaintyShapeError(AstroColorError, ValueError):
     def __init__(self, shape_error: object, shape_values: object, name: object = None):
         msg = f'Uncertainty shape {shape_error} does not match the data shape {shape_values}'
-        if name is not None:
-            msg += f' for "{name}"'
-        super().__init__(msg + '. It cannot be a standard deviation or a covariance matrix.')
+        super().__init__(msg + _name_suffix(name) + '. It cannot be a standard deviation or a covariance matrix.')
 
 class NegativeVarianceError(AstroColorError, ValueError):
     def __init__(self, name: object = None):
-        msg = 'Covariance matrix contains negative variances'
-        if name is not None:
-            msg += f' for "{name}"'
-        super().__init__(msg + '.')
+        super().__init__(f'Covariance matrix contains negative variances{_name_suffix(name)}.')
+
+class NegativeStandardDeviationError(AstroColorError, ValueError):
+    def __init__(self, name: object = None):
+        super().__init__(f'Standard deviations contain negative values{_name_suffix(name)}.')
+
+class NonFiniteCovarianceError(AstroColorError, ValueError):
+    def __init__(self, name: object = None):
+        super().__init__(f'Covariance matrix contains non-finite values{_name_suffix(name)}.')
 
 class FilterNotFoundError(AstroColorError):
     def __init__(self, filter_id: str):
@@ -77,50 +81,36 @@ class ErasingCorrelationsWarning(UserWarning):
 
 def erasing_correlations_warning(name: object = None):
     msg = 'The full covariance matrix is not supported here. The diagonal is used to estimate errors'
-    if name is not None:
-        msg += f' for "{name}"'
-    warnings.warn(msg + '.', ErasingCorrelationsWarning, stacklevel=2)
+    warnings.warn(msg + _name_suffix(name) + '.', ErasingCorrelationsWarning, stacklevel=2)
 
 class NonFiniteValuesWarning(UserWarning):
     pass
 
 def non_finite_values_warning(input: str, name: object = None, action: str = 'replaced with zeros'):
     msg = f'Non-finite values detected in the {input} input have been {action}'
-    if name is not None:
-        msg += f' for "{name}"'
-    warnings.warn(msg + '.', NonFiniteValuesWarning, stacklevel=2)
+    warnings.warn(msg + _name_suffix(name) + '.', NonFiniteValuesWarning, stacklevel=2)
 
 class SpatialAxisWarning(UserWarning):
     pass
 
 def empty_spatial_axis_warning(name: object = None):
-    msg = 'No spectral distribution data'
-    if name is not None:
-        msg += f' for "{name}"'
-    msg += '. Spectrum stub object was created.'
-    warnings.warn(msg + '.', SpatialAxisWarning, stacklevel=2)
+    msg = f'No spectral distribution data{_name_suffix(name)}. Spectrum stub object was created.'
+    warnings.warn(msg, SpatialAxisWarning, stacklevel=2)
 
 def zero_brightness_warning(name: object = None):
     msg = 'A division-by-zero error occurred in the calculations due to the zero brightness'
-    if name is not None:
-        msg += f' of object "{name}"'
-    warnings.warn(msg + '.', SpatialAxisWarning, stacklevel=2)
+    warnings.warn(msg + _name_suffix(name, prefix=' of object') + '.', SpatialAxisWarning, stacklevel=2)
 
 class SpectralAxisWarning(UserWarning):
     pass
 
 def empty_spectral_axis_warning(name: object = None):
-    msg = 'No wavelength data'
-    if name is not None:
-        msg += f' for "{name}"'
-    msg += '. Spectrum stub object was created.'
-    warnings.warn(msg + '.', SpectralAxisWarning, stacklevel=2)
+    msg = f'No wavelength data{_name_suffix(name)}. Spectrum stub object was created.'
+    warnings.warn(msg, SpectralAxisWarning, stacklevel=2)
 
 def empty_spectral_intersection_warning(nm0: int, nm1: int, start: int, end: int, name: object = None):
     msg = f'The requested wavelength range [{start} ... {end}] lies outside the range [{nm0} ... {nm1}]! An empty result returned'
-    if name is not None:
-        msg += f' for "{name}"'
-    warnings.warn(msg + '.', SpectralAxisWarning, stacklevel=2)
+    warnings.warn(msg + _name_suffix(name) + '.', SpectralAxisWarning, stacklevel=2)
 
 def empty_spectral_intersection_operator_warning(
     operation_name: str,
@@ -147,12 +137,8 @@ class PhaseFunctionWarning(UserWarning):
 
 def invalid_phase_function_warning(count: int, name: object = None) -> None:
     msg = f'Invalid number of `phase_function` arguments: {count} (should be 2 or 3)'
-    if name is not None:
-        msg += f' for "{name}"'
-    warnings.warn(msg + '.', PhaseFunctionWarning, stacklevel=2)
+    warnings.warn(msg + _name_suffix(name) + '.', PhaseFunctionWarning, stacklevel=2)
 
 def unsupported_phase_function_warning(model_name: str, name: object = None) -> None:
     msg = f'Phase function model "{model_name}" is not supported'
-    if name is not None:
-        msg += f' for "{name}"'
-    warnings.warn(msg + '.', PhaseFunctionWarning, stacklevel=2)
+    warnings.warn(msg + _name_suffix(name) + '.', PhaseFunctionWarning, stacklevel=2)

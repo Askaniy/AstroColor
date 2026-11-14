@@ -6,7 +6,7 @@ import numpy.typing as npt
 import pytest
 
 import astrocolor as ac
-from astrocolor.errors import InvalidColorChannelsError
+from astrocolor.errors import InvalidColorChannelsError, NegativeStandardDeviationError
 
 
 class TestColorBasics:
@@ -17,14 +17,40 @@ class TestColorBasics:
             with pytest.raises(InvalidColorChannelsError, match='three channels'):
                 _ = color_type([1., 2.])
 
+    def test_invalid_color_channels_message_uses_name(self):
+        with pytest.raises(InvalidColorChannelsError) as exc_info:
+            _ = ac.ColorPoint([1., 2.], name='broken color')
+
+        expected = 'Color data must have exactly three channels along the first axis, not shape (2,) for "broken color".'
+        assert str(exc_info.value) == expected
+
+        with pytest.raises(InvalidColorChannelsError) as exc_info:
+            _ = ac.ColorPoint([1., 2.])
+        assert '"None"' not in str(exc_info.value)
+
+    def test_color_object_stores_name(self):
+        for color_type in (ac.ColorPoint, ac.ColorLine, ac.ColorImage):
+            color = color_type([1., 2., 3.], name='test color')
+            assert color.name == 'test color'
+
+    def test_uncertainty_error_uses_color_object_name(self):
+        std = np.array([0.1, -0.1, 0.2])
+        with pytest.raises(NegativeStandardDeviationError) as exc_info:
+            _ = ac.ColorPoint(np.ones(3), std, name='broken color')
+
+        expected = 'Standard deviations contain negative values for "broken color".'
+        assert str(exc_info.value) == expected
+
     def test_color_of_flat_spectrum(self):
         nm = np.arange(200, 800, 5)
         spectrum = ac.Spectrum(nm, np.ones(nm.size), name='Flat spectrum test')
         color = ac.ColorPoint.from_spectral_data(spectrum)
+        assert color.name == 'Flat spectrum test'
         target_rgb = np.ones(3)
         np.testing.assert_allclose(color.spectral_dist, target_rgb)
         color_system = ac.ColorSystem('sRGB', 'Illuminant E')
         color = color.to_color_system(color_system)
+        assert color.name == 'Flat spectrum test'
         np.testing.assert_allclose(color.spectral_dist, target_rgb)
 
     def test_color_system_reversibility(self):

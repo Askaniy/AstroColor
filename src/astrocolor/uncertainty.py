@@ -28,7 +28,9 @@ from .config import Config
 from .errors import (
     InconsistentUncertaintyShapeError,
     InconsistentUncertaintySizeError,
+    NegativeStandardDeviationError,
     NegativeVarianceError,
+    NonFiniteCovarianceError,
     non_finite_values_warning,
 )
 
@@ -277,7 +279,7 @@ class Uncertainty:
             std[non_finite] = 0.
             non_finite_values_warning('standard deviation', name)
         if np.any(std < 0):
-            raise ValueError(f'Standard deviations contain negative values for "{name}"')
+            raise NegativeStandardDeviationError(name)
         return cls.from_variance_unchecked(std**2, data_shape)
 
     @classmethod
@@ -344,7 +346,7 @@ class Uncertainty:
         if covariance.shape not in (expected_shape, (n, n)):
             raise InconsistentUncertaintyShapeError(covariance.shape, expected_shape, name)
         if not np.all(np.isfinite(covariance)):
-            raise ValueError(f'Covariance matrix contains non-finite values for "{name}"')
+            raise NonFiniteCovarianceError(name)
         diagonal = np.diagonal(covariance, axis1=0, axis2=1)
         scale = max(1.0, float(cast(float, np.max(np.abs(covariance)))))
         if np.any(diagonal < -1e-10 * scale):
