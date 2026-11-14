@@ -9,6 +9,8 @@ wheels/
 # Virtual environments
 .venv
 
-# Development local folder
+# Local development
+AGENTS.md
+.agents/
 dev/
 temp/

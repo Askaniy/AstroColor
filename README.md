@@ -87,18 +87,20 @@ bb_7000K = ac.get_spectrometry(ac.BlackBodyModel(7000), [400, 450])
 
 ## Object dimensions
 
-The first axis of `spectral_dist` is always the spectral, filter, or color-channel axis; all remaining axes are spatial. Here 1D means a single spectrum/color point, 2D means a set/line, and 3D means a cube/image.
+The first axis of `spectral_dist` is always the spectral, filter, or color-channel axis; all remaining axes are spatial. Here 1D means a single spectrum, filter profile, or color point; 2D means a set/line; 3D means a cube/image.
 
 | Object family | 1D | 2D | 3D |
 |---|---|---|---|
 | Spectral | `Spectrum` | `SpectralSet` | `SpectralCube` |
 | Photospectral | `Photospectrum` | `PhotospectralSet` | `PhotospectralCube` |
 | Reconstructed | `ReconstructedSpectrum` | `ReconstructedSpectralSet` | `ReconstructedSpectralCube` |
+| Filter | `Filter` | `FilterSet` | — |
 | Color | `ColorPoint` | `ColorLine` | `ColorImage` |
 
 - **Spectral** objects store continuous spectral distributions.
 - **Photospectral** objects store measurements through a filter set.
 - **Reconstructed** objects are continuous spectra reconstructed from photometry and always keep the source `PhotospectralObject`.
+- **Filter** objects store normalized transmission profiles.
 - **Color** objects store exactly three color channels (RGB/XYZ), with optional spatial axes.
 
 Internal `Item`, `Set`, and `Cube` bases encode the 1D/2D/3D behaviour shared by the public classes.
