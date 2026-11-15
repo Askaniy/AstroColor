@@ -1,13 +1,17 @@
 """
-Global settings for paths, network access and uncertainty handling.
+Global settings for paths, network access, SVO endpoints and uncertainty handling.
 
-`Config` controls filter lookup locations, SVO FPS downloads, cube batching
-and whether correlations or cube uncertainties are processed.
+`Config` controls filter lookup locations, SVO FPS downloads, catalog refresh
+frequency, cube batching and whether correlations or cube uncertainties are
+processed. Use `Config.override()` for temporary changes.
 """
 
 import os
 import platform
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import cast
 
 
 class Config:
@@ -32,6 +36,14 @@ class Config:
     # Fetch filters from Spanish Virtual Observatory Filter Profile Service (SVO FPS)
     # https://svo2.cab.inta-csic.es/svo/theory/fps3/fps.php
     allow_internet_access: bool = True
+
+    # SVO FPS endpoints. They are configurable for mirrors and tests.
+    svo_fps_home_url: str = 'https://svo2.cab.inta-csic.es/svo/theory/fps3/index.php'
+    svo_fps_url: str = 'https://svo2.cab.inta-csic.es/svo/theory/fps3/fps.php'
+
+    # How often the SVO catalog checks the server's "Last update" date, in seconds.
+    # The default is one day. Set it to 0 to check on every call.
+    filter_catalog_ttl: float = 24 * 60 * 60
 
     # === Bundled filters ===
 
@@ -144,3 +156,55 @@ class Config:
                 f'Custom filters folder does not exist: {value}'
             )
         cls._custom_filters_path = value
+
+    # === Temporary overrides ===
+
+    @classmethod
+    @contextmanager
+    def override(cls, **values: object) -> Generator[None, None, None]:
+        """
+        Temporarily override `Config` settings and restore them afterwards.
+
+        Both plain class attributes (for example `allow_internet_access`) and
+        settings with getter/setter pairs (for example `cached_filters_folder`)
+        are supported:
+
+        ```
+        with Config.override(allow_internet_access=False):
+            ...
+        ```
+
+        Args:
+        - `**values`: setting names and their temporary values.
+
+        Raises:
+        - AttributeError: If a setting with the given name does not exist.
+        - FileNotFoundError: If a folder setter rejects the given path.
+        """
+        previous: list[tuple[str, object, Callable[[object], None] | None]] = []
+        try:
+            for name, value in values.items():
+                setter = getattr(cls, f'set_{name}', None)
+                getter = getattr(cls, f'get_{name}', None)
+                if callable(setter) and callable(getter):
+                    setter_fn = cast(Callable[[object], None], setter)
+                    if name.endswith('_filters_folder'):
+                        attribute = f'_{name.removesuffix("_filters_folder")}_filters_path'
+                        old_value = cast(object, getattr(cls, attribute, None))
+                    else:
+                        getter_fn = cast(Callable[[], object], getter)
+                        old_value = getter_fn()
+                    previous.append((name, old_value, setter_fn))
+                    setter_fn(value)
+                elif hasattr(cls, name):
+                    previous.append((name, cast(object, getattr(cls, name)), None))
+                    setattr(cls, name, value)
+                else:
+                    raise AttributeError(f'Config has no setting named "{name}"')
+            yield
+        finally:
+            for name, old_value, setter_fn in reversed(previous):
+                if setter_fn is None:
+                    setattr(cls, name, old_value)
+                else:
+                    setter_fn(old_value)

@@ -251,13 +251,59 @@ class TestBundledFiltersFolder:
         assert 'filters' in result.parts
 
 
-def _write_profile(folder: Path, group: str, name: str, start_nm: float) -> None:
+class TestConfigOverride:
+    """ Tests for temporary `Config.override()` changes. """
+
+    def test_restores_plain_attributes(self):
+        original = Config.allow_internet_access
+        with Config.override(allow_internet_access=not original):
+            assert Config.allow_internet_access is not original
+        assert Config.allow_internet_access is original
+
+    def test_restores_folder_setters(self, tmp_path: Path):
+        original_cached = Config.get_cached_filters_folder()
+        original_custom = Config.get_custom_filters_folder()
+        with Config.override(
+            cached_filters_folder=tmp_path,
+            custom_filters_folder=tmp_path,
+        ):
+            assert Config.get_cached_filters_folder() == tmp_path
+            assert Config.get_custom_filters_folder() == tmp_path
+        assert Config.get_cached_filters_folder() == original_cached
+        assert Config.get_custom_filters_folder() == original_custom
+
+    def test_restores_after_exception(self):
+        original = Config.allow_internet_access
+        with (
+            pytest.raises(RuntimeError, match='boom'),
+            Config.override(allow_internet_access=not original),
+        ):
+            raise RuntimeError('boom')
+        assert Config.allow_internet_access is original
+
+    def test_nested_overrides_restore_previous_values(self):
+        original = Config.allow_internet_access
+        with Config.override(allow_internet_access=not original):
+            with Config.override(allow_internet_access=original):
+                assert Config.allow_internet_access is original
+            assert Config.allow_internet_access is not original
+        assert Config.allow_internet_access is original
+
+    def test_unknown_setting_raises(self):
+        with (
+            pytest.raises(AttributeError, match='no setting named "unknown_setting"'),
+            Config.override(unknown_setting=True),
+        ):
+            pass
+
+
+def _write_profile(folder: Path, facility: str, filter_name: str, start_nm: float) -> None:
     """ Write a small synthetic filter profile for lookup tests. """
-    group_folder = folder / group
-    group_folder.mkdir(parents=True, exist_ok=True)
+    facility_folder = folder / facility
+    facility_folder.mkdir(parents=True, exist_ok=True)
     wavelengths = np.arange(start_nm, start_nm + 50, 10.)
     transmissions = np.array([0., 1., 1., 1., 0.])
-    np.savetxt(group_folder / f'{name}.txt', np.column_stack([wavelengths, transmissions]))
+    np.savetxt(facility_folder / f'{filter_name}.txt', np.column_stack([wavelengths, transmissions]))
 
 
 class TestFilterCacheConfig:
@@ -269,14 +315,10 @@ class TestFilterCacheConfig:
         folder_b = tmp_path / 'cached_b'
         _write_profile(folder_a, 'CacheTest', 'Switch', 400.)
         _write_profile(folder_b, 'CacheTest', 'Switch', 500.)
-        original = Config.get_cached_filters_folder()
-        try:
-            Config.set_cached_filters_folder(folder_a)
+        with Config.override(cached_filters_folder=folder_a):
             first = Filter.get('CacheTest/Switch')
-            Config.set_cached_filters_folder(folder_b)
+        with Config.override(cached_filters_folder=folder_b):
             second = Filter.get('CacheTest/Switch')
-        finally:
-            Config.set_cached_filters_folder(original)
         np.testing.assert_allclose(first.mean_nm(), 420.)
         np.testing.assert_allclose(second.mean_nm(), 520.)
 
@@ -286,14 +328,10 @@ class TestFilterCacheConfig:
         folder_b = tmp_path / 'custom_b'
         _write_profile(folder_a, 'CacheTest', 'CustomSwitch', 600.)
         _write_profile(folder_b, 'CacheTest', 'CustomSwitch', 700.)
-        original = Config.get_custom_filters_folder()
-        try:
-            Config.set_custom_filters_folder(folder_a)
+        with Config.override(custom_filters_folder=folder_a):
             first = Filter.get('CacheTest/CustomSwitch')
-            Config.set_custom_filters_folder(folder_b)
+        with Config.override(custom_filters_folder=folder_b):
             second = Filter.get('CacheTest/CustomSwitch')
-        finally:
-            Config.set_custom_filters_folder(original)
         np.testing.assert_allclose(first.mean_nm(), 620.)
         np.testing.assert_allclose(second.mean_nm(), 720.)
 
@@ -301,36 +339,60 @@ class TestFilterCacheConfig:
         """ Enabling network access must not reuse a profile cached while offline. """
         folder = tmp_path / 'cache'
         _write_profile(folder, 'CacheTest', 'Network', 800.)
-        original_cached = Config.get_cached_filters_folder()
-        original_internet = Config.allow_internet_access
-        try:
-            Config.set_cached_filters_folder(folder)
-            Config.allow_internet_access = False
-            first = Filter.get('CacheTest/Network')
+        xml_content = ET.fromstring(b'''<VOTABLE>
+            <RESOURCE type="results"><TABLE>
+                <PARAM name="WavelengthUnit" value="Nanometer"/>
+                <PARAM name="DetectorType" value="0"/>
+            </TABLE></RESOURCE>
+        </VOTABLE>''')
+        with Config.override(cached_filters_folder=folder):
+            with Config.override(allow_internet_access=False):
+                first = Filter.get('CacheTest/Network')
             (folder / 'CacheTest' / 'Network.txt').unlink()
-            Config.allow_internet_access = True
-            xml_content = ET.fromstring(b'''<VOTABLE>
-                <RESOURCE type="results"><TABLE>
-                    <PARAM name="WavelengthUnit" value="Nanometer"/>
-                    <PARAM name="DetectorType" value="0"/>
-                </TABLE></RESOURCE>
-            </VOTABLE>''')
             with (
+                Config.override(allow_internet_access=True),
                 patch('astrocolor.filter_objects.fetch_from_fps_raw', return_value=xml_content),
                 patch(
                     'astrocolor.filter_objects.get_profile',
-                    return_value=(
-                        np.arange(900., 950., 10.),
-                        np.array([0., 1., 1., 1., 0.]),
-                    ),
+                    return_value=(np.arange(900., 950., 10.), np.array([0., 1., 1., 1., 0.])),
                 ),
             ):
                 second = Filter.get('CacheTest/Network')
-        finally:
-            Config.set_cached_filters_folder(original_cached)
-            Config.allow_internet_access = original_internet
         np.testing.assert_allclose(first.mean_nm(), 820.)
         np.testing.assert_allclose(second.mean_nm(), 920.)
+
+    def test_svo_url_change_invalidates_cache(self, tmp_path: Path):
+        """ A different SVO endpoint must not reuse a profile fetched from the old one. """
+        folder = tmp_path / 'cache'
+        folder.mkdir()
+        xml_content = ET.fromstring(b'''<VOTABLE>
+            <RESOURCE type="results"><TABLE>
+                <PARAM name="WavelengthUnit" value="Nanometer"/>
+                <PARAM name="DetectorType" value="0"/>
+            </TABLE></RESOURCE>
+        </VOTABLE>''')
+        with (
+            Config.override(
+                cached_filters_folder=folder,
+                allow_internet_access=True,
+            ),
+            patch('astrocolor.filter_objects.fetch_from_fps_raw', return_value=xml_content) as fetch,
+            patch(
+                'astrocolor.filter_objects.get_profile',
+                side_effect=[
+                    (np.arange(900., 950., 10.), np.array([0., 1., 1., 1., 0.])),
+                    (np.arange(950., 1000., 10.), np.array([0., 1., 1., 1., 0.])),
+                ],
+            ),
+        ):
+            with Config.override(svo_fps_url='https://example.test/one'):
+                first = Filter.get('CacheTest/Network')
+            (folder / 'CacheTest' / 'Network.txt').unlink()
+            with Config.override(svo_fps_url='https://example.test/two'):
+                second = Filter.get('CacheTest/Network')
+        assert fetch.call_count == 2
+        np.testing.assert_allclose(first.mean_nm(), 920.)
+        np.testing.assert_allclose(second.mean_nm(), 970.)
 
 
 class TestFilterLookupPriority:
@@ -342,16 +404,10 @@ class TestFilterLookupPriority:
         custom_folder = tmp_path / 'custom'
         _write_profile(cached_folder, 'PriorityTest', 'Priority', 800.)
         _write_profile(custom_folder, 'PriorityTest', 'Priority', 900.)
-        original_cached = Config.get_cached_filters_folder()
-        original_custom = Config.get_custom_filters_folder()
-        try:
-            Config.set_cached_filters_folder(cached_folder)
+        with Config.override(cached_filters_folder=cached_folder):
             downloaded = Filter.get('PriorityTest/Priority')
-            Config.set_custom_filters_folder(custom_folder)
-            corrected = Filter.get('PriorityTest/Priority')
-        finally:
-            Config.set_cached_filters_folder(original_cached)
-            Config.set_custom_filters_folder(original_custom)
+            with Config.override(custom_filters_folder=custom_folder):
+                corrected = Filter.get('PriorityTest/Priority')
         np.testing.assert_allclose(downloaded.mean_nm(), 820.)
         np.testing.assert_allclose(corrected.mean_nm(), 920.)
 
@@ -360,11 +416,7 @@ class TestFilterLookupPriority:
         custom_folder = tmp_path / 'custom'
         _write_profile(custom_folder, 'Generic', 'Bessell.V', 800.)
         bundled = Filter.get('Generic/Bessell.V')
-        original_custom = Config.get_custom_filters_folder()
-        try:
-            Config.set_custom_filters_folder(custom_folder)
+        with Config.override(custom_filters_folder=custom_folder):
             selected = Filter.get('Generic/Bessell.V')
-        finally:
-            Config.set_custom_filters_folder(original_custom)
         np.testing.assert_array_equal(selected.wavelength_nm, bundled.wavelength_nm)
         np.testing.assert_array_equal(selected.spectral_dist, bundled.spectral_dist)

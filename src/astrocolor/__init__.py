@@ -28,6 +28,7 @@ from .color_standards import (
     xyz_color_system,
 )
 from .config import Config
+from .filter_catalog import get_bands, get_facilities, get_instruments
 from .filter_objects import Filter, FilterSet
 from .measurements import get_photometry, get_spectrometry, scale_to_match_value
 from .photospectral_objects import PhotospectralCube, PhotospectralSet, Photospectrum
@@ -72,7 +73,10 @@ __all__ = (
     'Uncertainty',
     'WhitePoint',
     'default_color_system',
+    'get_bands',
     'get_color',
+    'get_facilities',
+    'get_instruments',
     'get_photometry',
     'get_spectrometry',
     'photometric_models',

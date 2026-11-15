@@ -8,6 +8,7 @@ Key features:
 - error processing (standard deviations or covariance matrices)
 - built-in "true" color calculation
 - filter profiles auto-loading ([>11K available](https://svo2.cab.inta-csic.es/svo/theory/fps3/index.php?mode=browse))
+- filter catalog discovery by facility, instrument and band (`get_facilities`, `get_instruments`, `get_bands`)
 - lightweight: absolute minimal dependencies
 - complete typification (basedpyright)
 - photometric models (`HG`, `HG1G2`, `Exponentials`, `Hapke`, `PhaseCoefficient`)
@@ -202,6 +203,19 @@ encoded_color = ac.ColorPoint(
 linear_rgb = encoded_color.to_color_system(srgb_e).spectral_dist
 display_rgb = srgb_e.encode(linear_rgb)
 ```
+
+
+## Filter catalog
+
+Filter IDs follow the Spanish Virtual Observatory Filter Profile Service naming convention `Facility/Instrument.Band`. Three functions expose everything that is available locally and on the SVO FPS server:
+
+```py
+facilities = ac.get_facilities()              # ['CIE', 'Generic', 'HST', 'SLOAN', ...]
+instruments = ac.get_instruments('Generic')   # ['Bessell', 'Cousins', 'Johnson', ...]
+bands = ac.get_bands('Generic', 'Bessell')    # ['B', 'I', 'R', 'U', 'V']
+```
+
+The catalog scans bundled filters, the custom filters folder, downloaded filter profiles and the SVO FPS server. The server part is cached on disk (as `filter_catalog.json` in `Config.get_cached_filters_folder()`); its `Last update` date is checked at most once per day, so the network is not used on every call. Network failures fall back to the locally available profiles. Filter IDs that exist locally are always included, even when the server has no matching entry.
 
 
 ## History

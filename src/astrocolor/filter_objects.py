@@ -21,13 +21,14 @@ from .core import nm_step, wavelength_nm_dtype
 from .errors import FilterNetworkError, FilterNotFoundError
 from .filter_loader import (
     fetch_from_fps_raw,
+    get_filter_folders,
     get_parameter,
     get_profile,
 )
 from .spectral_objects import SpectralObject, SpectralSet, Spectrum
 from .uncertainty import Uncertainty
 
-type _FilterCacheKey = tuple[Path, Path, Path | None, bool]
+type _FilterCacheKey = tuple[Path, Path, Path | None, bool, str]
 
 
 def _filter_cache_key() -> _FilterCacheKey:
@@ -35,14 +36,15 @@ def _filter_cache_key() -> _FilterCacheKey:
     Snapshot of `Config` settings that affect filter lookup.
 
     The snapshot is part of the `Filter.get()` cache key, so changing a lookup
-    folder or network access does not return a profile loaded under the old
-    configuration.
+    folder, network access or SVO endpoint does not return a profile loaded
+    under the old configuration.
     """
     return (
         Config.get_bundled_filters_folder(),
         Config.get_cached_filters_folder(),
         Config.get_custom_filters_folder(),
         Config.allow_internet_access,
+        Config.svo_fps_url,
     )
 
 
@@ -297,27 +299,17 @@ def _cached_get(filter_id: str, config_key: _FilterCacheKey) -> 'Filter':
     `config_key` makes the cache sensitive to changes in these settings.
     This has been separated out to create copies of the results and avoid mutations.
     """
-    bundled_filters_folder, cached_filters_folder, custom_path, allow_internet_access = config_key
+    allow_internet_access = config_key[3]
+    filter_folders = get_filter_folders()
 
     try:
-        group, name = filter_id.split('/')
+        facility, instrument_band = filter_id.split('/')
     except ValueError as e:
         raise FilterNotFoundError(filter_id) from e
 
-    # Search order: bundled → custom user folder → cached (downloaded)
-    search_folders: list[Path] = [bundled_filters_folder / group]
-
-    # Add custom filters folder only if the user has specified one.
-    # Custom profiles override cached SVO FPS downloads, so they can correct
-    # profiles whose SVO data is wrong without clearing the download cache.
-    if custom_path is not None and custom_path.exists():
-        search_folders.append(custom_path / group)
-
-    search_folders.append(cached_filters_folder / group)
-
     local_path: Path | None = None
-    for folder in search_folders:
-        candidate = next(folder.glob(f'{name}.*'), None)
+    for root in filter_folders:
+        candidate = next((root / facility).glob(f'{instrument_band}.*'), None)
         if candidate is not None:
             local_path = candidate
             break
@@ -369,10 +361,10 @@ def _cached_get(filter_id: str, config_key: _FilterCacheKey) -> 'Filter':
                 extension += 'P'
 
             # Save to cache folder for future use
-            cached_group = cached_filters_folder / group
-            cached_group.mkdir(parents=True, exist_ok=True)
+            cached_facility = filter_folders[-1] / facility
+            cached_facility.mkdir(parents=True, exist_ok=True)
             np.savetxt(
-                f'{cached_group}/{name}.{extension}',
+                f'{cached_facility}/{instrument_band}.{extension}',
                 np.column_stack([wl, sd]),
                 fmt='%.3f\t%.6g',
             )

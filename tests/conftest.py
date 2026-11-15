@@ -59,18 +59,10 @@ def _isolate_filters(tmp_filters_folder: Path):
     2. Tests that modify Config._cached_filters_path / _custom_filters_path expect the
        same folder to exist across multiple test classes in a single pytest invocation.
     """
-    # Save original state
-    orig_internet = Config.allow_internet_access
-    orig_custom = Config._custom_filters_path  # pyright: ignore[reportPrivateUsage]
-    orig_cached = Config._cached_filters_path  # pyright: ignore[reportPrivateUsage]
-    # Apply isolation: cached path is set permanently to avoid creating real dirs on disk
-    Config.allow_internet_access = False
-    tmp_filters_folder.mkdir(exist_ok=True)
-    Config.set_cached_filters_folder(tmp_filters_folder)
-    try:
+    _ = tmp_filters_folder.mkdir(exist_ok=True)
+    with Config.override(
+        allow_internet_access=False,
+        cached_filters_folder=tmp_filters_folder,
+        custom_filters_folder=None,
+    ):
         yield
-    finally:
-        # --- Restore original state ----------------------------------------------
-        Config.allow_internet_access = orig_internet
-        Config._custom_filters_path = orig_custom  # pyright: ignore[reportPrivateUsage]
-        Config._cached_filters_path = orig_cached  # pyright: ignore[reportPrivateUsage]
