@@ -4,39 +4,6 @@ import pytest
 import astrocolor as ac
 
 
-def test_attach_photospectral_obj_is_propagated_to_reconstructed_objects(ubv_filterset: ac.FilterSet):
-    nm = ubv_filterset.wavelength_nm
-    photospectrum = ac.Photospectrum(ubv_filterset, [0.5, 1.0, 2.0], name='test photospectrum')
-
-    attached = ac.get_spectrometry(
-        photospectrum,
-        nm,
-        strictly=True,
-        attach_photospectral_obj=True,
-    )
-    detached = ac.get_spectrometry(
-        attached,
-        nm,
-        strictly=True,
-        attach_photospectral_obj=False,
-    )
-    reattached = ac.get_spectrometry(
-        attached,
-        nm,
-        strictly=True,
-        attach_photospectral_obj=True,
-    )
-
-    assert isinstance(attached, ac.ReconstructedSpectrum)
-    assert attached.photospectral_obj is not None
-    assert not isinstance(detached, ac.ReconstructedSpectrum)
-    assert getattr(detached, 'photospectral_obj', None) is None
-    assert isinstance(reattached, ac.ReconstructedSpectrum)
-    assert reattached.photospectral_obj is not None
-    np.testing.assert_allclose(detached.spectral_dist, attached.spectral_dist)
-    np.testing.assert_allclose(reattached.spectral_dist, attached.spectral_dist)
-
-
 def test_flat_photospectrum_reconstruction(ubv_filterset: ac.FilterSet):
     photospectrum = ac.Photospectrum(ubv_filterset, (1, 1, 1), name='test photospectrum')
     reconstructed = ac.get_spectrometry(photospectrum, ac.visible_range, strictly=True)
@@ -44,60 +11,66 @@ def test_flat_photospectrum_reconstruction(ubv_filterset: ac.FilterSet):
 
 
 PhotospectralClass = type[ac.Photospectrum | ac.PhotospectralSet | ac.PhotospectralCube]
-ReconstructedClass = type[ac.ReconstructedSpectrum | ac.ReconstructedSpectralSet | ac.ReconstructedSpectralCube]
 PlainClass = type[ac.Spectrum | ac.SpectralSet | ac.SpectralCube]
 
 @pytest.mark.parametrize(
-    'photospectral_type, reconstructed_type, plain_type, shape',
+    'photospectral_type, plain_type, shape',
     [
-        (ac.Photospectrum, ac.ReconstructedSpectrum, ac.Spectrum, (3,)),
-        (ac.PhotospectralSet, ac.ReconstructedSpectralSet, ac.SpectralSet, (3, 2)),
-        (ac.PhotospectralCube, ac.ReconstructedSpectralCube, ac.SpectralCube, (3, 2, 2)),
+        (ac.Photospectrum, ac.Spectrum, (3,)),
+        (ac.PhotospectralSet, ac.SpectralSet, (3, 2)),
+        (ac.PhotospectralCube, ac.SpectralCube, (3, 2, 2)),
     ],
 )
-def test_attach_flag_selects_return_class(
+def test_reconstruction_returns_plain_spectral_object(
     ubv_filterset: ac.FilterSet,
     photospectral_type: PhotospectralClass,
-    reconstructed_type: ReconstructedClass,
     plain_type: PlainClass,
     shape: tuple[int, ...],
 ):
-    obj = photospectral_type(ubv_filterset, np.ones(shape))
+    photometry = photospectral_type(ubv_filterset, np.ones(shape))
     nm = ubv_filterset.wavelength_nm
 
-    attached = ac.get_spectrometry(
-        obj,
-        nm,
-        strictly=True,
-        attach_photospectral_obj=True,
+    reconstructed = ac.get_spectrometry(photometry, nm, strictly=True)
+
+    assert isinstance(reconstructed, plain_type)
+    assert not hasattr(reconstructed, 'photospectral_obj')
+    assert reconstructed.spectral_dist.shape == (nm.size, *shape[1:])
+
+
+def test_reconstruct_from_photometry_returns_plain_spectrum(ubv_filterset: ac.FilterSet):
+    photometry = ac.Photospectrum(ubv_filterset, [0.5, 1.0, 2.0], name='test photospectrum')
+    nm = ubv_filterset.wavelength_nm
+
+    direct = ac.reconstruct_from_photometry(photometry, nm)
+    measured = ac.get_spectrometry(photometry, nm)
+
+    assert isinstance(direct, ac.Spectrum)
+    assert isinstance(measured, ac.Spectrum)
+    np.testing.assert_allclose(direct.spectral_dist, measured.spectral_dist)
+    np.testing.assert_array_equal(direct.wavelength_nm, measured.wavelength_nm)
+
+
+def test_1d_reconstruction_propagates_uncertainty(ubv_filterset: ac.FilterSet):
+    photometry = ac.Photospectrum(
+        ubv_filterset,
+        [0.5, 1.0, 2.0],
+        uncertainty=[0.05, 0.1, 0.2],
     )
-    detached = ac.get_spectrometry(
-        obj,
-        nm,
-        strictly=True,
-        attach_photospectral_obj=False,
-    )
 
-    assert isinstance(attached, reconstructed_type)
-    assert isinstance(detached, plain_type)
-    assert not isinstance(detached, reconstructed_type)
+    reconstructed = ac.get_spectrometry(photometry, ubv_filterset.wavelength_nm, strictly=True)
 
-
-def test_reconstructed_object_requires_photometry():
-    with pytest.raises(TypeError):
-        _ = ac.ReconstructedSpectrum([500, 505], [1., 1.])  # pyright: ignore[reportCallIssue]
-    with pytest.raises(ValueError, match='require source photospectral_obj'):
-        _ = ac.ReconstructedSpectrum([500, 505], [1., 1.], photospectral_obj=None)
+    assert reconstructed.uncertainty is not None
+    assert reconstructed.standard_deviation is not None
+    assert reconstructed.standard_deviation.shape == reconstructed.spectral_dist.shape
 
 
 def test_flatten_reconstructed_cube(ubv_filterset: ac.FilterSet):
     nm = ubv_filterset.wavelength_nm
     cube = ac.PhotospectralCube(ubv_filterset, np.ones((3, 2, 2)), name='test cube')
     reconstructed = ac.get_spectrometry(cube, nm, strictly=True)
-    assert isinstance(reconstructed, ac.ReconstructedSpectralCube)
+    assert isinstance(reconstructed, ac.SpectralCube)
 
     flattened = reconstructed.flatten()
-    assert isinstance(flattened, ac.ReconstructedSpectralSet)
+    assert isinstance(flattened, ac.SpectralSet)
     assert flattened.spectral_dist.shape == (nm.size, 4)
-    assert flattened.photospectral_obj.spatial_shape == (4,)
     np.testing.assert_allclose(flattened.spectral_dist, reconstructed.spectral_dist.reshape(nm.size, 4))

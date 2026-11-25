@@ -433,8 +433,7 @@ class SpectralObject(BaseObject):
         return self.uncertainty.select(slice_indices)
 
     def determine_at_trusted_wavelengths(self,
-        requested_wavelengths: npt.NDArray[np.integer],
-        attach_photospectral_obj: bool = True  # pyright: ignore[reportUnusedParameter]
+        requested_wavelengths: npt.NDArray[np.integer]
     ) -> Self:
         """
         Returns a copy covering the requested wavelength range, resampling or

@@ -133,16 +133,15 @@ class PhotospectralObject(BaseObject):
             return deepcopy(self)
 
     def determine_at_trusted_wavelengths(self,
-        requested_wavelengths: npt.NDArray[np.integer],
-        attach_photospectral_obj: bool = True
+        requested_wavelengths: npt.NDArray[np.integer]
     ):
         """
-        Directly uses the provided wavelength grid to create a new object. Non-strict!
+        Directly uses the provided wavelength grid to reconstruct a continuous
+        spectrum. Non-strict!
         See `get_spectrometry()` for the general case.
         """
-        from .reconstructed_objects import spectral_reconstruction
-        obj = spectral_reconstruction(self, requested_wavelengths, attach_photospectral_obj=attach_photospectral_obj)
-        return obj
+        from .spectral_reconstruction import reconstruct_from_photometry
+        return reconstruct_from_photometry(self, requested_wavelengths)
 
     @override
     def _apply_element_wise_operation(
@@ -192,11 +191,8 @@ class PhotospectralObject(BaseObject):
         defined on the spectral distribution (multiplication or division).
 
         Both operands are reconstructed into continuous spectra on the filter
-        grid of this object. Reconstructing both of them on one common
-        wavelength interval is preferred over extrapolating or clipping an
-        already reconstructed spectrum: an attached reconstructed object is
-        therefore reconstructed again from its stored source photometry. The
-        operation is applied point-wise, and the result is wrapped as a plain
+        grid of this object, so the operation is applied point-wise on one
+        common wavelength interval. The result is wrapped as a plain
         `Spectrum`/`SpectralSet`/`SpectralCube` before being observed through
         `self.filter_set`. The final `get_photometry()` therefore always measures
         the product spectrum itself.
@@ -215,8 +211,8 @@ class PhotospectralObject(BaseObject):
         filter_set = self.filter_set
         target_nm = filter_set.wavelength_nm
 
-        left = get_spectrometry(self, target_nm, strictly=True, attach_photospectral_obj=False)
-        right = get_spectrometry(other, target_nm, strictly=True, attach_photospectral_obj=False)
+        left = get_spectrometry(self, target_nm, strictly=True)
+        right = get_spectrometry(other, target_nm, strictly=True)
         left_value, right_value = make_same_ndim(left.spectral_dist, right.spectral_dist)
         value = value_handling(left_value, right_value)
         # Confidence bands for spectral sets and cubes are not computed by the reconstruction.

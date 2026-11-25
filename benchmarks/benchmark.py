@@ -61,7 +61,6 @@ def run_2d3d(repeats: int, seed: int) -> None:
         'reconstruct PhotospectralCube': lambda: ac.get_spectrometry(
             photospectral_cube,
             ubv_filter_set.wavelength_nm,
-            attach_photospectral_obj=False,
         ),
         'ColorImage(cube)': lambda: ac.ColorImage.from_spectral_data(cube),
     }

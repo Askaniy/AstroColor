@@ -33,14 +33,9 @@ from .filter_objects import Filter, FilterSet
 from .measurements import get_photometry, get_spectrometry, scale_to_match_value
 from .photospectral_objects import PhotospectralCube, PhotospectralSet, Photospectrum
 from .physical_models import BlackBodyModel
-from .reconstructed_objects import (
-    ReconstructedSpectralCube,
-    ReconstructedSpectralSet,
-    ReconstructedSpectrum,
-    spectral_reconstruction,
-)
 from .reference_spectra import sun_calspec, sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import SpectralCube, SpectralSet, Spectrum
+from .spectral_reconstruction import reconstruct_from_photometry
 from .transfer_functions import TransferFunction
 from .uncertainty import Uncertainty
 
@@ -63,9 +58,6 @@ __all__ = (
     'PhotospectralCube',
     'PhotospectralSet',
     'Photospectrum',
-    'ReconstructedSpectralCube',
-    'ReconstructedSpectralSet',
-    'ReconstructedSpectrum',
     'SpectralCube',
     'SpectralSet',
     'Spectrum',
@@ -80,8 +72,8 @@ __all__ = (
     'get_photometry',
     'get_spectrometry',
     'photometric_models',
+    'reconstruct_from_photometry',
     'scale_to_match_value',
-    'spectral_reconstruction',
     'sun_calspec',
     'sun_tsis1_hsrs',
     'transfer_functions',

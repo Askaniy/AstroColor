@@ -38,31 +38,23 @@ def product_covariance(
 @overload
 def reconstruct(
     obj: ac.Spectrum | ac.Photospectrum,
-    target_nm: npt.NDArray[np.integer],
-    attach: bool = True
+    target_nm: npt.NDArray[np.integer]
 ) -> ac.Spectrum:
     ...
 
 @overload
 def reconstruct(
     obj: ac.SpectralSet | ac.PhotospectralSet,
-    target_nm: npt.NDArray[np.integer],
-    attach: bool = True
+    target_nm: npt.NDArray[np.integer]
 ) -> ac.SpectralSet:
     ...
 
 def reconstruct(
     obj: ac.Spectrum | ac.SpectralSet | ac.Photospectrum | ac.PhotospectralSet,
-    target_nm: npt.NDArray[np.integer],
-    attach: bool = False
+    target_nm: npt.NDArray[np.integer]
 ):
-    """ Reconstructs an object on the target grid without keeping raw photometry. """
-    return ac.get_spectrometry(
-        obj,
-        target_nm,
-        strictly=True,
-        attach_photospectral_obj=attach,
-    )
+    """ Reconstructs an object on the target grid. """
+    return ac.get_spectrometry(obj, target_nm, strictly=True)
 
 def align_spectral_dims(left: ac.Spectrum | ac.SpectralSet, right: ac.Spectrum | ac.SpectralSet):
     """ Aligns the lower-dimensional spectral distribution for broadcasting. """
@@ -372,80 +364,6 @@ class TestPhotospectralMultiplication:
         assert isinstance(result, ac.PhotospectralSet)
         assert result.spectral_dist.shape == (len(ubv_filterset), spectral_set.spatial_size)
         np.testing.assert_allclose(result.spectral_dist, expected)
-
-    def test_forcing_attach_flag_does_not_change_product(
-        self,
-        ubv_filterset: ac.FilterSet,
-        monkeypatch: pytest.MonkeyPatch,
-    ):
-        """ Attachment is metadata only; it must not switch multiplication to raw photometry. """
-        nm = ubv_filterset.wavelength_nm
-        photospectrum = ac.Photospectrum(ubv_filterset, [0.5, 1.0, 2.0])
-        spectrum = ac.Spectrum(nm, (nm / cast(int, nm[0]))**3)
-
-        baseline = photospectrum * spectrum
-        original_get_spectrometry = ac.measurements.get_spectrometry
-
-        def force_attachment(
-            target: ac.Spectrum | ac.Photospectrum,
-            requested_wavelengths: npt.ArrayLike,
-            strictly: bool = False,
-            attach_photospectral_obj: bool = False,  # pyright: ignore[reportUnusedParameter]
-        ):
-            # Deliberately override the flag used by the production code.
-            return original_get_spectrometry(
-                target,
-                requested_wavelengths,
-                strictly=strictly,
-                attach_photospectral_obj=True,
-            )
-
-        monkeypatch.setattr(ac.measurements, 'get_spectrometry', force_attachment)
-        forced = photospectrum * spectrum
-
-        assert forced.filter_set == baseline.filter_set
-        np.testing.assert_allclose(forced.spectral_dist, baseline.spectral_dist)
-
-    def test_multiplication_reconstructs_attached_operand_instead_of_extrapolating(
-        self,
-        ubv_filterset: ac.FilterSet,
-    ):
-        """ Re-reconstruction on the common grid wins over extrapolating the current spectrum. """
-        nm = ubv_filterset.wavelength_nm
-        narrow_nm = np.arange(400, 501, 5)
-        photospectrum = ac.Photospectrum(ubv_filterset, [0.5, 1.0, 2.0])
-        source = ac.Photospectrum(ubv_filterset, [1.0, 2.0, 0.5])
-        reconstructed = ac.get_spectrometry(
-            source,
-            narrow_nm,
-            strictly=True,
-            attach_photospectral_obj=True,
-        )
-
-        left = reconstruct(photospectrum, nm)
-        expected_reconstructed = synthetic_product(left, reconstruct(source, nm), ubv_filterset)
-
-        # What using the current (narrow-range) spectrum and extrapolating it would give.
-        detached = ac.get_spectrometry(
-            source,
-            narrow_nm,
-            strictly=True,
-            attach_photospectral_obj=False,
-        )
-        extrapolated = cast(ac.Spectrum, ac.get_spectrometry(
-            detached,
-            nm,
-            strictly=True,
-            attach_photospectral_obj=False,
-        ))
-        expected_extrapolated = synthetic_product(left, extrapolated, ubv_filterset)
-
-        result = photospectrum * reconstructed
-
-        np.testing.assert_allclose(result.spectral_dist, expected_reconstructed)
-        assert np.max(np.abs(result.spectral_dist - expected_extrapolated)) > 1e-2, (
-            'The attached source photometry was not reconstructed on the common target grid'
-        )
 
     def test_photospectrum_times_scalar_is_unchanged(self, ubv_filterset: ac.FilterSet):
         photospectrum = ac.Photospectrum(ubv_filterset, [0.5, 1.0, 2.0])

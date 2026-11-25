@@ -29,7 +29,7 @@ def test_photometry():
 
     # Direct spectral reconstruction (uses photospectrum_BVR from the previous block)
     reconstructed = ac.get_spectrometry(photospectrum_BVR, requested_wavelengths=[400, 700])
-    assert isinstance(reconstructed, ac.ReconstructedSpectrum)
+    assert isinstance(reconstructed, ac.Spectrum)
     assert 400 in reconstructed.wavelength_nm
     assert 700 in reconstructed.wavelength_nm
 

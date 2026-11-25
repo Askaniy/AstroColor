@@ -170,8 +170,7 @@ class FilterObject(SpectralObject):
 
     @override
     def determine_at_trusted_wavelengths(self,
-        requested_wavelengths: npt.NDArray[np.integer],
-        attach_photospectral_obj: bool = True
+        requested_wavelengths: npt.NDArray[np.integer]
     ) -> Self:
         """
         Extends the filter profile to cover the requested wavelength grid,

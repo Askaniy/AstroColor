@@ -94,17 +94,34 @@ The first axis of `spectral_dist` is always the spectral, filter, or color-chann
 |---|---|---|---|
 | Spectral | `Spectrum` | `SpectralSet` | `SpectralCube` |
 | Photospectral | `Photospectrum` | `PhotospectralSet` | `PhotospectralCube` |
-| Reconstructed | `ReconstructedSpectrum` | `ReconstructedSpectralSet` | `ReconstructedSpectralCube` |
 | Filter | `Filter` | `FilterSet` | — |
 | Color | `ColorPoint` | `ColorLine` | `ColorImage` |
 
 - **Spectral** objects store continuous spectral distributions.
 - **Photospectral** objects store measurements through a filter set.
-- **Reconstructed** objects are continuous spectra reconstructed from photometry and always keep the source `PhotospectralObject`.
 - **Filter** objects store normalized transmission profiles.
 - **Color** objects store exactly three color channels (RGB/XYZ), with optional spatial axes.
 
 Internal `Item`, `Set`, and `Cube` bases encode the 1D/2D/3D behaviour shared by the public classes.
+
+
+## Filters
+
+Filter IDs follow the Spanish Virtual Observatory Filter Profile Service naming convention `Facility/Instrument.Band`. Three functions expose everything that is available locally and on the SVO FPS server:
+
+```py
+facilities = ac.get_facilities()              # ['CIE', 'Generic', 'HST', 'SLOAN', ...]
+instruments = ac.get_instruments('Generic')   # ['Bessell', 'Cousins', 'Johnson', ...]
+bands = ac.get_bands('Generic', 'Bessell')    # ['B', 'I', 'R', 'U', 'V']
+```
+
+The catalog scans bundled filters, the custom filters folder, downloaded filter profiles and the SVO FPS server. The server part is cached on disk (as `filter_catalog.json` in `Config.get_cached_filters_folder()`); its `Last update` date is checked at most once per day, so the network is not used on every call. Network failures fall back to the locally available profiles. Filter IDs that exist locally are always included, even when the server has no matching entry.
+
+Filter profiles are normalized to unit integral at creation, so synthetic photometry reduces to a simple integral of the product of the spectral distributions; the filter integral is applied once, not on every `get_photometry()` call, saving computational resources on large sets and cubes. Constructors, `Filter.get()`/`FilterSet.get()` and `normalized()` preserve this normalization: `FilterSet[i]` returns a `Filter`, `FilterSet[a:b]` returns a `FilterSet`, and `filter_set[i]` equals `Filter.get(filter_id)` because packing does not renormalize the profiles.
+
+Arithmetic keeps the mathematical result and leaves the filter family: `+`, `-`, `*` and `/` return ordinary spectral objects and never increase dimensionality; the result follows the higher-dimensional operand (a `Filter` times a `SpectralCube` is a `SpectralCube`). For example, `filter * 2` is a `Spectrum`; wrap it in `Filter(...)` or call `.normalized()` to normalize it again, because `get_photometry()` expects a normalized `Filter` or `FilterSet`.
+
+Photon-counting profiles are converted on load when the SVO FPS detector type is 1: the curve is weighted by wavelength and then normalized, so the effective energy response is λ∙T(λ). Normalization only fixes the arbitrary scale and must follow the weighting. `Filter.convert_for_photon_counter()` performs the same conversion explicitly.
 
 
 ## Uncertainty
@@ -203,19 +220,6 @@ encoded_color = ac.ColorPoint(
 linear_rgb = encoded_color.to_color_system(srgb_e).spectral_dist
 display_rgb = srgb_e.encode(linear_rgb)
 ```
-
-
-## Filter catalog
-
-Filter IDs follow the Spanish Virtual Observatory Filter Profile Service naming convention `Facility/Instrument.Band`. Three functions expose everything that is available locally and on the SVO FPS server:
-
-```py
-facilities = ac.get_facilities()              # ['CIE', 'Generic', 'HST', 'SLOAN', ...]
-instruments = ac.get_instruments('Generic')   # ['Bessell', 'Cousins', 'Johnson', ...]
-bands = ac.get_bands('Generic', 'Bessell')    # ['B', 'I', 'R', 'U', 'V']
-```
-
-The catalog scans bundled filters, the custom filters folder, downloaded filter profiles and the SVO FPS server. The server part is cached on disk (as `filter_catalog.json` in `Config.get_cached_filters_folder()`); its `Last update` date is checked at most once per day, so the network is not used on every call. Network failures fall back to the locally available profiles. Filter IDs that exist locally are always included, even when the server has no matching entry.
 
 
 ## History

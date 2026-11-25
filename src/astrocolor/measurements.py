@@ -9,7 +9,7 @@ wavelength.
 
 from collections.abc import Sequence
 from copy import deepcopy
-from typing import Literal, cast, overload
+from typing import cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -27,27 +27,15 @@ from .photospectral_objects import (
     Photospectrum,
 )
 from .physical_models import PhysicalModel
-from .reconstructed_objects import (
-    ReconstructedSpectralCube,
-    ReconstructedSpectralObject,
-    ReconstructedSpectralSet,
-    ReconstructedSpectrum,
-)
 from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
 from .uncertainty import Uncertainty
 
 
-# Only `attach_photospectral_obj=True` is specialized below. The `False`
-# case falls back to `SpectralObject`: photospectral inputs are returned as
-# plain spectra/sets/cubes without attached source photometry. A separate
-# required `Literal[False]` overload cannot follow the defaulted `strictly`
-# parameter without changing the public signature.
 @overload
 def get_spectrometry(
     target: Filter,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: bool = True
+    strictly: bool = False
 ) -> Filter:
     ...
 
@@ -55,8 +43,7 @@ def get_spectrometry(
 def get_spectrometry(
     target: FilterSet,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: bool = True
+    strictly: bool = False
 ) -> FilterSet:
     ...
 
@@ -64,8 +51,7 @@ def get_spectrometry(
 def get_spectrometry(
     target: Spectrum | PhysicalModel,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: bool = True
+    strictly: bool = False
 ) -> Spectrum:
     ...
 
@@ -73,8 +59,7 @@ def get_spectrometry(
 def get_spectrometry(
     target: SpectralSet,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: bool = True
+    strictly: bool = False
 ) -> SpectralSet:
     ...
 
@@ -82,8 +67,7 @@ def get_spectrometry(
 def get_spectrometry(
     target: SpectralCube,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: bool = True
+    strictly: bool = False
 ) -> SpectralCube:
     ...
 
@@ -91,71 +75,31 @@ def get_spectrometry(
 def get_spectrometry(
     target: Photospectrum,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: Literal[True] = True
-) -> ReconstructedSpectrum:
+    strictly: bool = False
+) -> Spectrum:
     ...
 
 @overload
 def get_spectrometry(
     target: PhotospectralSet,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: Literal[True] = True
-) -> ReconstructedSpectralSet:
+    strictly: bool = False
+) -> SpectralSet:
     ...
 
 @overload
 def get_spectrometry(
     target: PhotospectralCube,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: Literal[True] = True
-) -> ReconstructedSpectralCube:
-    ...
-
-@overload
-def get_spectrometry(
-    target: ReconstructedSpectrum,
-    requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: Literal[True] = True
-) -> ReconstructedSpectrum:
-    ...
-
-@overload
-def get_spectrometry(
-    target: ReconstructedSpectralSet,
-    requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: Literal[True] = True
-) -> ReconstructedSpectralSet:
-    ...
-
-@overload
-def get_spectrometry(
-    target: ReconstructedSpectralCube,
-    requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: Literal[True] = True
-) -> ReconstructedSpectralCube:
+    strictly: bool = False
+) -> SpectralCube:
     ...
 
 @overload
 def get_spectrometry(
     target: PhotospectralObject,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: Literal[True] = True
-) -> ReconstructedSpectrum | ReconstructedSpectralSet | ReconstructedSpectralCube:
-    ...
-
-@overload
-def get_spectrometry(
-    target: PhotospectralObject,
-    requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: bool = True
+    strictly: bool = False
 ) -> SpectralObject:
     ...
 
@@ -163,20 +107,18 @@ def get_spectrometry(
 def get_spectrometry(
     target: SpectralObject,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: bool = True
+    strictly: bool = False
 ) -> SpectralObject:
     ...
 
 def get_spectrometry(
     target: SpectralObject | PhotospectralObject | PhysicalModel,
     requested_wavelengths: npt.ArrayLike,
-    strictly: bool = False,
-    attach_photospectral_obj: bool = True
-) -> SpectralObject | ReconstructedSpectrum | ReconstructedSpectralSet | ReconstructedSpectralCube:
+    strictly: bool = False
+) -> SpectralObject:
     """
-    Returns a new object, guaranteeing that the specified wavelength range
-    has been determined or reconstructed for it.
+    Returns a new `Spectrum`/`SpectralSet`/`SpectralCube` object, guaranteeing that
+    the specified wavelength range has been determined or reconstructed for it.
     If `strictly=True`, then the new object is defined exclusively
     on the specified wavelength range.
     Only the minimum and maximum wavelengths are extracted from the specified range,
@@ -185,11 +127,6 @@ def get_spectrometry(
     Args:
     - requested_wavelengths: Wavelength values to determine at.
     - strictly: If True, clip the result to the exact requested range.
-    - attach_photospectral_obj: If True (default), photospectral inputs and
-      reconstructed objects keep a reference to the source photometry. If
-      False, they are returned as plain Spectrum/SpectralSet/SpectralCube.
-      This controls only the returned object's type and metadata, not the
-      reconstructed values.
 
     Returns:
     - A new object with data determined at the specified wavelengths.
@@ -201,7 +138,7 @@ def get_spectrometry(
     """
     nm_min, nm_max = target.get_extremal_grid_endpoints(requested_wavelengths)
     requested_wavelengths = target.uniform_grid(nm_min, nm_max)
-    spectral_obj = target.determine_at_trusted_wavelengths(requested_wavelengths, attach_photospectral_obj=attach_photospectral_obj)
+    spectral_obj = target.determine_at_trusted_wavelengths(requested_wavelengths)
     # Spectral range clipping
     if strictly and not np.array_equal(spectral_obj.wavelength_nm, requested_wavelengths):
         spectral_obj.spectral_dist = spectral_obj.get_spectral_dist_at_wavelengths(nm_min, nm_max)
@@ -225,7 +162,7 @@ def _aligned_spectral_data(
     """
     # Perf: avoid get_spectrometry() deepcopy when the band grid is already
     # present. Single-filter photometry on a 61 x 100 x 100 cube: 1.88 -> 0.44 ms.
-    if not isinstance(target, SpectralObject) or isinstance(target, ReconstructedSpectralObject):
+    if not isinstance(target, SpectralObject):
         return None
     wavelengths = np.asarray(bandpass.wavelength_nm)
     if wavelengths.size == 0:

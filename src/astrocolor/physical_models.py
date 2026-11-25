@@ -22,8 +22,7 @@ class PhysicalModel(UniformSpectralGrid):
 
     def determine_at_trusted_wavelengths(
         self,
-        requested_wavelengths: npt.NDArray[np.integer],  # pyright: ignore[reportUnusedParameter]
-        attach_photospectral_obj: bool  # pyright: ignore[reportUnusedParameter]
+        requested_wavelengths: npt.NDArray[np.integer]  # pyright: ignore[reportUnusedParameter]
     ) -> Spectrum:
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!
@@ -59,8 +58,7 @@ class BlackBodyModel(PhysicalModel):
     @override
     def determine_at_trusted_wavelengths(
         self,
-        requested_wavelengths: npt.NDArray[np.integer],
-        attach_photospectral_obj: bool = True
+        requested_wavelengths: npt.NDArray[np.integer]
     ) -> Spectrum:
         """
         Directly uses the provided wavelength grid to create a new object. Non-strict!

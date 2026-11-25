@@ -77,7 +77,6 @@ def reconstruct_bvri(
         photospectral,
         filter_set.wavelength_nm,
         strictly=True,
-        attach_photospectral_obj=False,
     )
     return cast(
         ac.Photospectrum | ac.PhotospectralSet,
@@ -941,7 +940,7 @@ class TestFullCycleRoundtrip:
     uncertainty, which is expected to be only slightly larger than the input.
     """
 
-    # Reconstructed colors of the current implementation, used as regression
+    # Colors reconstructed by the current implementation, used as regression
     # anchors. A 5% drift is allowed so that accuracy improvements still pass.
     B_V_REFERENCE: float = 1.367130
     V_R_REFERENCE: float = 0.841156
