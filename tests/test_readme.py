@@ -39,7 +39,7 @@ def test_color():
     assert color_html == '#ecfeff'
 
 def test_models():
-    bb_7000K = ac.get_spectrometry(ac.BlackBodyModel(7000), [400, 450])
+    bb_7000K = ac.get_spectrometry(ac.physical_models.BlackBodyModel(7000), [400, 450])
     np.testing.assert_equal(bb_7000K.wavelength_nm, [400, 405, 410, 415, 420, 425, 430, 435, 440, 445, 450])
     np.testing.assert_allclose(
         bb_7000K.spectral_dist,

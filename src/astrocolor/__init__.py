@@ -1,12 +1,12 @@
 """
 Public API for photometric conversions, spectral reconstruction and color.
 
-The package re-exports its core user-facing classes and functions here;
-specialized APIs such as `transfer_functions` and `photometric_models` are
-available as submodules.
+The package re-exports its core user-facing data types and functions here;
+specialized model families (`physical_models`, `photometric_models`) and
+`transfer_functions` are available as submodules.
 """
 
-from . import photometric_models, transfer_functions
+from . import photometric_models, physical_models, transfer_functions
 from .celestial_objects import CelestialObject
 from .color_objects import (
     DEFAULT_SETTINGS,
@@ -32,18 +32,15 @@ from .filter_catalog import get_bands, get_facilities, get_instruments
 from .filter_objects import Filter, FilterSet
 from .measurements import get_photometry, get_spectrometry, scale_to_match_value
 from .photospectral_objects import PhotospectralCube, PhotospectralSet, Photospectrum
-from .physical_models import BlackBodyModel
 from .reference_spectra import sun_calspec, sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import SpectralCube, SpectralSet, Spectrum
 from .spectral_reconstruction import reconstruct_from_photometry
-from .transfer_functions import TransferFunction
 from .uncertainty import Uncertainty
 
 # API namespace
 __all__ = (
     'DEFAULT_SETTINGS',
     'LINEAR_SETTINGS',
-    'BlackBodyModel',
     'CelestialObject',
     'Chromaticity',
     'ColorImage',
@@ -61,7 +58,6 @@ __all__ = (
     'SpectralCube',
     'SpectralSet',
     'Spectrum',
-    'TransferFunction',
     'Uncertainty',
     'WhitePoint',
     'default_color_system',
@@ -72,6 +68,7 @@ __all__ = (
     'get_photometry',
     'get_spectrometry',
     'photometric_models',
+    'physical_models',
     'reconstruct_from_photometry',
     'scale_to_match_value',
     'sun_calspec',

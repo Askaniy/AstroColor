@@ -13,6 +13,8 @@ import numpy.typing as npt
 from .core import UniformSpectralGrid
 from .spectral_objects import Spectrum
 
+__all__ = ('BlackBodyModel',)
+
 # TODO: StellarModel, RayleighModel, SynchrotronModel, ...
 
 class PhysicalModel(UniformSpectralGrid):

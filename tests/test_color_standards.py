@@ -38,7 +38,7 @@ class TestColorSpaceMetadata:
             assert len(space.primaries) == 3
             assert all(isinstance(primary, ac.Chromaticity) for primary in space.primaries)
             assert isinstance(space.white_point, ac.WhitePoint)
-            assert isinstance(space.transfer_function, ac.TransferFunction)
+            assert isinstance(space.transfer_function, ac.transfer_functions.TransferFunction)
 
     def test_white_point_registry_is_self_consistent(self):
         for name, white_point in ac.ColorSystem.supported_white_points.items():
@@ -126,7 +126,7 @@ class TestColorSystemTransferFunctions:
 
     def test_transfer_functions_live_in_their_own_namespace(self):
         for name in ('linear', 'srgb', 'gamma_22', 'prophoto', 'rec709', 'rec2020'):
-            assert isinstance(getattr(ac.transfer_functions, name), ac.TransferFunction)
+            assert isinstance(getattr(ac.transfer_functions, name), ac.transfer_functions.TransferFunction)
         assert ac.transfer_functions.srgb is ac.ColorSystem('sRGB').transfer_function
         assert not hasattr(ac, 'srgb_transfer_function')
 

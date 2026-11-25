@@ -82,7 +82,7 @@ color_html = color.to_html()  # '#ecfeff'
 
 - Models
 ```py
-bb_7000K = ac.get_spectrometry(ac.BlackBodyModel(7000), [400, 450])
+bb_7000K = ac.get_spectrometry(ac.physical_models.BlackBodyModel(7000), [400, 450])
 ```
 
 
