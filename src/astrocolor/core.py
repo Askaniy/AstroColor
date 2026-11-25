@@ -184,6 +184,16 @@ class BaseObject(UniformSpectralGrid):
         obj.name = name
         return obj
 
+    def _as_operand(self) -> 'BaseObject':
+        """
+        Returns the representation in which this object participates in arithmetic.
+
+        Plain data objects are their own operands. Specialized families may
+        override this method to return a plain representation instead, for
+        example a filter profile that participates as a `Spectrum`.
+        """
+        return self
+
     @classmethod
     def stub(cls, name: object = None) -> Self:  # pyright: ignore[reportUnusedParameter]
         """
@@ -281,7 +291,7 @@ class BaseObject(UniformSpectralGrid):
         - A new (photo)spectral object with element-wise or scalar addition applied.
         """
         if isinstance(other, BaseObject):
-            return self._apply_element_wise_operation(other, add_value, add_uncertainty)
+            return self._apply_element_wise_operation(other._as_operand(), add_value, add_uncertainty)
         else:
             return self._apply_scalar_operation(other, add_value, add_uncertainty)
 
@@ -293,7 +303,7 @@ class BaseObject(UniformSpectralGrid):
         - A new (photo)spectral object with element-wise or scalar subtraction applied.
         """
         if isinstance(other, BaseObject):
-            return self._apply_element_wise_operation(other, sub_value, sub_uncertainty)
+            return self._apply_element_wise_operation(other._as_operand(), sub_value, sub_uncertainty)
         else:
             return self._apply_scalar_operation(other, sub_value, sub_uncertainty)
 
@@ -305,7 +315,7 @@ class BaseObject(UniformSpectralGrid):
         - A new object with spectral (element-wise) or scalar multiplication applied.
         """
         if isinstance(other, BaseObject):
-            return self._apply_spectral_operation(other, mul_value, mul_uncertainty)
+            return self._apply_spectral_operation(other._as_operand(), mul_value, mul_uncertainty)
         else:
             return self._apply_scalar_operation(other, mul_value, mul_uncertainty)
 
@@ -317,7 +327,7 @@ class BaseObject(UniformSpectralGrid):
         - A new object with spectral (element-wise) or scalar division applied.
         """
         if isinstance(other, BaseObject):
-            return self._apply_spectral_operation(other, div_value, div_uncertainty)
+            return self._apply_spectral_operation(other._as_operand(), div_value, div_uncertainty)
         else:
             return self._apply_scalar_operation(other, div_value, div_uncertainty)
 

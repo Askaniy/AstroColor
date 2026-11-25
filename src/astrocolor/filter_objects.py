@@ -6,18 +6,18 @@ several profiles on a common wavelength grid and exposes their matrix form for
 synthetic photometry.
 """
 
-from collections.abc import Sequence
-from copy import deepcopy
+from collections.abc import Iterator, Sequence
+from copy import copy, deepcopy
 from functools import lru_cache
 from pathlib import Path
-from typing import Self, cast, override
+from typing import Self, cast, overload, override
 
 import numpy as np
 import numpy.typing as npt
 
 from .auxiliary import uniform_grid
 from .config import Config
-from .core import nm_step, wavelength_nm_dtype
+from .core import BaseObject, nm_step, wavelength_nm_dtype
 from .errors import FilterNetworkError, FilterNotFoundError
 from .filter_loader import (
     fetch_from_fps_raw,
@@ -49,7 +49,16 @@ def _filter_cache_key() -> _FilterCacheKey:
 
 
 class FilterObject(SpectralObject):
-    """ Internal class for inheriting filter methods. """
+    """
+    Internal class for inheriting filter methods.
+
+    `Filter` and `FilterSet` store normalized transmission profiles. This is a
+    construction invariant: constructors, `get()`, `normalized()`, slicing and
+    unions return normalized profiles, while arithmetic operators (`+`, `-`,
+    `*`, `/`) return plain spectral objects and preserve the mathematical
+    result. A scaled or combined profile is therefore never silently
+    renormalized.
+    """
 
     @override
     @classmethod
@@ -60,16 +69,104 @@ class FilterObject(SpectralObject):
         uncertainty: Uncertainty | npt.ArrayLike | None,
         name: object = None
     ) -> Self:
-        """ Filter profiles have no uncertainty, so the propagated error is ignored. """
+        """ Construction helper for filter profiles; the result is normalized. """
         _ = uncertainty
         return cls(wavelength_nm, spectral_dist, name=name)
+
+    def _as_spectral(self) -> Spectrum | SpectralSet:
+        """
+        Returns a trusted spectral view of the profile without re-normalization.
+
+        Filter constructors validate the grid and normalize new profiles;
+        arithmetic must not renormalize an already normalized (or deliberately
+        clipped) profile, so a constructor round trip here would alter results.
+        The returned object shares `spectral_dist`; it is an operator operand,
+        not a mutable copy.
+        """
+        if self.ndim == 1:
+            return Spectrum._from_trusted_arrays(
+                self.wavelength_nm, self.spectral_dist, None, self.name
+            )
+        return SpectralSet._from_trusted_arrays(
+            self.wavelength_nm, self.spectral_dist, None, self.name
+        )
+
+    @override
+    def _as_operand(self) -> 'BaseObject':
+        """ Filters participate in arithmetic as plain spectral objects. """
+        return self._as_spectral()
+
+    @override
+    def __add__(self, other: 'BaseObject | npt.ArrayLike') -> SpectralObject:
+        """ Returns the mathematical sum as a spectral object, without re-normalization. """
+        return self._as_spectral() + other
+
+    @override
+    def __sub__(self, other: 'BaseObject | npt.ArrayLike') -> SpectralObject:
+        """ Returns the mathematical difference as a spectral object, without re-normalization. """
+        return self._as_spectral() - other
+
+    @override
+    def __mul__(self, other: 'BaseObject | npt.ArrayLike') -> SpectralObject:
+        """ Returns the mathematical product as a spectral object, without re-normalization. """
+        return self._as_spectral() * other
+
+    @override
+    def __truediv__(self, other: 'BaseObject | npt.ArrayLike') -> SpectralObject:
+        """ Returns the mathematical quotient as a spectral object, without re-normalization. """
+        return self._as_spectral() / other
+
+    @override
+    def normalized(self) -> Self:
+        """
+        Returns a normalized profile of the same filter family.
+
+        Profiles are normalized by construction, so this is idempotent for
+        canonical objects. Renormalization is still performed because a profile
+        may have been clipped by `get_spectrometry(..., strictly=True)`.
+        """
+        # Calling the constructor here would re-enter `normalize()` and
+        # `normalized()` recursively, so the result is built from the base
+        # implementation and wrapped as a filter object instead.
+        output = copy(self)
+        result = SpectralObject.normalized(self)
+        output.spectral_dist = result.spectral_dist
+        output.uncertainty = None
+        return output
 
     def convert_for_photon_counter(self) -> Self:
         """
         Returns a new filter profile adjusted for a photon-counting observation.
         See "Standard Photometric Systems" by Bessell, Michael S. (2005).
+
+        A photon-counting detector measures a count rate proportional to
+        the integral of the energy flux weighted by `wavelength * transmission`:
+        a photon at a longer wavelength carries less energy, so the effective
+        response is `lambda * T(lambda)`. The profile is normalized afterwards,
+        which only fixes the arbitrary scale of a transmission curve. This order
+        (wavelength weighting first, normalization second) is what changes the
+        effective shape of the profile between photon and energy counting.
         """
-        return (self * self.wavelength_nm).normalized()
+        weighted = self._as_spectral() * self.wavelength_nm
+        return type(self)(weighted.wavelength_nm, weighted.spectral_dist, name=self.name)
+
+    @override
+    def convert_from_photon_spectral_density(self) -> Self:
+        """
+        Returns a filter profile converted from photon to energy spectral density.
+        The profile keeps the filter family and stays normalized.
+        """
+        converted = self._as_spectral().convert_from_photon_spectral_density()
+        return type(self)(converted.wavelength_nm, converted.spectral_dist, name=self.name)
+
+    @override
+    def convert_from_energy_spectral_density_per_frequency(self) -> Self:
+        """
+        Returns a filter profile converted from frequency to wavelength density.
+        The profile keeps the filter family and stays normalized.
+        """
+        converted = self._as_spectral().convert_from_energy_spectral_density_per_frequency()
+        return type(self)(converted.wavelength_nm, converted.spectral_dist, name=self.name)
 
     @override
     def determine_at_trusted_wavelengths(self,
@@ -135,6 +232,8 @@ class Filter(FilterObject, Spectrum):
 
     A `Filter` is created through the classmethod `get()`, which uses an internal cache.
     Direct construction via `__init__()` always creates a new object (no caching).
+    Arithmetic operators return plain `Spectrum` objects (see `FilterObject`);
+    wrap their result in `Filter` to obtain a normalized profile again.
 
     Attributes:
     - wavelength_nm     – spectral axis in nanometers
@@ -170,6 +269,22 @@ class Filter(FilterObject, Spectrum):
         self.edges_to_zero()
         self.normalize()
 
+    @classmethod
+    def _from_normalized_profile(
+        cls,
+        wavelength_nm: npt.NDArray[np.integer],
+        spectral_dist: npt.NDArray[np.floating],
+        name: object = None
+    ) -> Self:
+        """
+        Builds a `Filter` from an already normalized, edge-zeroed profile.
+
+        Used for profiles extracted from a `FilterSet`; re-normalizing them
+        would change the last bits of `float64` and break the round trip
+        `FilterSet[i] == Filter.get(...)`. The caller must pass owned arrays.
+        """
+        return cls._from_trusted_arrays(wavelength_nm, spectral_dist, None, name)
+
     @staticmethod
     def get(filter_id: str) -> 'Filter':
         """
@@ -185,6 +300,10 @@ class FilterSet(FilterObject, SpectralSet):
     """
     Class to work with a set of filter profiles.
 
+    Indexing returns a single `Filter` for an integer and a sliced `FilterSet`
+    for a slice. Arithmetic operators return plain `SpectralSet` objects (see
+    `FilterObject`); wrap their result in `FilterSet` to normalize it again.
+
     Attributes:
     - wavelength_nm     – combined spectral axis covering all filter ranges
     - spectral_dist     – packed transmissions [len(nm), n_filters]
@@ -196,6 +315,7 @@ class FilterSet(FilterObject, SpectralSet):
     >>> bvr = FilterSet.get('Generic/Bessell.B', 'Generic/Bessell.V', 'Generic/Bessell.R')
     >>> bv = Filter.get('Generic/Bessell.B') | Filter.get('Generic/Bessell.V')  # -> FilterSet
     >>> bvr = bv | Filter.get('Generic/Bessell.R')  # -> FilterSet
+    >>> vb = bvr[::-1][:2]  # -> FilterSet with V and B
     ```
     """
 
@@ -219,6 +339,22 @@ class FilterSet(FilterObject, SpectralSet):
         self.edges_to_zero()
         self.normalize()
 
+    @classmethod
+    def _from_normalized_profiles(
+        cls,
+        wavelength_nm: npt.NDArray[np.integer],
+        spectral_dist: npt.NDArray[np.floating],
+        name: object = None
+    ) -> Self:
+        """
+        Builds a `FilterSet` from already normalized, edge-zeroed profiles.
+
+        Used by `from_filters()` and by slicing; re-normalization would change
+        the last bits of `float64` and break exact round trips. The caller must
+        pass owned arrays.
+        """
+        return cls._from_trusted_arrays(wavelength_nm, spectral_dist, None, name)
+
     @staticmethod
     def get(*filter_ids: str) -> 'FilterSet':
         """
@@ -234,6 +370,8 @@ class FilterSet(FilterObject, SpectralSet):
         """
         Helper to build a `FilterSet` from a list of filters.
         Combines spectral axes into a single interval and packs transmissions.
+        Profiles are normalized already, so they are packed without a second
+        normalization; this keeps `FilterSet[i] == Filter.get(...)` exact.
         """
         # Getting the wavelength info and filter names
         names: list[object] = []
@@ -255,7 +393,7 @@ class FilterSet(FilterObject, SpectralSet):
             nm_1 = cast(int, profile.wavelength_nm[-1])
             mask = (wavelength_nm >= nm_0) & (wavelength_nm <= nm_1)
             spectral_dist[mask, i] = profile.spectral_dist
-        return FilterSet(wavelength_nm, spectral_dist, name=name)
+        return FilterSet._from_normalized_profiles(wavelength_nm, spectral_dist, name=name)
 
     @property
     def matrix(self) -> npt.NDArray[np.floating]:
@@ -266,24 +404,91 @@ class FilterSet(FilterObject, SpectralSet):
         """
         return self.spectral_dist.T * nm_step
 
-    @override
-    def __getitem__(self, index: int | slice) -> Filter:  # TODO: fix it properly! # pyright: ignore[reportIncompatibleMethodOverride]
-        """ Returns the filter profile with extra zeros trimmed off. Only `int` indexing is supported."""
-        if isinstance(index, slice):
-            raise TypeError(f'Slice indexing not yet implemented for {type(self).__name__}')
-        # TODO: add support for a `slice` input and `FilterSet` output
-        # Trimming off the zeros and creating a new Filter object
-        profile = self.spectral_dist[:,index]
-        non_zero_indices = np.nonzero(profile)[0]
-        start = cast(int, non_zero_indices[0]) - 1
-        end = cast(int, non_zero_indices[-1]) + 2
-        # Looking for the Filter name
-        name = None
+    def _name_at(self, index: int) -> object:
+        """ Returns the name of a single filter, if names are stored per filter. """
         if isinstance(self.name, tuple):
-            self.name: object = cast(tuple[object, ...], self.name)
-            if len(self.name) == len(self):
-                name = self.name[index]
-        return Filter(self.wavelength_nm[start:end], profile[start:end], name=name)
+            names = cast(tuple[object, ...], self.name)
+            if len(names) == len(self):
+                return names[index]
+        return None
+
+    def _name_slice(self, index: slice) -> object:
+        """ Returns the names of a subset, or the set name if it is not per-filter. """
+        if not isinstance(self.name, tuple):
+            return self.name
+        names = cast(tuple[object, ...], self.name)
+        if len(names) == len(self):
+            return names[index]
+        return names
+
+    def _get_filter(self, index: int) -> Filter:
+        """ Returns one normalized profile with extra zeros trimmed off. """
+        profile = self.spectral_dist[:, index]
+        non_zero = cast(npt.NDArray[np.intp], np.flatnonzero(profile))
+        if non_zero.size == 0:
+            # A degenerate all-zero profile cannot be trimmed; keep a stub.
+            return Filter.stub(self._name_at(index))
+        start = max(cast(int, non_zero[0]) - 1, 0)
+        end = min(cast(int, non_zero[-1]) + 2, profile.size)
+        return Filter._from_normalized_profile(  # pyright: ignore[reportPrivateUsage]
+            self.wavelength_nm[start:end].copy(),
+            profile[start:end].copy(),
+            self._name_at(index)
+        )
+
+    def _get_filter_set(self, index: slice) -> 'FilterSet':
+        """ Returns a subset of columns as a normalized `FilterSet`. """
+        subset = self.spectral_dist[:, index]
+        names = self._name_slice(index)
+        if subset.shape[1] == 0:
+            # Keep sequence semantics for empty slices instead of raising.
+            empty = np.zeros((0, 0), dtype=np.float64)
+            return FilterSet._from_normalized_profiles(
+                self.wavelength_nm[:0].copy(), empty, names
+            )
+        non_zero_mask = cast(
+            npt.NDArray[np.bool_],
+            np.abs(subset).sum(axis=1) != 0.,
+        )
+        non_zero_rows = cast(npt.NDArray[np.intp], np.flatnonzero(non_zero_mask))
+        if non_zero_rows.size == 0:
+            # Degenerate all-zero selection: keep the columns and the grid as is.
+            return FilterSet._from_normalized_profiles(
+                self.wavelength_nm.copy(), subset.copy(), names
+            )
+        # Trim leading and trailing all-zero rows to one, keeping inner gaps.
+        start = max(cast(int, non_zero_rows[0]) - 1, 0)
+        end = min(cast(int, non_zero_rows[-1]) + 2, cast(int, subset.shape[0]))
+        return FilterSet._from_normalized_profiles(
+            self.wavelength_nm[start:end].copy(),
+            subset[start:end].copy(),
+            names
+        )
+
+    @overload
+    def __getitem__(self, index: int) -> Filter: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> 'FilterSet': ...
+
+    @override
+    def __getitem__(self, index: int | slice) -> 'Filter | FilterSet':  # pyright: ignore[reportIncompatibleMethodOverride]
+        """
+        Returns a `Filter` for an integer index or a `FilterSet` for a slice.
+
+        Leading and trailing zero rows are trimmed to one, so the result equals
+        the corresponding `Filter.get()` / `FilterSet.from_filters()` exactly.
+        Profiles are not re-normalized.
+        """
+        if isinstance(index, slice):
+            return self._get_filter_set(index)
+        return self._get_filter(index)
+
+    @override
+    def __iter__(self) -> Iterator[Filter]:  # pyright: ignore[reportIncompatibleMethodOverride]
+        """ Iterates over the normalized filter profiles. """
+        for index in range(len(self)):
+            yield self._get_filter(index)
 
 
 @lru_cache(maxsize=128)

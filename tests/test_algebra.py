@@ -263,9 +263,16 @@ class TestMultiplication:
             ac.get_photometry(ac.vega_calspec, v_filter)[0] * 2,
             rtol=0.01,
         )
+        # A profile is normalized by construction, so scaling it and letting
+        # the constructor normalize again must not change the observed value.
+        scaled_filterset = ac.FilterSet(
+            ubv_filterset.wavelength_nm,
+            ubv_filterset.spectral_dist * 2,
+            name=ubv_filterset.name,
+        )
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_calspec * 2, ubv_filterset).spectral_dist,
-            ac.get_photometry(ac.vega_calspec, ubv_filterset * 2).spectral_dist,
+            ac.get_photometry(ac.vega_calspec, scaled_filterset).spectral_dist,
+            ac.get_photometry(ac.vega_calspec, ubv_filterset).spectral_dist,
             rtol=0.01,
         )
 
@@ -507,18 +514,157 @@ class TestDivision:
 class TestNormalization:
 
     def test_filter(self, v_filter: ac.Filter):
+        scaled = ac.Filter(v_filter.wavelength_nm, v_filter.spectral_dist * 2, name=v_filter.name)
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_calspec, (v_filter * 2).normalized())[0],
+            ac.get_photometry(ac.vega_calspec, scaled)[0],
             ac.get_photometry(ac.vega_calspec, v_filter)[0],
             rtol=0.01,
         )
 
     def test_filter_set(self, ubv_filterset: ac.FilterSet):
+        scaled = ac.FilterSet(
+            ubv_filterset.wavelength_nm,
+            ubv_filterset.spectral_dist * 2,
+            name=ubv_filterset.name,
+        )
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_calspec, (ubv_filterset * 2).normalized()).spectral_dist,
+            ac.get_photometry(ac.vega_calspec, scaled).spectral_dist,
             ac.get_photometry(ac.vega_calspec, ubv_filterset).spectral_dist,
             rtol=0.01,
         )
+
+
+class TestFilterArithmetic:
+    """ Arithmetic on filters preserves the math and leaves the filter family. """
+
+    @staticmethod
+    def _first() -> ac.Filter:
+        nm = np.arange(500, 531, 5)
+        sd = np.array([0., 0.2, 0.6, 1., 0.8, 0.4, 0.])
+        return ac.Filter(nm, sd, name='Synthetic/first')
+
+    @staticmethod
+    def _second() -> ac.Filter:
+        nm = np.arange(500, 531, 5)
+        sd = np.array([0., 0.5, 0.9, 0.6, 0.3, 0.1, 0.])
+        return ac.Filter(nm, sd, name='Synthetic/second')
+
+    def test_addition_preserves_math(self):
+        first = self._first()
+        second = self._second()
+        result = first + second
+        assert isinstance(result, ac.Spectrum)
+        assert result.uncertainty is None
+        np.testing.assert_array_equal(
+            result.spectral_dist,
+            first.spectral_dist + second.spectral_dist,
+        )
+        np.testing.assert_allclose(result.integrate(), first.integrate() + second.integrate())
+
+    def test_subtraction_can_be_negative(self):
+        first = self._first()
+        second = self._second()
+        result = first - second
+        assert isinstance(result, ac.Spectrum)
+        np.testing.assert_array_equal(
+            result.spectral_dist,
+            first.spectral_dist - second.spectral_dist,
+        )
+        assert np.min(result.spectral_dist) < 0.
+        np.testing.assert_allclose(result.integrate(), 0., atol=1e-12)
+
+    def test_product_preserves_math(self):
+        first = self._first()
+        second = self._second()
+        result = first * second
+        assert isinstance(result, ac.Spectrum)
+        np.testing.assert_array_equal(
+            result.spectral_dist,
+            first.spectral_dist * second.spectral_dist,
+        )
+        expected_integral = np.sum(first.spectral_dist * second.spectral_dist) * first.nm_step
+        np.testing.assert_allclose(result.integrate(), expected_integral)
+        assert not np.isclose(result.integrate(), 1.)
+
+    def test_scalar_scaling(self):
+        first = self._first()
+        doubled = first * 2
+        assert isinstance(doubled, ac.Spectrum)
+        np.testing.assert_array_equal(doubled.spectral_dist, 2 * first.spectral_dist)
+        np.testing.assert_allclose(doubled.integrate(), 2.)
+        halved = first / 2
+        assert isinstance(halved, ac.Spectrum)
+        np.testing.assert_allclose(halved.integrate(), 0.5)
+
+    def test_filter_set_arithmetic_returns_spectral_set(self, ubv_filterset: ac.FilterSet):
+        doubled = ubv_filterset * 2
+        assert isinstance(doubled, ac.SpectralSet)
+        np.testing.assert_array_equal(doubled.spectral_dist, 2 * ubv_filterset.spectral_dist)
+        np.testing.assert_allclose(doubled.integrate(), np.full(len(ubv_filterset), 2.))
+        added = ubv_filterset + ubv_filterset
+        assert isinstance(added, ac.SpectralSet)
+        np.testing.assert_allclose(added.integrate(), np.full(len(ubv_filterset), 2.))
+
+    def test_filter_set_times_spectrum_is_spectral_set(self, ubv_filterset: ac.FilterSet):
+        spectrum = ac.Spectrum(
+            ubv_filterset.wavelength_nm,
+            np.linspace(1., 2., ubv_filterset.wavelength_nm.size),
+        )
+        result = ubv_filterset * spectrum
+        assert isinstance(result, ac.SpectralSet)
+        expected = ubv_filterset.spectral_dist * spectrum.spectral_dist[:, np.newaxis]
+        np.testing.assert_allclose(result.spectral_dist, expected)
+
+    def test_filter_set_on_the_right_of_spectrum_is_spectral_set(self, ubv_filterset: ac.FilterSet):
+        """ A filter set must leave the family regardless of the operand order. """
+        spectrum = ac.Spectrum(
+            ubv_filterset.wavelength_nm,
+            np.linspace(1., 2., ubv_filterset.wavelength_nm.size),
+        )
+        product = spectrum * ubv_filterset
+        addition = spectrum + ubv_filterset
+        subtraction = spectrum - ubv_filterset
+        division = spectrum / ubv_filterset
+        for result in (product, addition, subtraction, division):
+            assert isinstance(result, ac.SpectralSet)
+            assert not isinstance(result, ac.FilterSet)
+            np.testing.assert_array_equal(result.wavelength_nm, ubv_filterset.wavelength_nm)
+        weights = spectrum.spectral_dist[:, np.newaxis]
+        np.testing.assert_array_equal(product.spectral_dist, weights * ubv_filterset.spectral_dist)
+        np.testing.assert_array_equal(addition.spectral_dist, weights + ubv_filterset.spectral_dist)
+        np.testing.assert_array_equal(subtraction.spectral_dist, weights - ubv_filterset.spectral_dist)
+
+    def test_filter_set_arithmetic_is_order_independent(self, ubv_filterset: ac.FilterSet):
+        spectrum = ac.Spectrum(
+            ubv_filterset.wavelength_nm,
+            np.linspace(1., 2., ubv_filterset.wavelength_nm.size),
+        )
+        np.testing.assert_array_equal(
+            (spectrum * ubv_filterset).spectral_dist,
+            (ubv_filterset * spectrum).spectral_dist,
+        )
+        np.testing.assert_array_equal(
+            (spectrum + ubv_filterset).spectral_dist,
+            (ubv_filterset + spectrum).spectral_dist,
+        )
+
+    def test_filter_times_cube_keeps_the_cube_class(self, v_filter: ac.Filter):
+        """ A higher-dimensional operand determines the class of the result. """
+        cube = ac.SpectralCube(
+            v_filter.wavelength_nm,
+            np.ones((v_filter.wavelength_nm.size, 2, 2)),
+        )
+        result = v_filter * cube
+        assert isinstance(result, ac.SpectralCube)
+        expected = v_filter.spectral_dist[:, np.newaxis, np.newaxis] * cube.spectral_dist
+        np.testing.assert_array_equal(result.spectral_dist, expected)
+
+    def test_normalized_returns_filter_family(self):
+        first = self._first()
+        normalized = first.normalized()
+        assert isinstance(normalized, ac.Filter)
+        assert normalized is not first
+        np.testing.assert_allclose(normalized.integrate(), 1.)
 
 
 class TestCovariance:

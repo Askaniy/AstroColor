@@ -297,13 +297,22 @@ class TestConfigOverride:
             pass
 
 
-def _write_profile(folder: Path, facility: str, filter_name: str, start_nm: float) -> None:
+def _write_profile(
+    folder: Path,
+    facility: str,
+    filter_name: str,
+    start_nm: float,
+    extension: str = 'txt'
+) -> None:
     """ Write a small synthetic filter profile for lookup tests. """
     facility_folder = folder / facility
     facility_folder.mkdir(parents=True, exist_ok=True)
     wavelengths = np.arange(start_nm, start_nm + 50, 10.)
     transmissions = np.array([0., 1., 1., 1., 0.])
-    np.savetxt(facility_folder / f'{filter_name}.txt', np.column_stack([wavelengths, transmissions]))
+    np.savetxt(
+        facility_folder / f'{filter_name}.{extension}',
+        np.column_stack([wavelengths, transmissions]),
+    )
 
 
 class TestFilterCacheConfig:
@@ -420,3 +429,28 @@ class TestFilterLookupPriority:
             selected = Filter.get('Generic/Bessell.V')
         np.testing.assert_array_equal(selected.wavelength_nm, bundled.wavelength_nm)
         np.testing.assert_array_equal(selected.spectral_dist, bundled.spectral_dist)
+
+
+class TestPhotonCounterProfiles:
+    """ DetectorType=1 profiles must be wavelength-weighted and then normalized. """
+
+    def test_detector_type_p_applies_wavelength_weighting(self, tmp_path: Path):
+        custom_folder = tmp_path / 'custom'
+        facility_folder = custom_folder / 'PhotoTest'
+        facility_folder.mkdir(parents=True)
+        wavelengths = np.arange(500., 551., 5.)
+        transmissions = np.array([0., 0.2, 0.4, 0.6, 1., 0.8, 0.6, 0.4, 0.2, 0.1, 0.])
+        np.savetxt(
+            facility_folder / 'Band.datP',
+            np.column_stack([wavelengths, transmissions]),
+        )
+        weighted = transmissions * wavelengths
+        expected = weighted / (np.sum(weighted) * 5.)
+        with Config.override(
+            custom_filters_folder=custom_folder,
+            allow_internet_access=False,
+        ):
+            loaded = Filter.get('PhotoTest/Band')
+        assert isinstance(loaded, Filter)
+        np.testing.assert_allclose(loaded.spectral_dist, expected)
+        np.testing.assert_allclose(loaded.integrate(), 1.)
