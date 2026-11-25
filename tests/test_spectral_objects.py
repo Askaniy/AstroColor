@@ -75,14 +75,19 @@ class TestMonochromaticSpectrum:
 
 class TestSpectrum:
 
-    def test_spectrum_integrate(self):
+    def test_spectrum_integrate(
+        self,
+        sun_calspec: ac.Spectrum,
+        sun_tsis1_hsrs: ac.Spectrum,
+        vega_calspec: ac.Spectrum,
+    ):
         # Nominal total solar irradiance = 1361 W/m², according to IAU 2015 Resolution B3
         # https://en.wikipedia.org/wiki/Solar_constant
-        np.testing.assert_allclose(ac.sun_calspec.integrate(), 1326.2373, rtol=0.001)
-        np.testing.assert_allclose(ac.sun_tsis1_hsrs.integrate(), 1361.4892, rtol=0.001)
+        np.testing.assert_allclose(sun_calspec.integrate(), 1326.2373, rtol=0.001)
+        np.testing.assert_allclose(sun_tsis1_hsrs.integrate(), 1361.4892, rtol=0.001)
         # Apparent bolometric magnitude zero point = 2.518021002e-8 W/m², according to IAU 2015 Resolution B2
         # https://arxiv.org/abs/1510.06262
-        np.testing.assert_allclose(ac.vega_calspec.integrate(), 3.0417e-08, rtol=0.001)
+        np.testing.assert_allclose(vega_calspec.integrate(), 3.0417e-08, rtol=0.001)
 
 
 class TestNonFiniteValues:
@@ -168,11 +173,11 @@ class TestHashing:
         assert positive == negative
         assert hash(positive) == hash(negative)
 
-    def test_reference_spectra_are_hashable_and_distinct(self):
+    def test_standard_spectra_are_hashable_and_distinct(self):
         references = {
-            ac.sun_calspec: 'Sun [CALSPEC]',
-            ac.sun_tsis1_hsrs: 'Sun [TSIS-1 HSRS]',
-            ac.vega_calspec: 'Vega [CALSPEC]',
+            ac.get_standard_spectrum('Sun', 'CALSPEC'): 'Sun [CALSPEC]',
+            ac.get_standard_spectrum('Sun', 'TSIS-1 HSRS'): 'Sun [TSIS-1 HSRS]',
+            ac.get_standard_spectrum('Vega', 'CALSPEC'): 'Vega [CALSPEC]',
         }
 
         assert len(references) == 3

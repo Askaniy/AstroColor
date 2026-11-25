@@ -34,7 +34,7 @@ def test_photometry():
     assert 700 in reconstructed.wavelength_nm
 
 def test_color():
-    color = ac.get_color(ac.sun_tsis1_hsrs)
+    color = ac.get_color(ac.get_standard_spectrum('Sun'))
     color_html = color.to_html()
     assert color_html == '#ecfeff'
 
@@ -76,7 +76,7 @@ def test_photometric_models():
     assert estimated is False
 
 def test_color_output():
-    color_obj = ac.get_color(ac.sun_tsis1_hsrs)
+    color_obj = ac.get_color(ac.get_standard_spectrum('Sun'))
     linear_rgb = color_obj.spectral_dist  # internal linear sRGB/E
     display_rgb = color_obj.render()      # sRGB/E + gamma + maximize
     assert linear_rgb.shape == (3,)
@@ -97,7 +97,7 @@ def test_color_output():
 
 def test_custom_color_standards():
     custom_white = ac.WhitePoint.from_xy('Custom D50', 0.34567, 0.35850)
-    spectral_white = ac.WhitePoint.from_spectrum('Sun-like', ac.sun_tsis1_hsrs)
+    spectral_white = ac.WhitePoint.from_spectrum('Sun-like', ac.get_standard_spectrum('Sun'))
     assert spectral_white.same_chromaticity(ac.ColorSystem.supported_white_points['Sun'])
     custom_space = ac.ColorSpace(
         name='Custom sRGB',
@@ -107,3 +107,14 @@ def test_custom_color_standards():
     )
     custom_system = ac.ColorSystem(custom_space)
     assert custom_system.internal_white_point is custom_white
+
+
+def test_standard_spectra():
+    sun_calspec = ac.get_standard_spectrum('Sun', 'CALSPEC')
+    sun_tsis1 = ac.get_standard_spectrum('Sun', 'TSIS-1 HSRS')
+    vega = ac.get_standard_spectrum('Vega')  # CALSPEC by default
+
+    assert sun_calspec.name == 'Sun [CALSPEC]'
+    assert sun_tsis1.name == 'Sun [TSIS-1 HSRS]'
+    assert vega.name == 'Vega [CALSPEC]'
+    assert sun_calspec is not ac.get_standard_spectrum('Sun', 'CALSPEC')

@@ -6,6 +6,7 @@ photometric phase-function model.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
+from functools import cache
 from numbers import Real
 from typing import Literal, cast
 
@@ -40,8 +41,8 @@ from .photometric_models import (
     PhotometricModel,
 )
 from .photospectral_objects import Photospectrum
-from .reference_spectra import sun_calspec, sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import Spectrum
+from .standard_spectra import get_standard_spectrum
 
 # Type aliases for the database-compatible input values
 type ValueWithStd = float | Sequence[float] | npt.NDArray[np.floating]
@@ -61,14 +62,35 @@ type PhaseFunctionParams = Mapping[str, ValueWithStd]
 type PhaseFunctionInput = Sequence[FilterLocation | PhaseFunctionParams]
 type SpectralData = Spectrum | Photospectrum
 
-sun_in_V, _ = get_photometry(sun_tsis1_hsrs, Filter.get('Generic/Bessell.V'))
-sun_norm: Spectrum = cast(Spectrum, scale_to_match_value(sun_tsis1_hsrs, Filter.get('Generic/Bessell.V')))
-# Bond albedo is bolometric. CALSPEC covers ~97% of the Solar irradiance up to ~2.7 µm,
-# avoiding a ~40,000-point TSIS-1 HSRS grid for the same purpose.
-sun_filter = Filter(sun_calspec.wavelength_nm, sun_calspec.spectral_dist, name='Sun filter [CALSPEC]')
 
-vega_in_V, _ = get_photometry(vega_calspec, Filter.get('Generic/Bessell.V'))
-vega_norm: Spectrum = cast(Spectrum, scale_to_match_value(vega_calspec, Filter.get('Generic/Bessell.V')))
+@cache
+def _sun_norm() -> Spectrum:
+    """ Returns the solar spectrum normalized to the Bessell V passband. """
+    return cast(Spectrum, scale_to_match_value(
+        get_standard_spectrum('Sun', 'TSIS-1 HSRS'),
+        Filter.get('Generic/Bessell.V'),
+    ))
+
+
+@cache
+def _vega_norm() -> Spectrum:
+    """ Returns the Vega spectrum normalized to the Bessell V passband. """
+    return cast(Spectrum, scale_to_match_value(
+        get_standard_spectrum('Vega', 'CALSPEC'),
+        Filter.get('Generic/Bessell.V'),
+    ))
+
+
+@cache
+def _sun_filter() -> Filter:
+    """
+    Returns the solar CALSPEC spectrum as a bolometric filter for Bond albedo.
+
+    CALSPEC covers ~97% of the Solar irradiance up to ~2.7 µm, avoiding a
+    ~40,000-point TSIS-1 HSRS grid for the same purpose.
+    """
+    sun = get_standard_spectrum('Sun', 'CALSPEC')
+    return Filter(sun.wavelength_nm, sun.spectral_dist, name='Sun filter [CALSPEC]')
 
 
 class CelestialObject:
@@ -290,7 +312,7 @@ class CelestialObject:
                 if sphe_where is not None and sphe_how is not None:
                     spherical = scale_to_match_value(geometric, sphe_where, sphe_how)
                 elif bond_albedo is not None:
-                    spherical = scale_to_match_value(geometric, sun_filter, parse_value_std(bond_albedo))
+                    spherical = scale_to_match_value(geometric, _sun_filter(), parse_value_std(bond_albedo))
             if (
                 geometric is None
                 and spherical is not None
@@ -314,7 +336,7 @@ class CelestialObject:
             elif sphe_where is not None and sphe_how is not None:
                 spherical = scale_to_match_value(unscaled, sphe_where, sphe_how)
             elif bond_albedo is not None:
-                spherical = scale_to_match_value(unscaled, sun_filter, parse_value_std(bond_albedo))
+                spherical = scale_to_match_value(unscaled, _sun_filter(), parse_value_std(bond_albedo))
 
         if is_photon_counter:
             unscaled, geometric, spherical = self._convert_from_photon_counter(
@@ -506,13 +528,13 @@ class CelestialObject:
         if calibration_system is not None:
             match calibration_system.lower():
                 case 'vega':
-                    spectral_data = spectral_data * vega_norm
+                    spectral_data = spectral_data * _vega_norm()
                 case 'ab':
                     spectral_data = spectral_data.convert_from_energy_spectral_density_per_frequency()
                 case _:
                     pass
         if is_reflecting_sunlight:
-            spectral_data = spectral_data / sun_norm
+            spectral_data = spectral_data / _sun_norm()
         return spectral_data
 
     def get_spectral_data(

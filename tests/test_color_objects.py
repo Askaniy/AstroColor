@@ -53,20 +53,20 @@ class TestColorBasics:
         assert color.name == 'Flat spectrum test'
         np.testing.assert_allclose(color.spectral_dist, target_rgb)
 
-    def test_color_system_reversibility(self):
+    def test_color_system_reversibility(self, sun_tsis1_hsrs: ac.Spectrum):
         """ Converting a color point between systems should be reversible to machine precision. """
         srgb = ac.ColorSystem('sRGB')
         xyz = ac.ColorSystem('CIE 1931 XYZ')
-        color0 = ac.ColorPoint.from_spectral_data(ac.sun_tsis1_hsrs)  # in XYZ
+        color0 = ac.ColorPoint.from_spectral_data(sun_tsis1_hsrs)  # in XYZ
         color1 = color0.to_color_system(srgb)
         color2 = color1.to_color_system(xyz)
         np.testing.assert_allclose(color0.spectral_dist, color2.spectral_dist, rtol=1e-13)
 
-    def test_adaptation_white_point(self):
+    def test_adaptation_white_point(self, sun_tsis1_hsrs: ac.Spectrum):
         """ CIE 1931 RGB should have Illuminant E white point """
         rgb = ac.ColorSystem('CIE 1931 RGB')
         rgb_ = ac.ColorSystem('CIE 1931 RGB', adaptation_white_point='Illuminant E')
-        color0 = ac.ColorPoint.from_spectral_data(ac.sun_tsis1_hsrs)  # in XYZ
+        color0 = ac.ColorPoint.from_spectral_data(sun_tsis1_hsrs)  # in XYZ
         color1 = color0.to_color_system(rgb)
         color2 = color1.to_color_system(rgb_)
         np.testing.assert_allclose(color1.spectral_dist, color2.spectral_dist, rtol=1e-13)
@@ -293,8 +293,8 @@ class TestDisplaySettings:
         assert not ac.LINEAR_SETTINGS.gamma_correction
         assert not ac.LINEAR_SETTINGS.maximize_brightness
 
-    def test_render_default_path(self):
-        color = ac.ColorPoint.from_spectral_data(ac.sun_tsis1_hsrs)
+    def test_render_default_path(self, sun_tsis1_hsrs: ac.Spectrum):
+        color = ac.ColorPoint.from_spectral_data(sun_tsis1_hsrs)
         raw = color.spectral_dist.copy()
         np.testing.assert_allclose(
             color.render(),
@@ -304,19 +304,19 @@ class TestDisplaySettings:
         assert color.to_html() == '#ecfeff'
         np.testing.assert_allclose(color.spectral_dist, raw)
 
-    def test_render_linear_settings(self):
-        color = ac.get_color(ac.sun_tsis1_hsrs)
+    def test_render_linear_settings(self, sun_tsis1_hsrs: ac.Spectrum):
+        color = ac.get_color(sun_tsis1_hsrs)
         np.testing.assert_allclose(color.render(ac.LINEAR_SETTINGS), color.spectral_dist)
 
-    def test_render_custom_color_system(self):
-        color = ac.ColorPoint.from_spectral_data(ac.sun_tsis1_hsrs)
+    def test_render_custom_color_system(self, sun_tsis1_hsrs: ac.Spectrum):
+        color = ac.ColorPoint.from_spectral_data(sun_tsis1_hsrs)
         rendered = color.render(ac.DisplaySettings(color_system=ac.xyz_color_system))
         raw = color.spectral_dist
         raw_max = float(raw.max())
         np.testing.assert_allclose(rendered, raw / raw_max)
 
-    def test_render_scale_factor_and_no_maximize(self):
-        color = ac.get_color(ac.sun_tsis1_hsrs)
+    def test_render_scale_factor_and_no_maximize(self, sun_tsis1_hsrs: ac.Spectrum):
+        color = ac.get_color(sun_tsis1_hsrs)
         settings = ac.DisplaySettings(maximize_brightness=False, scale_factor=0.5)
         np.testing.assert_allclose(
             color.render(settings),
@@ -329,8 +329,8 @@ class TestDisplaySettings:
         rendered = color.render(ac.DisplaySettings(color_system=adobe, maximize_brightness=False))
         np.testing.assert_allclose(rendered, math.pow(0.5, 1./2.2), rtol=1e-15)
 
-    def test_render_does_not_modify_object(self):
-        color = ac.get_color(ac.sun_tsis1_hsrs)
+    def test_render_does_not_modify_object(self, sun_tsis1_hsrs: ac.Spectrum):
+        color = ac.get_color(sun_tsis1_hsrs)
         before = color.spectral_dist.copy()
         _ = color.render()
         _ = color.to_html()
@@ -355,8 +355,8 @@ class TestDisplaySettings:
 class TestGetColor:
     """ The one-call shortcut for linear color data. """
 
-    def test_get_color_uses_recommended_system(self):
-        color = ac.get_color(ac.sun_tsis1_hsrs)
+    def test_get_color_uses_recommended_system(self, sun_tsis1_hsrs: ac.Spectrum):
+        color = ac.get_color(sun_tsis1_hsrs)
         assert isinstance(color, ac.ColorPoint)
         assert color.color_system is ac.default_color_system
         assert color.to_html() == '#ecfeff'
@@ -371,21 +371,21 @@ class TestGetColor:
         assert isinstance(ac.get_color(spectral_set), ac.ColorLine)
         assert isinstance(ac.get_color(cube), ac.ColorImage)
 
-    def test_get_color_can_return_xyz(self):
-        color = ac.get_color(ac.sun_tsis1_hsrs, ac.xyz_color_system)
+    def test_get_color_can_return_xyz(self, sun_tsis1_hsrs: ac.Spectrum):
+        color = ac.get_color(sun_tsis1_hsrs, ac.xyz_color_system)
         assert color.color_system is ac.xyz_color_system
 
-    def test_get_color_preserves_an_equal_custom_system(self):
+    def test_get_color_preserves_an_equal_custom_system(self, sun_tsis1_hsrs: ac.Spectrum):
         target = ac.ColorSystem('CIE 1931 XYZ', 'Illuminant E')
-        color = ac.get_color(ac.sun_tsis1_hsrs, target)
+        color = ac.get_color(sun_tsis1_hsrs, target)
         assert color.color_system is target
         np.testing.assert_allclose(
             color.spectral_dist,
-            ac.ColorPoint.from_spectral_data(ac.sun_tsis1_hsrs).spectral_dist,
+            ac.ColorPoint.from_spectral_data(sun_tsis1_hsrs).spectral_dist,
         )
 
-    def test_grayscale_is_linear_luminance(self):
-        color = ac.get_color(ac.sun_tsis1_hsrs)
+    def test_grayscale_is_linear_luminance(self, sun_tsis1_hsrs: ac.Spectrum):
+        color = ac.get_color(sun_tsis1_hsrs)
         expected = cast(
             float,
             color.to_color_system(ac.xyz_color_system).spectral_dist[1],

@@ -65,26 +65,31 @@ class TestGetPhotometry:
         assert isinstance(ac.get_photometry(ac.PhotospectralCube.stub(), ac.Filter.stub()), tuple)
         assert isinstance(ac.get_photometry(ac.PhotospectralCube.stub(), ac.FilterSet.stub()), ac.PhotospectralCube)
 
-    def test_convolution_filter_integral(self, v_filter: ac.Filter):
+    def test_convolution_filter_integral(self, v_filter: ac.Filter, vega_calspec: ac.Spectrum):
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_calspec, v_filter)[0], (ac.vega_calspec * v_filter).integrate(), rtol=0.001
+            ac.get_photometry(vega_calspec, v_filter)[0], (vega_calspec * v_filter).integrate(), rtol=0.001
         )
 
-    def test_convolution_filter_set_integral(self, ubv_filterset: ac.FilterSet):
+    def test_convolution_filter_set_integral(self, ubv_filterset: ac.FilterSet, vega_calspec: ac.Spectrum):
         # FilterSet is normalized by 1 by design, you can't scale it to Vegan spectrum
         # SpectralSet could be normalized instead
         ubv_spectral_set = ac.SpectralSet(ubv_filterset.wavelength_nm, ubv_filterset.spectral_dist)
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_calspec, ubv_filterset).spectral_dist,
-            (ac.vega_calspec * ubv_spectral_set).integrate(),
+            ac.get_photometry(vega_calspec, ubv_filterset).spectral_dist,
+            (vega_calspec * ubv_spectral_set).integrate(),
             rtol=0.001,
         )
 
-    def test_vega_system_zero_points(self, v_filter: ac.Filter, ubv_filterset: ac.FilterSet):
+    def test_vega_system_zero_points(
+        self,
+        v_filter: ac.Filter,
+        ubv_filterset: ac.FilterSet,
+        vega_calspec: ac.Spectrum,
+    ):
         """ Zero-point calibration against Spanish Virtual Observatory """
-        np.testing.assert_allclose(ac.get_photometry(ac.vega_calspec, v_filter)[0], 3.623954e-11, rtol=0.001)
+        np.testing.assert_allclose(ac.get_photometry(vega_calspec, v_filter)[0], 3.623954e-11, rtol=0.001)
         np.testing.assert_allclose(
-            ac.get_photometry(ac.vega_calspec, ubv_filterset).spectral_dist,
+            ac.get_photometry(vega_calspec, ubv_filterset).spectral_dist,
             [4.094111e-11, 6.374534e-11, 3.626637e-11],
             rtol=0.001,
         )

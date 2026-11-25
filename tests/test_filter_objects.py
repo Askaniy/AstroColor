@@ -70,10 +70,14 @@ def test_cached_filter_sets_are_equal_hashable_copies():
 
 # - tests for mean values
 
-def test_mean_nm_spectra():
-    np.testing.assert_allclose(ac.sun_calspec.mean_nm(), 858.101429, rtol=0.001)
-    np.testing.assert_allclose(ac.sun_tsis1_hsrs.mean_nm(), 945.233905, rtol=0.001)
-    np.testing.assert_allclose(ac.vega_calspec.mean_nm(), 523.296467, rtol=0.001)
+def test_mean_nm_spectra(
+    sun_calspec: ac.Spectrum,
+    sun_tsis1_hsrs: ac.Spectrum,
+    vega_calspec: ac.Spectrum,
+):
+    np.testing.assert_allclose(sun_calspec.mean_nm(), 858.101429, rtol=0.001)
+    np.testing.assert_allclose(sun_tsis1_hsrs.mean_nm(), 945.233905, rtol=0.001)
+    np.testing.assert_allclose(vega_calspec.mean_nm(), 523.296467, rtol=0.001)
 
 def test_mean_nm_bessell_filters():
     # Reference for mean wavelengths: SVO Filter Profile Service
@@ -88,10 +92,10 @@ def test_mean_nm_bessell_filters():
     np.testing.assert_allclose(r_filter.mean_nm(), 658.592, rtol=0.001)
     np.testing.assert_allclose(i_filter.mean_nm(), 805.988, rtol=0.001)
 
-def test_mean_nm_bessell_filter_set(ubv_filterset: ac.FilterSet):
+def test_mean_nm_bessell_filter_set(ubv_filterset: ac.FilterSet, vega_calspec: ac.Spectrum):
     # Reference for effective wavelengths: Bessell 2005, Table 1
     np.testing.assert_allclose(
-        (ubv_filterset * ac.vega_calspec).mean_nm(), [366.3, 436.1, 544.8], rtol=0.01
+        (ubv_filterset * vega_calspec).mean_nm(), [366.3, 436.1, 544.8], rtol=0.01
     )
 
 def test_mean_nm_sloan_filters():
@@ -103,10 +107,14 @@ def test_mean_nm_sloan_filters():
 
 # - tests for standard deviations
 
-def test_std_of_nm_spectra():
-    np.testing.assert_allclose(ac.sun_calspec.std_of_nm(), 469.40510, rtol=0.01)
-    np.testing.assert_allclose(ac.sun_tsis1_hsrs.std_of_nm(), 806.849085, rtol=0.01)
-    np.testing.assert_allclose(ac.vega_calspec.std_of_nm(), 473.17811, rtol=0.01)
+def test_std_of_nm_spectra(
+    sun_calspec: ac.Spectrum,
+    sun_tsis1_hsrs: ac.Spectrum,
+    vega_calspec: ac.Spectrum,
+):
+    np.testing.assert_allclose(sun_calspec.std_of_nm(), 469.40510, rtol=0.01)
+    np.testing.assert_allclose(sun_tsis1_hsrs.std_of_nm(), 806.849085, rtol=0.01)
+    np.testing.assert_allclose(vega_calspec.std_of_nm(), 473.17811, rtol=0.01)
 
 def test_std_of_nm_filter(v_filter: ac.Filter):
     np.testing.assert_allclose(v_filter.std_of_nm(), 36.354015, rtol=0.01)

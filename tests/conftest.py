@@ -2,8 +2,33 @@ from pathlib import Path
 
 import pytest
 
-from astrocolor import Filter, FilterSet
+from astrocolor import Filter, FilterSet, Spectrum, get_standard_spectrum
 from astrocolor.config import Config
+
+
+def _read_only(spectrum: Spectrum) -> Spectrum:
+    """ Shares a standard spectrum between tests without allowing accidental mutation. """
+    spectrum.wavelength_nm.flags.writeable = False
+    spectrum.spectral_dist.flags.writeable = False
+    return spectrum
+
+
+@pytest.fixture(scope='session')
+def sun_calspec() -> Spectrum:
+    """ Solar CALSPEC spectrum, loaded once per test session. """
+    return _read_only(get_standard_spectrum('Sun', 'CALSPEC'))
+
+
+@pytest.fixture(scope='session')
+def sun_tsis1_hsrs() -> Spectrum:
+    """ Solar TSIS-1 HSRS spectrum, loaded once per test session. """
+    return _read_only(get_standard_spectrum('Sun', 'TSIS-1 HSRS'))
+
+
+@pytest.fixture(scope='session')
+def vega_calspec() -> Spectrum:
+    """ Vega CALSPEC spectrum, loaded once per test session. """
+    return _read_only(get_standard_spectrum('Vega', 'CALSPEC'))
 
 
 @pytest.fixture(scope='session')

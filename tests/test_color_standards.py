@@ -61,8 +61,8 @@ class TestColorSpaceMetadata:
         # so no chromatic adaptation should be applied.
         assert system == ac.ColorSystem('sRGB')
 
-    def test_custom_white_point_can_be_derived_from_a_spectrum(self):
-        custom = ac.WhitePoint.from_spectrum('Sun-like', ac.sun_tsis1_hsrs)
+    def test_custom_white_point_can_be_derived_from_a_spectrum(self, sun_tsis1_hsrs: ac.Spectrum):
+        custom = ac.WhitePoint.from_spectrum('Sun-like', sun_tsis1_hsrs)
         standard = ac.ColorSystem.supported_white_points['Sun']
 
         assert custom.same_chromaticity(standard)

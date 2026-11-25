@@ -32,9 +32,9 @@ from .filter_catalog import get_bands, get_facilities, get_instruments
 from .filter_objects import Filter, FilterSet
 from .measurements import get_photometry, get_spectrometry, scale_to_match_value
 from .photospectral_objects import PhotospectralCube, PhotospectralSet, Photospectrum
-from .reference_spectra import sun_calspec, sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import SpectralCube, SpectralSet, Spectrum
 from .spectral_reconstruction import reconstruct_from_photometry
+from .standard_spectra import get_standard_spectrum
 from .uncertainty import Uncertainty
 
 # API namespace
@@ -67,14 +67,12 @@ __all__ = (
     'get_instruments',
     'get_photometry',
     'get_spectrometry',
+    'get_standard_spectrum',
     'photometric_models',
     'physical_models',
     'reconstruct_from_photometry',
     'scale_to_match_value',
-    'sun_calspec',
-    'sun_tsis1_hsrs',
     'transfer_functions',
-    'vega_calspec',
     'visible_range',
     'xyz_cmf',
     'xyz_color_system',

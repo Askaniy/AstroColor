@@ -11,7 +11,7 @@ The module is organized in two layers:
   directly), optionally applies Bradford chromatic adaptation to another white
   point, and computes and stores the resulting RGB <-> XYZ matrices.
 
-Standard white points and color spaces are exposed through the `WHITE_POINTS`,
+Standard white points and color spaces are exposed through the `WHITE_POINTS_BY_NAME`,
 `COLOR_SPACES` and `ColorSystem.supported_*` registries. These registries are
 only convenience lookups: custom `WhitePoint` and `ColorSpace` instances can be
 passed directly to `ColorSystem`, so users do not need to register anything.
@@ -21,6 +21,7 @@ applied only at the display boundary (`ColorSystem.encode`/`decode`) or when a
 caller explicitly marks values as gamma-corrected.
 """
 
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import ClassVar, Self, TypeVar, cast, override
 
@@ -29,8 +30,8 @@ import numpy.typing as npt
 
 from .filter_objects import FilterSet
 from .measurements import get_photometry
-from .reference_spectra import sun_tsis1_hsrs, vega_calspec
 from .spectral_objects import Spectrum
+from .standard_spectra import get_standard_spectrum
 from .transfer_functions import (
     TransferFunction,
     gamma_22,
@@ -176,10 +177,8 @@ white_point_D65 = WhitePoint.from_xy('Illuminant D65', 0.31272, 0.32903)
 white_point_D75 = WhitePoint.from_xy('Illuminant D75', 0.29902, 0.31485)
 white_point_D93 = WhitePoint.from_xy('Illuminant D93', 0.28315, 0.29711)
 white_point_E = WhitePoint.from_xy('Illuminant E', 1./3., 1./3.)
-white_point_Vega = WhitePoint.from_spectrum('Vega', vega_calspec)
-white_point_Sun = WhitePoint.from_spectrum('Sun', sun_tsis1_hsrs)
 
-WHITE_POINTS = (
+_STATIC_WHITE_POINTS: tuple[WhitePoint, ...] = (
     white_point_A,
     white_point_B,
     white_point_C,
@@ -189,10 +188,61 @@ WHITE_POINTS = (
     white_point_D75,
     white_point_D93,
     white_point_E,
-    white_point_Vega,
-    white_point_Sun,
 )
-WHITE_POINTS_BY_NAME = {white_point.name: white_point for white_point in WHITE_POINTS}
+
+
+class _LazyWhitePoints(Mapping[str, WhitePoint]):
+    """
+    Read-only white-point registry that derives spectral white points on demand.
+
+    Vega and Sun are computed from the bundled standard spectra the first time
+    they are requested. Keeping them out of the import path avoids reading
+    standard-spectrum data and running photometry at import time.
+    """
+
+    _SPECTRAL_SOURCES: ClassVar[dict[str, tuple[str, str]]] = {
+        'Vega': ('Vega', 'CALSPEC'),
+        'Sun': ('Sun', 'TSIS-1 HSRS'),
+    }
+
+    def __init__(self, static: tuple[WhitePoint, ...]) -> None:
+        self._static: dict[str, WhitePoint] = {
+            white_point.name: white_point for white_point in static
+        }
+        self._resolved: dict[str, WhitePoint] = {}
+
+    @override
+    def __getitem__(self, name: str) -> WhitePoint:
+        if name in self._resolved:
+            return self._resolved[name]
+        if name in self._static:
+            return self._static[name]
+        try:
+            spectrum_name, source = self._SPECTRAL_SOURCES[name]
+        except KeyError:
+            raise KeyError(name) from None
+        white_point = WhitePoint.from_spectrum(
+            spectrum_name,
+            get_standard_spectrum(spectrum_name, source),
+        )
+        self._resolved[name] = white_point
+        return white_point
+
+    @override
+    def __iter__(self) -> Iterator[str]:
+        yield from self._static
+        yield from self._SPECTRAL_SOURCES
+
+    @override
+    def __len__(self) -> int:
+        return len(self._static) + len(self._SPECTRAL_SOURCES)
+
+    @override
+    def __contains__(self, name: object) -> bool:
+        return name in self._static or name in self._SPECTRAL_SOURCES
+
+
+WHITE_POINTS_BY_NAME = _LazyWhitePoints(_STATIC_WHITE_POINTS)
 
 
 # RGB primaries and white points.
@@ -308,7 +358,7 @@ class ColorSystem:
     """
 
     supported_color_spaces: ClassVar[dict[str, ColorSpace]] = COLOR_SPACES_BY_NAME
-    supported_white_points: ClassVar[dict[str, WhitePoint]] = WHITE_POINTS_BY_NAME
+    supported_white_points: ClassVar[Mapping[str, WhitePoint]] = WHITE_POINTS_BY_NAME
 
     def __init__(
         self,
@@ -424,7 +474,7 @@ class ColorSystem:
     @staticmethod
     def _resolve_registered(
         value: str,
-        registry: dict[str, _StandardType],
+        registry: Mapping[str, _StandardType],
         kind: str,
     ) -> _StandardType:
         """ Looks up a named standard and reports all known names on failure. """

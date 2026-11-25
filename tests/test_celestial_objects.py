@@ -28,8 +28,9 @@ V = ac.Filter.get('Generic/Bessell.V')
 NM = np.arange(500, 601, 5)
 SD = np.linspace(1., 2., NM.size)
 BVR = ('Generic/Bessell.B', 'Generic/Bessell.V', 'Generic/Bessell.R')
-SUN_NM = ac.sun_calspec.wavelength_nm
-SUN_SD = ac.sun_calspec.spectral_dist
+SUN = ac.get_standard_spectrum('Sun', 'CALSPEC')
+SUN_NM = SUN.wavelength_nm
+SUN_SD = SUN.spectral_dist
 
 
 def solar_filter() -> ac.Filter:
@@ -278,14 +279,14 @@ class TestSpectralSources:
         np.testing.assert_allclose(obj.spectral_data_unscaled.spectral_dist, expected_sd)
         assert obj.spectral_data_unscaled.covariance_matrix is not None
 
-    def test_calibration_vega(self):
+    def test_calibration_vega(self, vega_calspec: ac.Spectrum):
         obj = ac.CelestialObject(
             'test',
             wavelength_nm=NM,
             spectral_dist=SD,
             calibration_system='Vega'
         )
-        vega_norm = ac.scale_to_match_value(ac.vega_calspec, V)
+        vega_norm = ac.scale_to_match_value(vega_calspec, V)
         expected = ac.Spectrum(NM, SD) * vega_norm
         assert obj.spectral_data_unscaled is not None
         np.testing.assert_allclose(obj.spectral_data_unscaled.spectral_dist, expected.spectral_dist)
@@ -302,14 +303,14 @@ class TestSpectralSources:
         assert obj.spectral_data_unscaled is not None
         np.testing.assert_allclose(obj.spectral_data_unscaled.spectral_dist, expected.spectral_dist)
 
-    def test_reflecting_sunlight(self):
+    def test_reflecting_sunlight(self, sun_tsis1_hsrs: ac.Spectrum):
         obj = ac.CelestialObject(
             'test',
             wavelength_nm=NM,
             spectral_dist=SD,
             is_reflecting_sunlight=True
         )
-        sun_norm = ac.scale_to_match_value(ac.sun_tsis1_hsrs, V)
+        sun_norm = ac.scale_to_match_value(sun_tsis1_hsrs, V)
         expected = ac.Spectrum(NM, SD) / sun_norm
         assert obj.spectral_data_unscaled is not None
         np.testing.assert_allclose(obj.spectral_data_unscaled.spectral_dist, expected.spectral_dist)
@@ -946,7 +947,7 @@ class TestFullCycleRoundtrip:
     V_R_REFERENCE: float = 0.841156
     R_I_REFERENCE: float = 0.819074
 
-    def test_gonggong_bvri_roundtrip(self):
+    def test_gonggong_bvri_roundtrip(self, sun_tsis1_hsrs: ac.Spectrum, vega_calspec: ac.Spectrum):
         input_b_v, input_b_v_std = 1.38, 0.03
         input_v_r, input_v_r_std = 0.86, 0.02
         input_r_i, input_r_i_std = 0.79, 0.02
@@ -977,8 +978,8 @@ class TestFullCycleRoundtrip:
         # The V-band geometric albedo must survive the reconstruction.
         assert bvri_photometry.spectral_dist[1] == pytest.approx(0.14, abs=0.001)
 
-        bvri_photometry *= ac.sun_tsis1_hsrs
-        bvri_photometry /= ac.vega_calspec
+        bvri_photometry *= sun_tsis1_hsrs
+        bvri_photometry /= vega_calspec
         flux = np.asarray(bvri_photometry.spectral_dist, dtype=np.float64)
         b = cast(float, flux[0])
         v = cast(float, flux[1])
@@ -1009,7 +1010,7 @@ class TestFullCycleRoundtrip:
         assert input_v_r_std <= v_r_std <= 2 * input_v_r_std
         assert input_r_i_std <= r_i_std <= 2 * input_r_i_std
 
-    def test_gonggong_bvri_monte_carlo(self):
+    def test_gonggong_bvri_monte_carlo(self, sun_tsis1_hsrs: ac.Spectrum, vega_calspec: ac.Spectrum):
         """
         Checks the uncertainty propagation statistically.
 
@@ -1053,8 +1054,8 @@ class TestFullCycleRoundtrip:
 
         # Analytical reference: one deterministic pass through the pipeline.
         deterministic = cast(ac.Photospectrum, reconstruct_bvri(spectrum, filter_set))
-        deterministic *= ac.sun_tsis1_hsrs
-        deterministic /= ac.vega_calspec
+        deterministic *= sun_tsis1_hsrs
+        deterministic /= vega_calspec
         reported_stds = (
             color_index_std(deterministic, 0, 1),
             color_index_std(deterministic, 1, 2),
@@ -1069,8 +1070,8 @@ class TestFullCycleRoundtrip:
         ).T
         photospectral_set = ac.PhotospectralSet(spectrum.filter_set, samples)
         mc_photometry = cast(ac.PhotospectralSet, reconstruct_bvri(photospectral_set, filter_set))
-        mc_photometry *= ac.sun_tsis1_hsrs
-        mc_photometry /= ac.vega_calspec
+        mc_photometry *= sun_tsis1_hsrs
+        mc_photometry /= vega_calspec
         mc_flux: npt.NDArray[np.float64] = np.asarray(mc_photometry.spectral_dist, dtype=np.float64)
         b = mc_flux[0, :]
         v = mc_flux[1, :]

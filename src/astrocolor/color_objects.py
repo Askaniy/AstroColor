@@ -429,7 +429,7 @@ def get_color(
 
     Example:
     ```
-    >>> color = get_color(sun_tsis1_hsrs)
+    >>> color = get_color(get_standard_spectrum('Sun', 'TSIS-1 HSRS'))
     >>> color.to_html()
     '#ecfeff'
     ```

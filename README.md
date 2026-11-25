@@ -76,7 +76,8 @@ spectrum = ac.get_spectrometry(photospectrum_BVR, requested_wavelengths=[400, 70
 
 - Color calculations
 ```py
-color = ac.get_color(ac.sun_tsis1_hsrs)  # sRGB + illuminant E chromatic adaptation by default
+# sRGB + illuminant E chromatic adaptation by default
+color = ac.get_color(ac.get_standard_spectrum('Sun'))
 color_html = color.to_html()  # '#ecfeff'
 ```
 
@@ -122,6 +123,19 @@ Filter profiles are normalized to unit integral at creation, so synthetic photom
 Arithmetic keeps the mathematical result and leaves the filter family: `+`, `-`, `*` and `/` return ordinary spectral objects and never increase dimensionality; the result follows the higher-dimensional operand (a `Filter` times a `SpectralCube` is a `SpectralCube`). For example, `filter * 2` is a `Spectrum`; wrap it in `Filter(...)` or call `.normalized()` to normalize it again, because `get_photometry()` expects a normalized `Filter` or `FilterSet`.
 
 Photon-counting profiles are converted on load when the SVO FPS detector type is 1: the curve is weighted by wavelength and then normalized, so the effective energy response is λ∙T(λ). Normalization only fixes the arbitrary scale and must follow the weighting. `Filter.convert_for_photon_counter()` performs the same conversion explicitly.
+
+
+## Standard spectra
+
+Bundled reference spectra of the Sun and Vega are available through `ac.get_standard_spectrum()`:
+
+```py
+sun_calspec = ac.get_standard_spectrum('Sun', 'CALSPEC')
+sun_tsis1 = ac.get_standard_spectrum('Sun', 'TSIS-1 HSRS')
+vega = ac.get_standard_spectrum('Vega')  # CALSPEC by default
+```
+
+Names and sources are case-insensitive. The Sun defaults to TSIS-1 HSRS and Vega to CALSPEC. Every call returns a new `Spectrum` from the bundled package data, so modifying the result cannot change the standards used by white points, color calculations and `CelestialObject`. The data is loaded lazily on first use.
 
 
 ## Uncertainty
@@ -181,7 +195,7 @@ Display processing is controlled by `DisplaySettings`:
 `DEFAULT_SETTINGS` is the recommended display preset; `LINEAR_SETTINGS` disables both the transfer function and brightness normalization. Processing order is: color-system conversion, brightness normalization, scaling, then the transfer function. Examples:
 
 ```py
-color_obj = ac.get_color(ac.sun_tsis1_hsrs)
+color_obj = ac.get_color(ac.get_standard_spectrum('Sun'))
 linear_rgb = color_obj.spectral_dist  # internal linear sRGB/E
 display_rgb = color_obj.render()      # sRGB/E + gamma + maximize
 
@@ -197,7 +211,7 @@ Custom white points and color spaces can be passed to `ColorSystem` directly. A 
 
 ```py
 custom_white = ac.WhitePoint.from_xy('Custom D50', 0.34567, 0.35850)
-spectral_white = ac.WhitePoint.from_spectrum('Sun-like', ac.sun_tsis1_hsrs)
+spectral_white = ac.WhitePoint.from_spectrum('Sun-like', ac.get_standard_spectrum('Sun'))
 custom_space = ac.ColorSpace(
     name='Custom sRGB',
     primaries=ac.ColorSystem.supported_color_spaces['sRGB'].primaries,
