@@ -106,6 +106,30 @@ The first axis of `spectral_dist` is always the spectral, filter, or color-chann
 Internal `Item`, `Set`, and `Cube` bases encode the 1D/2D/3D behaviour shared by the public classes.
 
 
+## Arithmetic
+
+Spectral, photospectral and filter objects support `+`, `-`, `*` and `/` with scalars, arrays and other objects. The higher-dimensional operand determines the result class, so `Spectrum + SpectralSet` is a `SpectralSet` and `Filter * SpectralCube` is a `SpectralCube`. Scalars and arrays also work on the left, for example `2 * spectrum` or `weights + spectrum`.
+
+When families are mixed, photospectral wins over plain spectral: `Photospectrum * Spectrum` is a `Photospectrum`. `Filter` and `FilterSet` participate as ordinary spectra, so arithmetic leaves the filter family. Addition and subtraction are element-wise; multiplication and division involving photospectral objects work on reconstructed continuous spectra and are measured back through the filter set.
+
+| Expression | Result |
+|---|---|
+| `Spectrum + Spectrum` | `Spectrum` |
+| `SpectralSet * Filter` | `SpectralSet` |
+| `Spectrum + Photospectrum` | `Photospectrum` |
+| `Filter * SpectralCube` | `SpectralCube` |
+
+Array operands are aligned along the first (spectral) axis: a leading shape match is reshaped with trailing singleton axes, while other shapes follow NumPy broadcasting. When both interpretations are possible the spectral one wins; pass an explicit spatial shape such as `(1, width)` for a set to scale pixels.
+
+```py
+import numpy as np
+
+spectrum = ac.Spectrum([400, 405, 410], [1., 2., 3.])
+doubled = 2 * spectrum
+weighted = spectrum * np.array([1., 2., 3.])
+```
+
+
 ## Filters
 
 Filter IDs follow the Spanish Virtual Observatory Filter Profile Service naming convention `Facility/Instrument.Band`. Three functions expose everything that is available locally and on the SVO FPS server:
@@ -120,7 +144,7 @@ The catalog scans bundled filters, the custom filters folder, downloaded filter 
 
 Filter profiles are normalized to unit integral at creation, so synthetic photometry reduces to a simple integral of the product of the spectral distributions; the filter integral is applied once, not on every `get_photometry()` call, saving computational resources on large sets and cubes. Constructors, `Filter.get()`/`FilterSet.get()` and `normalized()` preserve this normalization: `FilterSet[i]` returns a `Filter`, `FilterSet[a:b]` returns a `FilterSet`, and `filter_set[i]` equals `Filter.get(filter_id)` because packing does not renormalize the profiles.
 
-Arithmetic keeps the mathematical result and leaves the filter family: `+`, `-`, `*` and `/` return ordinary spectral objects and never increase dimensionality; the result follows the higher-dimensional operand (a `Filter` times a `SpectralCube` is a `SpectralCube`). For example, `filter * 2` is a `Spectrum`; wrap it in `Filter(...)` or call `.normalized()` to normalize it again, because `get_photometry()` expects a normalized `Filter` or `FilterSet`.
+Arithmetic keeps the mathematical result and leaves the filter family: `+`, `-`, `*` and `/` return ordinary spectral objects rather than normalized profiles. For example, `filter * 2` is a `Spectrum`; wrap it in `Filter(...)` or call `.normalized()` to normalize it again, because `get_photometry()` expects a normalized `Filter` or `FilterSet`.
 
 Photon-counting profiles are converted on load when the SVO FPS detector type is 1: the curve is weighted by wavelength and then normalized, so the effective energy response is λ∙T(λ). Normalization only fixes the arbitrary scale and must follow the weighting. `Filter.convert_for_photon_counter()` performs the same conversion explicitly.
 

@@ -6,7 +6,7 @@ import numpy.typing as npt
 import pytest
 
 import astrocolor as ac
-from astrocolor.algebra import mul_value
+from astrocolor.algebra import div_value, mul_value
 from astrocolor.auxiliary import (
     interpolation_matrix,
     spectral_binning,
@@ -16,6 +16,7 @@ from astrocolor.config import Config
 from astrocolor.errors import (
     ErasingCorrelationsWarning,
     InconsistentUncertaintyShapeError,
+    NonFiniteValuesWarning,
 )
 from astrocolor.uncertainty import (
     Uncertainty,
@@ -401,10 +402,15 @@ class TestPhotospectralMultiplication:
 class TestDivision:
 
     def test_zero_division_error(self, v_filter: ac.Filter):
-        np.testing.assert_equal((v_filter / 0).spectral_dist, np.full_like(v_filter.spectral_dist, np.inf))
+        expected = np.where(v_filter.spectral_dist > 0., np.inf, 0.)
+        np.testing.assert_equal((v_filter / 0).spectral_dist, expected)
 
     def test_zero_division_by_zero_error(self):
         np.testing.assert_equal((ac.SpectralSet.stub() / 0).spectral_dist, [[0.]])
+
+    def test_zero_division_is_element_wise(self):
+        result = div_value(np.array([0., 1., -2.]), np.array([0., 2., 0.]))
+        np.testing.assert_equal(result, [0., 0.5, -np.inf])
 
     def test_photospectrum_divided_by_spectrum_reconstructs(self, ubv_filterset: ac.FilterSet):
         """ Division is also performed on reconstructed spectra """
@@ -598,6 +604,138 @@ class TestFilterArithmetic:
         assert isinstance(normalized, ac.Filter)
         assert normalized is not first
         np.testing.assert_allclose(normalized.integrate(), 1.)
+
+
+class TestOperandOrder:
+    """ Reflected operators make arithmetic independent of the operand order. """
+
+    @staticmethod
+    def _filterset() -> ac.FilterSet:
+        nm = np.arange(500, 531, 5)
+        first = np.array([0., 0.2, 0.6, 1., 0.8, 0.4, 0.])
+        second = np.array([0., 0.1, 0.3, 0.6, 0.9, 0.5, 0.])
+        return ac.FilterSet(nm, np.column_stack((first, second)), name=('first', 'second'))
+
+    @staticmethod
+    def _spectrum(std: npt.ArrayLike | None = None) -> ac.Spectrum:
+        nm = np.arange(500, 531, 5)
+        return ac.Spectrum(nm, np.linspace(1., 2., nm.size), std)
+
+    def test_scalar_operators_are_reflected(self):
+        spectrum = self._spectrum()
+        values = spectrum.spectral_dist
+        cases = (
+            (2 * spectrum, 2 * values),
+            (2 + spectrum, 2 + values),
+            (2 - spectrum, 2 - values),
+            (2 / spectrum, 2 / values),
+        )
+        for result, expected in cases:
+            assert isinstance(result, ac.Spectrum)
+            np.testing.assert_allclose(result.spectral_dist, expected)
+
+    def test_array_operators_are_reflected(self):
+        spectrum = self._spectrum()
+        weights = np.linspace(0.5, 1.5, spectrum.spectral_size)
+        for result, expected in (
+            (weights * spectrum, weights * spectrum.spectral_dist),
+            (weights + spectrum, weights + spectrum.spectral_dist),
+            (weights - spectrum, weights - spectrum.spectral_dist),
+        ):
+            assert isinstance(result, ac.Spectrum)
+            np.testing.assert_allclose(result.spectral_dist, expected)
+
+    def test_ambiguous_array_is_spectral(self):
+        nm = np.arange(500, 516, 5)
+        values = np.arange(1., 17.).reshape(4, 4)
+        spectral_set = ac.SpectralSet(nm, values)
+        weights = np.array([1., 2., 3., 4.])
+        np.testing.assert_allclose(
+            (spectral_set * weights).spectral_dist, values * weights[:, np.newaxis]
+        )
+        # An explicit spatial shape still scales pixels.
+        np.testing.assert_allclose(
+            (spectral_set * weights[np.newaxis, :]).spectral_dist, values * weights
+        )
+        cube = ac.SpectralCube(nm, np.arange(1., 65.).reshape(4, 4, 4))
+        np.testing.assert_allclose(
+            (cube * weights).spectral_dist, cube.spectral_dist * weights[:, np.newaxis, np.newaxis]
+        )
+
+    def test_non_ambiguous_spatial_array_stays_spatial(self):
+        nm = np.arange(500, 516, 5)
+        spectral_set = ac.SpectralSet(nm, np.ones((4, 2)))
+        weights = np.array([1., 2.])
+        np.testing.assert_allclose(
+            (spectral_set * weights).spectral_dist, np.broadcast_to(weights, (4, 2))
+        )
+
+    def test_square_normalization_stays_per_spectrum(self):
+        nm = np.arange(500, 516, 5)
+        cube = ac.SpectralCube(nm, np.arange(1., 65.).reshape(4, 4, 4))
+        np.testing.assert_allclose(cube.normalized().integrate(), np.ones((4, 4)))
+        spectral_set = ac.SpectralSet(nm, np.arange(1., 17.).reshape(4, 4))
+        np.testing.assert_allclose(spectral_set.normalized().integrate(), np.ones(4))
+
+    def test_reflected_division_propagates_uncertainty(self):
+        std = np.linspace(0.01, 0.02, 7)
+        spectrum = self._spectrum(std=std)
+        result = 2 / spectrum
+        assert result.standard_deviation is not None
+        np.testing.assert_allclose(
+            result.standard_deviation, 2 * std / spectrum.spectral_dist**2
+        )
+
+    def test_family_operators_are_symmetric(self):
+        filter_set = self._filterset()
+        spectrum = ac.Spectrum(
+            filter_set.wavelength_nm, np.linspace(1., 2., filter_set.wavelength_nm.size)
+        )
+        photospectrum = ac.Photospectrum(filter_set, np.array([1., 2.]))
+        for result in (
+            spectrum + photospectrum,
+            spectrum - photospectrum,
+            spectrum * photospectrum,
+        ):
+            assert isinstance(result, ac.Photospectrum)
+        with warnings.catch_warnings():
+            # The reconstructed photometric continuum vanishes at the filter-set edges.
+            warnings.simplefilter('ignore', NonFiniteValuesWarning)
+            division = spectrum / photospectrum
+        assert isinstance(division, ac.Photospectrum)
+        # Division is element-wise: the valid interior must not be wiped out.
+        assert np.all(division.spectral_dist > 0.)
+        np.testing.assert_allclose(
+            (spectrum + photospectrum).spectral_dist,
+            (photospectrum + spectrum).spectral_dist,
+        )
+        np.testing.assert_allclose(
+            (spectrum * photospectrum).spectral_dist,
+            (photospectrum * spectrum).spectral_dist,
+        )
+        np.testing.assert_allclose(
+            (spectrum - photospectrum).spectral_dist,
+            -(photospectrum - spectrum).spectral_dist,
+        )
+
+    def test_filter_operators_with_scalar_leave_the_family(self):
+        filter_set = self._filterset()
+        filter_ = filter_set[0]
+        for result in (2 + filter_, 2 - filter_, 2 * filter_):
+            assert isinstance(result, ac.Spectrum)
+            assert not isinstance(result, ac.Filter)
+        np.testing.assert_allclose((2 - filter_).spectral_dist, 2 - filter_.spectral_dist)
+        np.testing.assert_allclose((2 * filter_).spectral_dist, 2 * filter_.spectral_dist)
+        quotient = 2 / filter_
+        nonzero = filter_.spectral_dist > 0.
+        assert isinstance(quotient, ac.Spectrum)
+        np.testing.assert_allclose(
+            quotient.spectral_dist[nonzero], 2 / filter_.spectral_dist[nonzero]
+        )
+        scaled_set = 2 * filter_set
+        assert isinstance(scaled_set, ac.SpectralSet)
+        assert not isinstance(scaled_set, ac.FilterSet)
+        np.testing.assert_allclose(scaled_set.spectral_dist, 2 * filter_set.spectral_dist)
 
 
 class TestCovariance:

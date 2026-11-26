@@ -334,7 +334,14 @@ class SpectralObject(BaseObject):
 
     def normalized(self) -> Self:
         """ Returns a new SpectralObject with each spectrum divided by its area """
-        return self / self.integrate()
+        integral = self.integrate()
+        # The integral of a 1D spectrum is a scalar. For sets and cubes it is a
+        # spatial array, where the explicit leading axis keeps it spatial when
+        # the spatial size happens to equal the spectral size.
+        # Perf: the scalar branch avoids ~10 us of a (1,)-shaped broadcast operand.
+        if self.ndim == 1:
+            return self / integral
+        return self / np.expand_dims(integral, axis=0)
 
     def normalize(self) -> None:
         """ Divides SpectralObject by its integral """

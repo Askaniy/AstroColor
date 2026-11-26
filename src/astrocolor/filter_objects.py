@@ -102,9 +102,19 @@ class FilterObject(SpectralObject):
         return self._as_spectral() + other
 
     @override
+    def __radd__(self, other: 'BaseObject | npt.ArrayLike') -> SpectralObject:
+        """ Returns the reflected mathematical sum as a spectral object. """
+        return self._as_spectral() + other
+
+    @override
     def __sub__(self, other: 'BaseObject | npt.ArrayLike') -> SpectralObject:
         """ Returns the mathematical difference as a spectral object, without re-normalization. """
         return self._as_spectral() - other
+
+    @override
+    def __rsub__(self, other: 'BaseObject | npt.ArrayLike') -> SpectralObject:
+        """ Returns the reflected mathematical difference as a spectral object. """
+        return self._as_spectral().__rsub__(other)
 
     @override
     def __mul__(self, other: 'BaseObject | npt.ArrayLike') -> SpectralObject:
@@ -112,9 +122,19 @@ class FilterObject(SpectralObject):
         return self._as_spectral() * other
 
     @override
+    def __rmul__(self, other: 'BaseObject | npt.ArrayLike') -> SpectralObject:
+        """ Returns the reflected mathematical product as a spectral object. """
+        return self._as_spectral() * other
+
+    @override
     def __truediv__(self, other: 'BaseObject | npt.ArrayLike') -> SpectralObject:
         """ Returns the mathematical quotient as a spectral object, without re-normalization. """
         return self._as_spectral() / other
+
+    @override
+    def __rtruediv__(self, other: 'BaseObject | npt.ArrayLike') -> SpectralObject:
+        """ Returns the reflected mathematical quotient as a spectral object. """
+        return self._as_spectral().__rtruediv__(other)
 
     @override
     def normalized(self) -> Self:

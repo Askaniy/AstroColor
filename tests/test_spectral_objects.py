@@ -244,3 +244,13 @@ class TestDenseNonUniformBinning:
         assert spectrum.covariance_matrix is not None
         assert spectrum.covariance_matrix.shape == (541, 541)
         assert np.all(np.isfinite(spectrum.covariance_matrix))
+
+
+def test_photon_conversion_keeps_square_spectral_set_per_spectrum():
+    """ Wavelength division must follow the spectral axis when spatial size matches it. """
+    nm = np.array([400., 405., 410., 415.])
+    values = np.arange(1., 17.).reshape(4, 4)
+    spectral_set = ac.SpectralSet(nm, values)
+    converted = spectral_set.convert_from_photon_spectral_density()
+    expected = ac.SpectralSet(nm, values / nm[:, np.newaxis]).normalized()
+    np.testing.assert_allclose(converted.spectral_dist, expected.spectral_dist)

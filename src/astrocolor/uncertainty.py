@@ -140,9 +140,6 @@ def _covariance_term(
     if cov_array.ndim == 0:
         return _diagonal_from_variance(weight**2 * cov_array.item())
     covariance = _prepare_covariance(cov_array, weight)
-    target_ndim = weight.ndim + 1
-    if covariance.ndim < target_ndim:
-        covariance = covariance.reshape((*covariance.shape, *((1,) * (target_ndim - covariance.ndim))))
     target_shape = (weight.shape[0], weight.shape[0], *weight.shape[1:])
     return np.broadcast_to(covariance, target_shape) * weight[:, np.newaxis] * weight[np.newaxis, :]
 
@@ -182,19 +179,6 @@ def combine_covariance_terms(
     )
     covariance = sum(term for term in terms if term is not None)
     return cast(npt.NDArray[np.floating], np.asarray(covariance)) if not np.allclose(covariance, 0) else None
-
-
-def _broadcast_covariance(
-    covariance: npt.NDArray[np.floating],
-    data_shape: tuple[int, ...]
-) -> npt.NDArray[np.floating]:
-    """ Broadcasts a shared `(n, n)` covariance matrix over the spatial axes. """
-    target = (data_shape[0], data_shape[0], *data_shape[1:])
-    if covariance.shape == target:
-        return covariance
-    if covariance.ndim < len(target):
-        covariance = covariance.reshape((*covariance.shape, *((1,) * (len(target) - covariance.ndim))))
-    return np.broadcast_to(covariance, target)
 
 
 class Uncertainty:
@@ -327,9 +311,7 @@ class Uncertainty:
         if array.shape == data_shape:
             return cls.from_standard_deviation(array, data_shape, name)
         expected_covariance_shape = (n, n, *data_shape[1:])
-        if array.shape == expected_covariance_shape:
-            return cls.from_covariance(array, data_shape, name)
-        if array.ndim == 2 and array.shape == (n, n):
+        if array.shape in (expected_covariance_shape, (n, n)):
             return cls.from_covariance(array, data_shape, name)
         if array.ndim == len(data_shape) + 1:
             raise InconsistentUncertaintyShapeError(array.shape, expected_covariance_shape, name)
@@ -412,7 +394,8 @@ class Uncertainty:
         matrix the result may be a read-only broadcast view.
         """
         if self._covariance_matrix is not None:
-            return _broadcast_covariance(self._covariance_matrix, self._data_shape)
+            target = (self.spectral_size, self.spectral_size, *self.spatial_shape)
+            return _broadcast_to_shape(self._covariance_matrix, target)
         return _diagonal_from_variance(cast(npt.NDArray[np.floating], self._variance))
 
     def covariance_input(self) -> npt.NDArray[np.floating]:
@@ -434,7 +417,7 @@ class Uncertainty:
     def select(self, indices: npt.ArrayLike | slice) -> Self:
         """ Selects spectral points, preserving the uncertainty representation. """
         if Config.ignore_correlations and self.is_covariance:
-            return self.from_variance_unchecked(self.variance, self.data_shape).select(indices)
+            return self.compact().select(indices)
         if isinstance(indices, slice):
             indices = np.arange(self.spectral_size)[indices]
         else:
@@ -450,7 +433,7 @@ class Uncertainty:
     def index_spatial(self, item: int | slice) -> Self:
         """ Selects the first spatial axis, preserving the representation. """
         if Config.ignore_correlations and self.is_covariance:
-            return self.from_variance_unchecked(self.variance, self.data_shape).index_spatial(item)
+            return self.compact().index_spatial(item)
         new_spatial = self._indexed_spatial_shape(item)
         new_shape = (self.spectral_size, *new_spatial)
         if self._variance is not None:
@@ -471,7 +454,7 @@ class Uncertainty:
     def reshape_spatial(self, shape: tuple[int, ...]) -> Self:
         """ Reinterprets spatial axes, e.g. for cube flattening. """
         if Config.ignore_correlations and self.is_covariance:
-            return self.from_variance_unchecked(self.variance, self.data_shape).reshape_spatial(shape)
+            return self.compact().reshape_spatial(shape)
         new_shape = (self.spectral_size, *shape)
         if self._variance is not None:
             return self.from_variance_unchecked(self._variance.reshape(new_shape), new_shape)
@@ -486,7 +469,7 @@ class Uncertainty:
     def pad_spectral(self, *, left: bool) -> Self:
         """ Adds one uncorrelated spectral point with zero variance. """
         if Config.ignore_correlations and self.is_covariance:
-            return self.from_variance_unchecked(self.variance, self.data_shape).pad_spectral(left=left)
+            return self.compact().pad_spectral(left=left)
         n = self.spectral_size
         new_shape = (n + 1, *self.spatial_shape)
         if self._variance is not None:
@@ -507,7 +490,7 @@ class Uncertainty:
     def downscale_spatial(self, pixels_limit: int) -> Self:
         """ Decimates spatial axes in the same way as `spatial_downscaling()`. """
         if Config.ignore_correlations and self.is_covariance:
-            return self.from_variance_unchecked(self.variance, self.data_shape).downscale_spatial(pixels_limit)
+            return self.compact().downscale_spatial(pixels_limit)
         if len(self.spatial_shape) != 2:
             return self
         x, y = self.spatial_shape
@@ -529,7 +512,7 @@ class Uncertainty:
         if times < 1:
             raise ValueError(f'Repeat count must be positive, not {times}')
         if Config.ignore_correlations and self.is_covariance:
-            return self.from_variance_unchecked(self.variance, self.data_shape).repeat_spatial(times)
+            return self.compact().repeat_spatial(times)
         new_shape = (self.spectral_size, *(dim * times for dim in self.spatial_shape))
         if self._variance is not None:
             variance = self._variance
@@ -739,13 +722,9 @@ class Uncertainty:
             raise ValueError(
                 f'Integration weights shape {weights.shape} does not match the spectral size {self.spectral_size}'
             )
-        if Config.ignore_correlations:
+        if Config.ignore_correlations or self._variance is not None:
             squared = weights.reshape((-1, *((1,) * len(self.spatial_shape))))**2
             variance = cast(npt.NDArray[np.floating], np.sum(squared * self.variance, axis=0))
-            return variance * step**2
-        if self._variance is not None:
-            squared = weights.reshape((-1, *((1,) * len(self.spatial_shape))))**2
-            variance = cast(npt.NDArray[np.floating], np.sum(squared * self._variance, axis=0))
         else:
             covariance = cast(npt.NDArray[np.floating], self._covariance_matrix)
             projected = propagate_covariance(covariance, weights[np.newaxis, :])
@@ -895,3 +874,12 @@ def div_uncertainty(
         weight_x = cast(npt.NDArray[np.floating], 1 / y)
         weight_y = cast(npt.NDArray[np.floating], x / y**2)
     return _combine(uncertainty_x, weight_x, uncertainty_y, weight_y, x.shape)
+
+def rdiv_uncertainty(
+    mean_x: npt.ArrayLike,
+    uncertainty_x: Uncertainty | None,
+    mean_y: npt.ArrayLike,
+    uncertainty_y: Uncertainty | None
+) -> Uncertainty | None:
+    """ Propagates uncertainty through the reflected quotient `y / x`. """
+    return div_uncertainty(mean_y, uncertainty_y, mean_x, uncertainty_x)

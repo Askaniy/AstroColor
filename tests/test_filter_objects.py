@@ -280,6 +280,23 @@ def test_filter_set_photon_counter_per_column(ubv_filterset: ac.FilterSet):
     np.testing.assert_allclose(converted.spectral_dist, expected)
     assert np.all(converted.mean_nm() > ubv_filterset.mean_nm())
 
+def test_filter_set_photon_counter_on_square_grid():
+    """ Wavelength weights must follow the spectral axis when it matches the filter count. """
+    nm = np.array([400., 405., 410., 415.])
+    profiles = np.array([
+        [0., 0., 0., 0.],
+        [0.2, 0.3, 0.4, 0.5],
+        [0.4, 0.6, 0.8, 1.0],
+        [0., 0., 0., 0.],
+    ])
+    filter_set = ac.FilterSet(nm, profiles)
+    converted = filter_set.convert_for_photon_counter()
+    expected = ac.FilterSet(nm, filter_set.spectral_dist * nm[:, np.newaxis])
+    np.testing.assert_allclose(converted.spectral_dist, expected.spectral_dist)
+    roundtrip = converted.convert_from_photon_spectral_density()
+    np.testing.assert_allclose(roundtrip.spectral_dist, filter_set.spectral_dist)
+
+
 def test_photospectral_conversion_uses_filter_profiles(ubv_filterset: ac.FilterSet):
     """ Photon/energy photometry conversion keeps the per-filter scale factors. """
     values = np.array([1., 2., 3.])
@@ -297,3 +314,15 @@ def test_photospectral_conversion_uses_filter_profiles(ubv_filterset: ac.FilterS
     frequency_scales = frequency_scales / frequency_scales.mean()
     frequency = photospectrum.convert_from_energy_spectral_density_per_frequency()
     np.testing.assert_allclose(frequency.spectral_dist, values * frequency_scales)
+
+
+def test_photospectral_conversion_on_square_spatial(ubv_filterset: ac.FilterSet):
+    """ Per-filter scales must not flip to pixels when spatial size equals the filter count. """
+    photospectral_set = ac.PhotospectralSet(ubv_filterset, np.ones((3, 3)))
+    profiles = ubv_filterset.spectral_dist
+    wavelengths = ubv_filterset.wavelength_nm
+    scales = np.sum(profiles / wavelengths[:, np.newaxis], axis=0) * ubv_filterset.nm_step
+    scales = scales / scales.mean()
+    converted = photospectral_set.convert_from_photon_spectral_density()
+    expected = np.broadcast_to(scales[:, np.newaxis], (3, 3))
+    np.testing.assert_allclose(converted.spectral_dist, expected)

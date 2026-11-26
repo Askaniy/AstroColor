@@ -18,6 +18,8 @@ from .algebra import (
     add_value,
     div_value,
     mul_value,
+    rdiv_value,
+    rsub_value,
     sub_value,
 )
 from .auxiliary import (
@@ -32,6 +34,7 @@ from .uncertainty import (
     add_uncertainty,
     div_uncertainty,
     mul_uncertainty,
+    rdiv_uncertainty,
     sub_uncertainty,
 )
 
@@ -132,6 +135,10 @@ class BaseObject(UniformSpectralGrid):
     wavelength_nm_dtype: Final[npt.DTypeLike] = wavelength_nm_dtype
     spectral_dist_dtype: Final[npt.DTypeLike] = spectral_dist_dtype
     uncertainty_dtype: Final[npt.DTypeLike] = uncertainty_dtype
+
+    # Reflected operators must handle `ndarray <op> object` as a whole array;
+    # otherwise NumPy builds an object array of the operation results.
+    __array_ufunc__: ClassVar[None] = None
 
     @property
     def spectral_size(self) -> int:
@@ -330,6 +337,36 @@ class BaseObject(UniformSpectralGrid):
             return self._apply_spectral_operation(other._as_operand(), div_value, div_uncertainty)
         else:
             return self._apply_scalar_operation(other, div_value, div_uncertainty)
+
+    def __radd__(self, other: 'BaseObject | npt.ArrayLike') -> Self:
+        """
+        Implements the reflected addition operator (`other + self`).
+        """
+        return self.__add__(other)
+
+    def __rsub__(self, other: 'BaseObject | npt.ArrayLike') -> Self:
+        """
+        Implements the reflected subtraction operator (`other - self`).
+        """
+        if isinstance(other, BaseObject):
+            return self._apply_element_wise_operation(other._as_operand(), rsub_value, sub_uncertainty)
+        else:
+            return self._apply_scalar_operation(other, rsub_value, sub_uncertainty)
+
+    def __rmul__(self, other: 'BaseObject | npt.ArrayLike') -> Self:
+        """
+        Implements the reflected multiplication operator (`other * self`).
+        """
+        return self.__mul__(other)
+
+    def __rtruediv__(self, other: 'BaseObject | npt.ArrayLike') -> Self:
+        """
+        Implements the reflected division operator (`other / self`).
+        """
+        if isinstance(other, BaseObject):
+            return self._apply_spectral_operation(other._as_operand(), rdiv_value, rdiv_uncertainty)
+        else:
+            return self._apply_scalar_operation(other, rdiv_value, rdiv_uncertainty)
 
     def _comparison_wavelengths(self) -> npt.ArrayLike | None:
         """

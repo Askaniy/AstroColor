@@ -51,6 +51,8 @@ def run_2d3d(repeats: int, seed: int) -> None:
     workload: dict[str, Callable[[], object]] = {
         'cube + cube': lambda: cube + cube,
         'cube * scalar': lambda: cube * 2,
+        'cube / scalar': lambda: cube / 2,
+        'cube / cube': lambda: cube / cube,
         'cube normalized': cube.normalized,
         'cube flatten': cube.flatten,
         'cube downscale(1000)': lambda: cube.downscale(1000),
@@ -85,6 +87,7 @@ def run_uncertainty(repeats: int) -> None:
 
     workload: dict[str, tuple[Callable[[], object], Callable[[], object]]] = {
         'scalar multiply': (lambda: compact * 2, lambda: full * 2),
+        'scalar division': (lambda: compact / 2, lambda: full / 2),
         'addition': (lambda: compact + compact, lambda: full + full),
         'normalize': (compact.normalized, full.normalized),
         'photometry V': (
