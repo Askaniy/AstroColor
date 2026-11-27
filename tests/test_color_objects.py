@@ -12,6 +12,7 @@ from astrocolor.errors import (
     MissingDerivativeWarning,
     NegativeStandardDeviationError,
     NonFiniteScaleWarning,
+    NonFiniteValuesWarning,
 )
 
 from .color_oracles import srgb_decode_derivative, srgb_encode_derivative
@@ -96,6 +97,94 @@ class TestColorBasics:
         color1 = color0.to_color_system(rgb)
         color2 = color1.to_color_system(rgb_)
         np.testing.assert_allclose(color1.spectral_dist, color2.spectral_dist, rtol=1e-13)
+
+
+class TestNonFiniteValues:
+    """ Non-finite color values are replaced with zeros and reported. """
+
+    @pytest.mark.parametrize(
+        ('color_type', 'values'),
+        [
+            (ac.ColorPoint, np.array([1., np.nan, 3.])),
+            (
+                ac.ColorLine,
+                np.array([[1., 2.], [np.nan, np.inf], [3., 4.]]),
+            ),
+            (
+                ac.ColorImage,
+                np.array([
+                    [[1., 2.], [3., 4.]],
+                    [[np.nan, 2.], [3., 4.]],
+                    [[1., 2.], [3., np.inf]],
+                ]),
+            ),
+        ],
+        ids=['point', 'line', 'image'],
+    )
+    def test_non_finite_values_are_replaced_with_warning(
+        self,
+        color_type: type[ac.ColorPoint] | type[ac.ColorLine] | type[ac.ColorImage],
+        values: npt.NDArray[np.floating],
+    ) -> None:
+        original = values.copy()
+        expected = np.where(np.isfinite(values), values, 0.)
+        std = np.full(values.shape, 0.1)
+
+        with pytest.warns(NonFiniteValuesWarning, match='spectral_dist') as record:
+            color = color_type(values, std, name='broken color')
+
+        assert len(record) == 1
+        assert 'broken color' in str(record[0].message)
+        assert np.all(np.isfinite(color.spectral_dist))
+        np.testing.assert_array_equal(color.spectral_dist, expected)
+        # Sanitization must not rewrite the caller's array, and the reported
+        # uncertainty is kept independently of the replaced values.
+        np.testing.assert_array_equal(values, original)
+        standard_deviation = color.standard_deviation
+        assert standard_deviation is not None
+        np.testing.assert_allclose(standard_deviation, std)
+
+    def test_gamma_corrected_non_finite_input_is_replaced(self):
+        system = ac.ColorSystem('sRGB', 'Illuminant E')
+        std = np.array([0.01, 0.02, 0.03])
+        encoded = np.array([0.5, np.nan, 0.1])
+
+        with pytest.warns(NonFiniteValuesWarning) as record:
+            color = ac.ColorPoint(
+                encoded, std, color_system=system, gamma_corrected=True
+            )
+
+        assert len(record) == 1
+        sanitized = np.array([0.5, 0., 0.1])
+        np.testing.assert_allclose(color.spectral_dist, system.decode(sanitized))
+        standard_deviation = color.standard_deviation
+        assert standard_deviation is not None
+        np.testing.assert_allclose(
+            standard_deviation,
+            srgb_decode_derivative(sanitized) * std,
+            rtol=1e-12,
+        )
+
+    def test_render_replaces_non_finite_stored_values(self):
+        system = ac.ColorSystem('sRGB', 'Illuminant E')
+        color = ac.ColorPoint(
+            [0.5, 0.25, 0.1], color_system=system, name='broken color'
+        )
+        # Direct mutation bypasses the constructor validation.
+        color.spectral_dist[1] = np.nan
+        settings = ac.DisplaySettings(
+            color_system=system, maximize_brightness=False
+        )
+
+        with pytest.warns(NonFiniteValuesWarning, match='broken color') as record:
+            rendered, uncertainty = color.render(settings)
+
+        assert len(record) == 1
+        assert uncertainty is None
+        assert np.all(np.isfinite(rendered))
+        np.testing.assert_allclose(
+            rendered, system.encode(np.array([0.5, 0., 0.1]))
+        )
 
 
 class TestColorObjectUncertainty:
