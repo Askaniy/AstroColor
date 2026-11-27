@@ -1,8 +1,15 @@
 from typing import cast
 
 import numpy as np
+import pytest
 
 import astrocolor as ac
+from astrocolor.errors import (
+    InconsistentAxesError,
+    NonFiniteFilterProfileError,
+    NonFiniteFilterWavelengthError,
+    NonPositiveFilterIntegralError,
+)
 
 # Ten profiles bundled with the package: CIE color matching functions,
 # Bessell UBVRI and SDSS g/r. All are available offline.
@@ -326,3 +333,137 @@ def test_photospectral_conversion_on_square_spatial(ubv_filterset: ac.FilterSet)
     converted = photospectral_set.convert_from_photon_spectral_density()
     expected = np.broadcast_to(scales[:, np.newaxis], (3, 3))
     np.testing.assert_allclose(converted.spectral_dist, expected)
+
+
+# === Filter Profile Validation Tests ===
+
+# Stiles & Burch (1955) 2-degree R color-matching function sampled at 10 nm.
+# Source: CVRL, "Stiles & Burch (1955) 2-deg, RGB CMFs"
+# (Wyszecki & Stiles 1982, Table I(5.5.3), corrected as described by Stiles &
+# Burch 1959). The function has a pronounced negative lobe between 450 and
+# 520 nm, reaching about -0.30 near 505 nm. This is the motivating example for
+# accepting negative throughput while still requiring a positive total integral.
+STILES_BURCH_1955_R_NM = np.array([
+    390, 400, 410, 420, 430, 440, 450, 460, 470, 480, 490, 500,
+    510, 520, 530, 540, 550, 560, 570, 580, 590, 600, 610, 620,
+    630, 640, 650, 660, 670, 680, 690, 700, 710, 720, 730,
+], dtype=np.int64)
+
+STILES_BURCH_1955_R = np.array([
+    0.0018397, 0.0096264, 0.030803, 0.051662, 0.044287, 0.014763,
+    -0.02913, -0.096224, -0.17486, -0.2378, -0.27727, -0.295,
+    -0.26759, -0.14768, 0.10614, 0.41976, 0.79004, 1.2283,
+    1.7476, 2.2724, 2.6725, 2.8717, 2.7601, 2.3743,
+    1.8145, 1.2543, 0.78642, 0.4432, 0.23455, 0.12086,
+    0.06026, 0.028114, 0.013305, 0.0065177, 0.0031742,
+])
+
+
+class TestFilterProfileValidation:
+    """ Filter construction must not accept profiles that cannot be normalized. """
+
+    def test_zero_profile_is_rejected(self):
+        with pytest.raises(NonPositiveFilterIntegralError, match='positive'):
+            _ = ac.Filter([500, 505, 510], [0., 0., 0.], name='zero')
+
+    def test_zero_column_in_filter_set_is_rejected(self):
+        profiles = np.array([
+            [0., 0.],
+            [1., 0.],
+            [0., 0.],
+        ])
+        with pytest.raises(NonPositiveFilterIntegralError, match='positive'):
+            _ = ac.FilterSet([500, 505, 510], profiles, name='zero column')
+
+    def test_axes_error_precedes_non_finite_profile(self):
+        with pytest.raises(InconsistentAxesError):
+            _ = ac.Filter([500, 505], [1., np.nan, 3.])
+
+    @pytest.mark.parametrize('wavelengths', [
+        [500, np.nan, 510],
+        [np.nan, np.inf],
+    ])
+    def test_non_finite_wavelengths_are_rejected(self, wavelengths: list[float]):
+        values = np.ones(len(wavelengths))
+        with pytest.raises(NonFiniteFilterWavelengthError, match='non-finite'):
+            _ = ac.Filter(wavelengths, values, name='bad axis')
+        with pytest.raises(NonFiniteFilterWavelengthError, match='non-finite'):
+            _ = ac.FilterSet(wavelengths, np.ones((len(wavelengths), 2)), name='bad axis')
+
+    def test_negative_integral_is_rejected(self):
+        with pytest.raises(NonPositiveFilterIntegralError, match='positive'):
+            _ = ac.Filter([500, 505, 510], [-0.2, -1., -0.2], name='negative area')
+
+    @pytest.mark.parametrize('non_finite', [np.nan, np.inf, -np.inf])
+    def test_non_finite_filter_is_rejected(self, non_finite: float):
+        with pytest.raises(NonFiniteFilterProfileError, match='non-finite'):
+            _ = ac.Filter([500, 505, 510], [0., non_finite, 1.], name='bad')
+
+    @pytest.mark.parametrize('non_finite', [np.nan, np.inf, -np.inf])
+    def test_non_finite_filter_set_is_rejected(self, non_finite: float):
+        profiles = np.array([
+            [0., 1.],
+            [1., non_finite],
+            [0., 0.],
+        ])
+        with pytest.raises(NonFiniteFilterProfileError, match='non-finite'):
+            _ = ac.FilterSet([500, 505, 510], profiles, name='bad set')
+
+    def test_zero_edged_empty_filter_set_stays_empty(self):
+        empty = ac.FilterSet.get('Generic/Bessell.B', 'Generic/Bessell.V')[1:1]
+        result = empty.zero_edged()
+        assert isinstance(result, ac.FilterSet)
+        assert result.spectral_size == 0
+
+    def test_stub_bypasses_validation(self):
+        stub = ac.Filter.stub()
+        stub_set = ac.FilterSet.stub()
+        assert isinstance(stub, ac.Filter)
+        assert isinstance(stub_set, ac.FilterSet)
+        np.testing.assert_array_equal(stub.spectral_dist, [0.])
+
+    def test_stub_conversions_remain_zero(self):
+        stub = ac.Filter.stub()
+        for converted in (
+            stub.convert_for_photon_counter(),
+            stub.convert_from_photon_spectral_density(),
+            stub.convert_from_energy_spectral_density_per_frequency(),
+        ):
+            assert isinstance(converted, ac.Filter)
+            assert not converted.spectral_dist.any()
+        assert not ac.FilterSet.stub().convert_for_photon_counter().spectral_dist.any()
+        # A computed zero result is degenerate, not an invalid input profile.
+        monochromatic = ac.Filter.monochromatic(555., intensity=0.)
+        assert not monochromatic.spectral_dist.any()
+
+    def test_stiles_burch_negative_integral_excerpt_is_rejected(self):
+        # The dip alone has a negative integral even though the full function
+        # does not: rejection is about the total area, not about negative points.
+        excerpt = (STILES_BURCH_1955_R_NM >= 440) & (STILES_BURCH_1955_R_NM <= 530)
+        with pytest.raises(NonPositiveFilterIntegralError, match='positive'):
+            _ = ac.Filter(
+                STILES_BURCH_1955_R_NM[excerpt],
+                STILES_BURCH_1955_R[excerpt],
+                name='Stiles & Burch (1955) 2-deg R excerpt',
+            )
+
+    def test_stiles_burch_red_negative_lobe_is_preserved(self):
+        profile = ac.Filter(
+            STILES_BURCH_1955_R_NM,
+            STILES_BURCH_1955_R,
+            name='Stiles & Burch (1955) 2-deg R',
+        )
+
+        assert np.isclose(profile.integrate(), 1.)
+        assert profile.is_zero_edged()
+        # Normalization changes the scale, not the sign or the position of the dip.
+        dip_index = int(np.argmin(profile.spectral_dist))
+        assert profile.spectral_dist[dip_index] < 0
+        assert 490 <= profile.wavelength_nm[dip_index] <= 515
+        assert profile.spectral_dist[profile.wavelength_nm == 590][0] > 0
+
+    def test_bundled_filters_pass_validation(self):
+        for filter_id in BUNDLED_FILTER_IDS:
+            profile = ac.Filter.get(filter_id)
+            assert np.all(np.isfinite(profile.spectral_dist))
+            assert profile.integrate() > 0

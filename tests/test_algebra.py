@@ -17,6 +17,8 @@ from astrocolor.errors import (
     ErasingCorrelationsWarning,
     InconsistentUncertaintyShapeError,
     NonFiniteValuesWarning,
+    SpatialAxisWarning,
+    SpectralAxisWarning,
 )
 from astrocolor.uncertainty import (
     Uncertainty,
@@ -402,15 +404,16 @@ class TestPhotospectralMultiplication:
 class TestDivision:
 
     def test_zero_division_error(self, v_filter: ac.Filter):
-        expected = np.where(v_filter.spectral_dist > 0., np.inf, 0.)
+        # IEEE 754: x / 0 is ±inf, 0 / 0 is NaN.
+        expected = np.where(v_filter.spectral_dist > 0., np.inf, np.nan)
         np.testing.assert_equal((v_filter / 0).spectral_dist, expected)
 
-    def test_zero_division_by_zero_error(self):
-        np.testing.assert_equal((ac.SpectralSet.stub() / 0).spectral_dist, [[0.]])
+    def test_zero_divided_by_zero_is_nan(self):
+        np.testing.assert_equal((ac.SpectralSet.stub() / 0).spectral_dist, [[np.nan]])
 
     def test_zero_division_is_element_wise(self):
         result = div_value(np.array([0., 1., -2.]), np.array([0., 2., 0.]))
-        np.testing.assert_equal(result, [0., 0.5, -np.inf])
+        np.testing.assert_equal(result, [np.nan, 0.5, -np.inf])
 
     def test_photospectrum_divided_by_spectrum_reconstructs(self, ubv_filterset: ac.FilterSet):
         """ Division is also performed on reconstructed spectra """
@@ -471,6 +474,33 @@ class TestNormalization:
             ac.get_photometry(vega_calspec, ubv_filterset).spectral_dist,
             rtol=0.01,
         )
+
+
+    def test_zero_area_stub_normalizes_to_itself(self):
+        stub = ac.SpectralSet.stub()
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', SpatialAxisWarning)
+            normalized = stub.normalized()
+        np.testing.assert_array_equal(normalized.spectral_dist, stub.spectral_dist)
+
+    def test_zero_area_spectrum_normalizes_to_itself_and_warns(self):
+        spectrum = ac.Spectrum([500, 505, 510], [1., -1., 0.], name='cancelling')
+        with pytest.warns(SpatialAxisWarning, match='zero brightness'):
+            normalized = spectrum.normalized()
+        np.testing.assert_array_equal(normalized.spectral_dist, spectrum.spectral_dist)
+
+    def test_zero_area_column_keeps_set_column_unchanged(self):
+        values = np.array([
+            [1., 1.],
+            [-1., 2.],
+            [0., 3.],
+        ])
+        spectral_set = ac.SpectralSet([500, 505, 510], values, name='mixed areas')
+        with pytest.warns(SpatialAxisWarning, match='zero brightness'):
+            normalized = spectral_set.normalized()
+        np.testing.assert_allclose(normalized.spectral_dist[:, 0], values[:, 0])
+        expected_second = cast(npt.NDArray[np.floating], values[:, 1] / (np.sum(values[:, 1]) * 5.))
+        np.testing.assert_allclose(normalized.spectral_dist[:, 1], expected_second)
 
 
 class TestFilterArithmetic:
@@ -761,7 +791,8 @@ class TestCovariance:
         nm0 = np.arange(400, 431, 5)
         order = np.array([3, 1, 5, 0, 6, 2, 4])
         cov = np.arange(49.).reshape(7, 7) + np.eye(7)
-        obj = ac.Spectrum(nm0[order], np.arange(1., 8.), cov)
+        with pytest.warns(SpectralAxisWarning, match='not strictly increasing'):
+            obj = ac.Spectrum(nm0[order], np.arange(1., 8.), cov)
         assert isinstance(obj.covariance_matrix, np.ndarray)
         np.testing.assert_allclose(
             obj.covariance_matrix,
@@ -1000,7 +1031,7 @@ class TestCovarianceHandling:
         np.testing.assert_allclose(covariance, expected)
         assert not np.allclose(covariance, old_covariance)
 
-    def test_edges_to_zero_updates_covariance(self):
+    def test_zero_edged_updates_covariance(self):
         nm = np.arange(500, 601, 5)
         std = np.ones(nm.size) * 0.1
         obj = ac.Spectrum(nm, np.ones(nm.size), std)
@@ -1008,14 +1039,29 @@ class TestCovarianceHandling:
         assert old_covariance is not None
         old_covariance = old_covariance.copy()
 
-        obj.edges_to_zero()
+        zero_edged = obj.zero_edged()
 
-        covariance = obj.covariance_matrix
+        assert obj.spectral_size == nm.size
+        original_covariance = obj.covariance_matrix
+        assert original_covariance is not None
+        np.testing.assert_allclose(original_covariance, old_covariance)
+        covariance = zero_edged.covariance_matrix
         assert covariance is not None
-        assert covariance.shape == (obj.spectral_size, obj.spectral_size)
+        assert covariance.shape == (zero_edged.spectral_size, zero_edged.spectral_size)
         np.testing.assert_allclose(covariance[1:-1, 1:-1], old_covariance)
         np.testing.assert_allclose(cast(npt.NDArray[np.floating], covariance[0]), 0)
         np.testing.assert_allclose(cast(npt.NDArray[np.floating], covariance[-1]), 0)
+        assert zero_edged.is_zero_edged()
+
+    def test_edges_to_zero_mutates_in_place(self):
+        nm = np.arange(500, 511, 5)
+        obj = ac.Spectrum(nm, np.ones(nm.size))
+
+        returned = obj.edges_to_zero()
+
+        assert returned is None
+        assert obj.spectral_size == nm.size + 2
+        assert obj.is_zero_edged()
 
     def test_color_system_conversion_preserves_covariance(self):
         covariance = np.array([[0.01, 0.002, 0.001],

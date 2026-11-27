@@ -67,6 +67,20 @@ class NonFiniteCovarianceError(AstroColorError, ValueError):
     def __init__(self, name: object = None):
         super().__init__(f'Covariance matrix contains non-finite values{_name_suffix(name)}.')
 
+class NonFiniteFilterProfileError(AstroColorError, ValueError):
+    def __init__(self, name: object = None):
+        super().__init__(f'Filter profile contains non-finite values{_name_suffix(name)}.')
+
+class NonFiniteFilterWavelengthError(AstroColorError, ValueError):
+    def __init__(self, name: object = None):
+        super().__init__(f'Filter wavelength axis contains non-finite values{_name_suffix(name)}.')
+
+class NonPositiveFilterIntegralError(AstroColorError, ValueError):
+    def __init__(self, integral: object = None, name: object = None):
+        detail = '' if integral is None else f' (integral {integral})'
+        msg = f'Filter profile integral must be finite and positive{detail}'
+        super().__init__(msg + _name_suffix(name) + '.')
+
 class FilterNotFoundError(AstroColorError):
     def __init__(self, filter_id: str):
         super().__init__(f'Filter "{filter_id}" not available locally or online.')
@@ -129,6 +143,14 @@ def zero_brightness_warning(name: object = None):
 
 class SpectralAxisWarning(UserWarning):
     pass
+
+def unsorted_wavelengths_warning(name: object = None):
+    msg = 'Wavelengths are not strictly increasing; the spectral axis was sorted before resampling'
+    warnings.warn(msg + _name_suffix(name) + '.', SpectralAxisWarning, stacklevel=3)
+
+def duplicate_wavelengths_warning(name: object = None):
+    msg = 'Duplicate wavelengths detected; resampling will merge the corresponding points'
+    warnings.warn(msg + _name_suffix(name) + '.', SpectralAxisWarning, stacklevel=3)
 
 def empty_spectral_axis_warning(name: object = None):
     msg = f'No wavelength data{_name_suffix(name)}. Spectrum stub object was created.'

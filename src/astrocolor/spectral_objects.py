@@ -44,11 +44,13 @@ from .errors import (
     InconsistentDimensionError,
     InconsistentUncertaintySizeError,
     UnsupportedDimensionError,
+    duplicate_wavelengths_warning,
     empty_spectral_intersection_operator_warning,
     empty_spectral_intersection_warning,
     erasing_correlations_warning,
     non_finite_values_warning,
     uncertainty_loss_warning,
+    unsorted_wavelengths_warning,
     zero_brightness_warning,
 )
 from .uncertainty import Uncertainty
@@ -153,13 +155,22 @@ class SpectralObject(BaseObject):
                 self.spectral_dist = stub.spectral_dist
                 self.uncertainty = stub.uncertainty
                 return
+        # Perf: one `np.diff` allocation serves both axis checks and the grid
+        # classification below; `.min()` avoids two temporary boolean arrays on
+        # every construction.
+        diff = np.diff(nm)
         # Fast increasing check
-        if np.any(nm[:-1] > nm[1:]):
+        if diff.size and diff.min() < 0:
+            unsorted_wavelengths_warning(name)
             order = np.argsort(nm)
             nm = nm[order]
             sd = sd[order]
             if uncertainty_obj is not None:
                 uncertainty_obj = uncertainty_obj.select(order)
+            diff = np.diff(nm)
+        # Duplicates survive sorting and make the resampling ambiguous.
+        if diff.size and diff.min() == 0:
+            duplicate_wavelengths_warning(name)
         # Red limit check
         if nm[-1] > nm_red_limit:
             mask = np.where(nm < nm_red_limit + nm_step)[0] # with reserve to be averaged
@@ -167,6 +178,7 @@ class SpectralObject(BaseObject):
             sd = sd[mask]
             if uncertainty_obj is not None:
                 uncertainty_obj = uncertainty_obj.select(mask)
+            diff = np.diff(nm)
         # Standard deviations are only needed when downscaling cannot use the covariance.
         nm_0 = cast(float, nm[0])
         nm_1 = cast(float, nm[-1])
@@ -197,7 +209,6 @@ class SpectralObject(BaseObject):
                 self.uncertainty = uncertainty_obj.propagate(kernel_matrix)
         else:
             # Spectral grid check to be a uniform 5 nm grid
-            diff = np.diff(nm)
             if np.all(cast(npt.NDArray[np.bool], diff == nm_step)) and nm_0 % nm_step == 0:
                 nm_uniform = cast(npt.NDArray[np.integer], nm)
             else:
@@ -249,10 +260,11 @@ class SpectralObject(BaseObject):
             self.spectral_dist = sd
             self.uncertainty = uncertainty_obj
 
-        # Negative brightness values check
-        # Not used because color matching functions may have negative values
-        # if self.br.min() < 0:
-        #    self.spectral_dist = np.clip(self.spectral_dist, 0, None)
+        # Negative brightness values are intentionally preserved. Filter profiles
+        # may have a negative lobe: for example the Stiles & Burch (1955) 2-degree
+        # R color-matching function dips to about -0.30 between 450 and 520 nm.
+        # Validation of a filter only requires finite values and a positive total
+        # integral (see `Filter`/`FilterSet`); the sign of individual points is data.
 
     @override
     @classmethod
@@ -334,15 +346,40 @@ class SpectralObject(BaseObject):
         return integrate(self.spectral_dist, nm_step, precisely=False)
 
     def normalized(self) -> Self:
-        """ Returns a new SpectralObject with each spectrum divided by its area """
+        """
+        Returns a new SpectralObject with each spectrum divided by its area.
+
+        A zero-area spectrum (a stub, or a set column whose positive and negative
+        parts cancel) has no meaningful normalization and is returned unchanged.
+        This is the only special case; ordinary division follows IEEE 754, so
+        `0 / 0` is `NaN` and `x / 0` keeps its sign as ±inf.
+        """
         integral = self.integrate()
         # The integral of a 1D spectrum is a scalar. For sets and cubes it is a
         # spatial array, where the explicit leading axis keeps it spatial when
         # the spatial size happens to equal the spectral size.
-        # Perf: the scalar branch avoids ~10 us of a (1,)-shaped broadcast operand.
         if self.ndim == 1:
-            return self / integral
-        return self / np.expand_dims(integral, axis=0)
+            integral_value = float(integral)
+            if integral_value == 0.:
+                non_zero = cast(npt.NDArray[np.bool_], self.spectral_dist != 0.)
+                if np.any(non_zero):
+                    zero_brightness_warning(self.name)
+                return deepcopy(self)
+            # Perf: the scalar branch avoids ~10 us of a (1,)-shaped broadcast operand.
+            return self / integral_value
+        integral_array = np.asarray(integral, dtype=np.float64)
+        zero_area = cast(npt.NDArray[np.bool_], integral_array == 0.)
+        if not np.any(zero_area):
+            # Perf: the common path does not touch the full spectral array.
+            return self / np.expand_dims(integral_array, axis=0)
+        safe_integral = cast(
+            npt.NDArray[np.floating],
+            np.where(zero_area, 1., integral_array),
+        )
+        non_zero = cast(npt.NDArray[np.bool_], self.spectral_dist != 0.)
+        if np.any(np.any(non_zero, axis=0) & zero_area):
+            zero_brightness_warning(self.name)
+        return self / np.expand_dims(safe_integral, axis=0)
 
     def normalize(self) -> None:
         """ Divides SpectralObject by its integral """
@@ -516,22 +553,49 @@ class SpectralObject(BaseObject):
                 obj.uncertainty = Uncertainty.from_standard_deviation(std, br.shape, self.name)
         return obj
 
-    def edges_to_zero(self) -> None:
+    def zero_edged(self) -> Self:
         """
-        Ensures that the SpectralObject has zero brightness at the spectral edges.
+        Returns a copy with zero brightness at both spectral edges.
         Recommended for use with filters: improves the integral and the profile graph.
+
+        Non-mutating counterpart of `edges_to_zero()`: a zero point is added to
+        every non-zero edge, continuing the local grid step, and extra
+        leading/trailing zeros are trimmed back to one. The source object is
+        never modified.
 
         Works for 1D (Spectrum/Filter), 2D (SpectralSet/FilterSet) and 3D (SpectralCube) objects:
         - If an edge has non-zero values at *any* spatial pixel, a zero point is added.
         - If the first/last two spectral points are all zeros across every spatial pixel,
           those extra leading/trailing zeros are trimmed back to one.
         """
+        result = copy(self)
+        result.edges_to_zero()
+        return result
+
+    def edges_to_zero(self) -> None:
+        """
+        Sets brightness at both spectral edges to zero, in place.
+        Recommended for use with filters: improves the integral and the profile graph.
+
+        A zero point is added to every non-zero edge, continuing the local grid step,
+        and extra leading/trailing zeros are trimmed back to one. Use `zero_edged()`
+        when a modified copy is needed instead of mutating this object.
+
+        Works for 1D (Spectrum/Filter), 2D (SpectralSet/FilterSet) and 3D (SpectralCube) objects:
+        - If an edge has non-zero values at *any* spatial pixel, a zero point is added.
+        - If the first/last two spectral points are all zeros across every spatial pixel,
+          those extra leading/trailing zeros are trimmed back to one.
+        """
+        if self.spectral_size == 0:
+            return  # an empty set has no edges
         is_stub = self.spectral_size == 1  # stub objects have a single spectral point
         # - Left edge (index 0 along spectral axis)
         sd_0 = cast(npt.NDArray[np.floating], self.spectral_dist[0])
         if sd_0.any():
             # No zero on the left edge at some spatial pixel -> prepend a zero point
-            new_wl = np.array([self.wavelength_nm[0] - nm_step], dtype=wavelength_nm_dtype)
+            left_edge = cast(int, self.wavelength_nm[0])
+            left_step = cast(int, self.wavelength_nm[1]) - left_edge
+            new_wl = np.array([left_edge - left_step], dtype=wavelength_nm_dtype)
             self.wavelength_nm = np.concatenate((new_wl, self.wavelength_nm))
             zeros_left = np.zeros(self.spatial_shape, dtype=wavelength_nm_dtype)
             self.spectral_dist = np.concatenate((zeros_left[np.newaxis], self.spectral_dist), axis=0)
@@ -557,7 +621,9 @@ class SpectralObject(BaseObject):
         sd_1 = cast(npt.NDArray[np.floating], self.spectral_dist[-1])
         if sd_1.any():
             # No zero on the right edge at some spatial pixel -> append a zero point
-            new_wl = np.array([self.wavelength_nm[-1] + nm_step], dtype=wavelength_nm_dtype)
+            right_edge = cast(int, self.wavelength_nm[-1])
+            right_step = right_edge - cast(int, self.wavelength_nm[-2])
+            new_wl = np.array([right_edge + right_step], dtype=wavelength_nm_dtype)
             self.wavelength_nm = np.concatenate((self.wavelength_nm, new_wl))
             zeros_right = np.zeros(self.spatial_shape, dtype=wavelength_nm_dtype)
             self.spectral_dist = np.concatenate((self.spectral_dist, zeros_right[np.newaxis]), axis=0)

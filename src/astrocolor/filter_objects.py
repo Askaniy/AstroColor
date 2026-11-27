@@ -18,7 +18,15 @@ import numpy.typing as npt
 from .auxiliary import uniform_grid
 from .config import Config
 from .core import BaseObject, nm_step, wavelength_nm_dtype
-from .errors import FilterNetworkError, FilterNotFoundError
+from .errors import (
+    FilterNetworkError,
+    FilterNotFoundError,
+    InconsistentAxesError,
+    InconsistentDimensionError,
+    NonFiniteFilterProfileError,
+    NonFiniteFilterWavelengthError,
+    NonPositiveFilterIntegralError,
+)
 from .filter_loader import (
     fetch_from_fps_raw,
     get_filter_folders,
@@ -60,6 +68,88 @@ class FilterObject(SpectralObject):
     renormalized.
     """
 
+    @staticmethod
+    def _reject_non_finite_profile(
+        values: npt.NDArray[np.floating],
+        name: object = None,
+    ) -> None:
+        """
+        Rejects non-finite throughput before the generic spectral sanitizer runs.
+
+        `SpectralObject` replaces non-finite brightness with zeros and warns,
+        which is acceptable for measured spectra but not for a transmission
+        profile: a hole in a filter silently changes every photometric result.
+        """
+        if not np.all(np.isfinite(values)):
+            raise NonFiniteFilterProfileError(name)
+
+    @classmethod
+    def _validate_raw_input(
+        cls,
+        wavelength_nm: npt.ArrayLike,
+        spectral_dist: npt.ArrayLike,
+        name: object = None,
+    ) -> None:
+        """
+        Validates filter input before the generic spectral constructor runs.
+
+        Dimension and axis errors take precedence over data errors, so a
+        malformed array is reported as malformed instead of as a bad profile.
+        Non-finite wavelengths are rejected for filters: the generic
+        constructor would silently remove them, or replace the whole object
+        with a stub, which is not acceptable for a photometric bandpass.
+        """
+        values = np.asarray(spectral_dist, dtype=np.float64)
+        wavelengths = np.asarray(wavelength_nm)
+        if values.ndim != cls.ndim:
+            raise InconsistentDimensionError(cls.ndim, values.ndim, name)
+        if wavelengths.size != len(values):
+            raise InconsistentAxesError(wavelengths.size, len(values), name)
+        if not np.issubdtype(wavelengths.dtype, np.integer) and not np.all(np.isfinite(wavelengths)):
+            raise NonFiniteFilterWavelengthError(name)
+        cls._reject_non_finite_profile(values, name)
+
+    def _normalize_filter(self) -> None:
+        """
+        Validates and applies the integral normalization in one pass.
+
+        Negative individual values are allowed: published color matching
+        functions have them (Stiles & Burch 1955 2-degree R dips to about
+        -0.30 near 505 nm). A non-positive *total* integral is still invalid,
+        because normalization would divide by zero or flip the sign of the
+        whole profile.
+
+        Perf: direct division avoids the temporary `Spectrum`/`Filter` copies
+        that `normalize()` -> `normalized()` creates; that object churn is a
+        large part of filter construction.
+        """
+        integral = self.integrate()
+        if not np.all(np.isfinite(integral)) or np.any(np.asarray(integral) <= 0):
+            raise NonPositiveFilterIntegralError(integral, self.name)
+        if self.ndim == 1:
+            self.spectral_dist: npt.NDArray[np.floating] = self.spectral_dist / float(integral)
+        else:
+            self.spectral_dist = self.spectral_dist / np.expand_dims(
+                cast(npt.NDArray[np.floating], integral),
+                axis=0,
+            )
+
+    @override
+    @classmethod
+    def stub(cls, name: object = None) -> Self:
+        """
+        Returns an all-zero profile for missing data.
+
+        A stub intentionally has a zero integral, so it bypasses the checks
+        applied to user-supplied profiles and uses the trusted constructor.
+        """
+        return cls._from_trusted_arrays(
+            np.array([555], dtype=wavelength_nm_dtype),
+            np.zeros((1,) * cls.ndim, dtype=np.float64),
+            None,
+            name,
+        )
+
     @override
     @classmethod
     def _from_computed_arrays(
@@ -69,8 +159,23 @@ class FilterObject(SpectralObject):
         uncertainty: Uncertainty | npt.ArrayLike | None,
         name: object = None
     ) -> Self:
-        """ Construction helper for filter profiles; the result is normalized. """
+        """
+        Construction helper for filter profiles; the result is normalized.
+
+        An all-zero result is a degenerate profile (for example a converted
+        stub). It cannot be normalized, so it is kept as a trusted zero instead
+        of failing validation. Rejecting zero *input* profiles is still the
+        constructor's job.
+        """
         _ = uncertainty
+        values = np.asarray(spectral_dist, dtype=np.float64)
+        if not np.any(values):
+            return cls._from_trusted_arrays(
+                np.asarray(wavelength_nm, dtype=wavelength_nm_dtype),
+                values,
+                None,
+                name,
+            )
         return cls(wavelength_nm, spectral_dist, name=name)
 
     def _as_spectral(self) -> Spectrum | SpectralSet:
@@ -168,7 +273,7 @@ class FilterObject(SpectralObject):
         effective shape of the profile between photon and energy counting.
         """
         weighted = self._as_spectral() * self.wavelength_nm
-        return type(self)(weighted.wavelength_nm, weighted.spectral_dist, name=self.name)
+        return self._from_computed_arrays(weighted.wavelength_nm, weighted.spectral_dist, None, self.name)
 
     @override
     def convert_from_photon_spectral_density(self) -> Self:
@@ -177,7 +282,7 @@ class FilterObject(SpectralObject):
         The profile keeps the filter family and stays normalized.
         """
         converted = self._as_spectral().convert_from_photon_spectral_density()
-        return type(self)(converted.wavelength_nm, converted.spectral_dist, name=self.name)
+        return self._from_computed_arrays(converted.wavelength_nm, converted.spectral_dist, None, self.name)
 
     @override
     def convert_from_energy_spectral_density_per_frequency(self) -> Self:
@@ -186,7 +291,7 @@ class FilterObject(SpectralObject):
         The profile keeps the filter family and stays normalized.
         """
         converted = self._as_spectral().convert_from_energy_spectral_density_per_frequency()
-        return type(self)(converted.wavelength_nm, converted.spectral_dist, name=self.name)
+        return self._from_computed_arrays(converted.wavelength_nm, converted.spectral_dist, None, self.name)
 
     @override
     def determine_at_trusted_wavelengths(self,
@@ -247,7 +352,7 @@ class FilterObject(SpectralObject):
 
 class Filter(FilterObject, Spectrum):
     """
-    Stores a filter profile as a normalized, edge-zeroed `Spectrum`.
+    Stores a filter profile as a normalized, zero-edged `Spectrum`.
 
     A `Filter` is created through the classmethod `get()`, which uses an internal cache.
     Direct construction via `__init__()` always creates a new object (no caching).
@@ -279,14 +384,22 @@ class Filter(FilterObject, Spectrum):
         Performs checks for data type and uniformity; interpolates and extrapolates if it is needed.
         An uncertainty cannot be assigned.
 
+        The profile and its wavelength axis must contain only finite values, and
+        the profile must have a positive total integral. Individual negative values
+        are allowed, because published color matching functions are not everywhere
+        positive; for example the Stiles & Burch (1955) 2-degree R function has a
+        deep negative lobe. The profile is normalized by its integral, so its sign
+        is preserved.
+
         Args:
         - `wavelength_nm` (ArrayLike): list of wavelengths in nanometers on an arbitrary grid
         - `spectral_dist` (ArrayLike): normalized transmission profile
         - `name` (object): human-readable identifier
         """
+        self._validate_raw_input(wavelength_nm, spectral_dist, name)
         super().__init__(wavelength_nm, spectral_dist, name=name)
         self.edges_to_zero()
-        self.normalize()
+        self._normalize_filter()
 
     @classmethod
     def _from_normalized_profile(
@@ -296,7 +409,7 @@ class Filter(FilterObject, Spectrum):
         name: object = None
     ) -> Self:
         """
-        Builds a `Filter` from an already normalized, edge-zeroed profile.
+        Builds a `Filter` from an already normalized, zero-edged profile.
 
         Used for profiles extracted from a `FilterSet`; re-normalizing them
         would change the last bits of `float64` and break the round trip
@@ -349,14 +462,19 @@ class FilterSet(FilterObject, SpectralSet):
         Performs checks for data type and uniformity; interpolates and extrapolates if it is needed.
         An uncertainty cannot be assigned.
 
+        Every column is validated as an individual profile: all wavelength and
+        profile values must be finite and each column must have a positive total
+        integral. Negative values inside a column are allowed (see `Filter`).
+
         Args:
         - `wavelength_nm` (ArrayLike): combined spectral axis in nanometers on an arbitrary grid
         - `spectral_dist` (ArrayLike): transmission profile
         - `name` (object): list of filter names or a human-readable identifier
         """
+        self._validate_raw_input(wavelength_nm, spectral_dist, name)
         super().__init__(wavelength_nm, spectral_dist, name=name)
         self.edges_to_zero()
-        self.normalize()
+        self._normalize_filter()
 
     @classmethod
     def _from_normalized_profiles(
@@ -366,7 +484,7 @@ class FilterSet(FilterObject, SpectralSet):
         name: object = None
     ) -> Self:
         """
-        Builds a `FilterSet` from already normalized, edge-zeroed profiles.
+        Builds a `FilterSet` from already normalized, zero-edged profiles.
 
         Used by `from_filters()` and by slicing; re-normalization would change
         the last bits of `float64` and break exact round trips. The caller must

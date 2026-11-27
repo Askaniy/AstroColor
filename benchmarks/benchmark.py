@@ -4,6 +4,7 @@ Performance benchmarks for AstroColor.
 Run from the repository root:
     uv run python benchmarks/benchmark.py
     uv run python benchmarks/benchmark.py --suite 2d3d
+    uv run python benchmarks/benchmark.py --suite construction
     uv run python benchmarks/benchmark.py --suite uncertainty
 """
 
@@ -16,6 +17,7 @@ from typing import cast
 import numpy as np
 
 import astrocolor as ac
+from astrocolor.algebra import div_value
 from astrocolor.config import Config
 
 
@@ -75,6 +77,35 @@ def run_2d3d(repeats: int, seed: int) -> None:
         print(f'{name:36s} {best:10.3f} {med:12.3f}')
 
 
+def run_construction(repeats: int) -> None:
+    """ Times object construction and the hot division/normalization paths. """
+    nm = np.arange(400., 701., 5.)
+    values = np.linspace(1., 2., nm.size)
+    values_2d = np.repeat(values[:, np.newaxis], 100, axis=1)
+    values_cube = np.repeat(values_2d[:, :, np.newaxis], 100, axis=2)
+    spectral_set = ac.SpectralSet(nm, values_2d)
+    v_filter = ac.Filter.get('Generic/Bessell.V')
+    filter_nm = v_filter.wavelength_nm
+    filter_profiles = np.repeat(v_filter.spectral_dist[:, np.newaxis], 3, axis=1)
+
+    workload: dict[str, Callable[[], object]] = {
+        'Spectrum construction': lambda: ac.Spectrum(nm, values),
+        'SpectralSet construction': lambda: ac.SpectralSet(nm, values_2d),
+        'SpectralCube construction': lambda: ac.SpectralCube(nm, values_cube),
+        'Filter construction': lambda: ac.Filter(filter_nm, v_filter.spectral_dist),
+        'FilterSet construction': lambda: ac.FilterSet(filter_nm, filter_profiles),
+        'SpectralSet normalized': spectral_set.normalized,
+        'div_value (61×100)': lambda: div_value(values_2d, values_2d + 1.),
+    }
+
+    print(f'Construction and division: spectra {nm.size} points, filters {filter_nm.size} points, 100×100 spatial, {repeats} repeats')
+    print(f'{"operation":36s} {"best, ms":>10s} {"median, ms":>12s}')
+    print('-' * 60)
+    for name, function in workload.items():
+        best, med = benchmark(function, repeats)
+        print(f'{name:36s} {best:10.3f} {med:12.3f}')
+
+
 def run_uncertainty(repeats: int) -> None:
     nm = np.arange(400., 1001., 5.)
     values = np.linspace(1., 2., nm.size)
@@ -109,7 +140,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     _ = parser.add_argument(
         '--suite',
-        choices=('all', '2d3d', 'uncertainty'),
+        choices=('all', '2d3d', 'construction', 'uncertainty'),
         default='all',
         help='benchmark suite to run (default: all)',
     )
@@ -122,6 +153,10 @@ def main() -> None:
 
     if suite in ('all', '2d3d'):
         run_2d3d(repeats, seed)
+    if suite == 'all':
+        print()
+    if suite in ('all', 'construction'):
+        run_construction(repeats)
     if suite == 'all':
         print()
     if suite in ('all', 'uncertainty'):

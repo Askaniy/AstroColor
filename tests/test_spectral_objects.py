@@ -1,10 +1,11 @@
+import warnings
 from typing import cast
 
 import numpy as np
 import pytest
 
 import astrocolor as ac
-from astrocolor.errors import NonFiniteValuesWarning
+from astrocolor.errors import NonFiniteValuesWarning, SpectralAxisWarning
 
 # === Spectral Objects Creation & Properties Tests ===
 
@@ -149,6 +150,56 @@ class TestNonFiniteValues:
         np.testing.assert_allclose(np.delete(spectrum.standard_deviation, 3), 0.1)
         assert spectrum.covariance_matrix is not None
         assert np.all(np.isfinite(spectrum.covariance_matrix))
+
+
+class TestSpectralAxisWarnings:
+    """ Non-monotonic and duplicate wavelengths used to be repaired silently. """
+
+    def test_unsorted_wavelengths_warn_and_are_sorted(self):
+        with pytest.warns(SpectralAxisWarning, match='not strictly increasing'):
+            spectrum = ac.Spectrum([510, 500, 505], [3., 1., 2.], name='unsorted')
+
+        np.testing.assert_array_equal(spectrum.wavelength_nm, [500, 505, 510])
+        np.testing.assert_allclose(spectrum.spectral_dist, [1., 2., 3.])
+
+    def test_duplicate_wavelengths_warn(self):
+        with pytest.warns(SpectralAxisWarning, match='Duplicate wavelengths'):
+            _ = ac.Spectrum([500, 500, 505], [1., 2., 3.], name='duplicate')
+
+    def test_sorted_spectrum_does_not_warn(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', SpectralAxisWarning)
+            _ = ac.Spectrum([500, 505, 510], [1., 2., 3.], name='sorted')
+
+
+class TestZeroEdged:
+    """ The non-mutating edge helper must leave 2D and 3D sources untouched. """
+
+    def test_spectral_set_zero_edged_does_not_mutate_source(self):
+        nm = np.arange(500, 511, 5)
+        values = np.ones((nm.size, 3))
+        spectral_set = ac.SpectralSet(nm, values)
+
+        result = spectral_set.zero_edged()
+
+        assert spectral_set.spectral_size == nm.size
+        assert not spectral_set.is_zero_edged()
+        assert result.spectral_size == nm.size + 2
+        assert result.is_zero_edged()
+        np.testing.assert_array_equal(spectral_set.spectral_dist, values)
+
+    def test_spectral_cube_zero_edged_does_not_mutate_source(self):
+        nm = np.arange(500, 511, 5)
+        values = np.ones((nm.size, 3, 2))
+        cube = ac.SpectralCube(nm, values)
+
+        result = cube.zero_edged()
+
+        assert cube.spectral_size == nm.size
+        assert not cube.is_zero_edged()
+        assert result.spectral_size == nm.size + 2
+        assert result.is_zero_edged()
+        np.testing.assert_array_equal(cube.spectral_dist, values)
 
 
 class TestHashing:

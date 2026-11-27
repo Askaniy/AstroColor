@@ -12,7 +12,7 @@ class TestGetSpectrometry:
     def test_filter(self, v_filter: ac.Filter):
         spectrum = ac.get_spectrometry(v_filter, ac.visible_range, strictly=True)
         assert spectrum.wavelength_nm.size == ac.visible_range.size
-        spectrum.edges_to_zero()
+        spectrum = spectrum.zero_edged()
         np.testing.assert_equal(spectrum.wavelength_nm, v_filter.wavelength_nm)
         np.testing.assert_allclose(spectrum.spectral_dist, v_filter.spectral_dist)
 
