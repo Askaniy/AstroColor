@@ -16,7 +16,7 @@ object produce compact results. The flag is read at construction/operation
 time; the stored representation of the source object is not changed.
 """
 
-from math import ceil, sqrt
+from math import ceil, prod, sqrt
 from typing import Self, cast, override
 
 import numpy as np
@@ -465,6 +465,41 @@ class Uncertainty:
         return self.from_covariance_unchecked(
             covariance.reshape((self.spectral_size, self.spectral_size, *shape)),
             new_shape,
+        )
+
+    def mean_spatial(self) -> Self:
+        """
+        Reduces the uncertainty for the mean over all spatial axes.
+
+        Spatial elements are treated as independent because the representation
+        does not store spatial covariances, so for `P` elements
+        `C_mean = mean_p(C_p) / P`. The spectral representation is preserved:
+        compact variances stay compact and a full covariance stays full. With
+        `Config.ignore_correlations` enabled, the result is always compact.
+
+        Raises:
+        - `ValueError`: if a spatial axis is empty.
+        """
+        if not self.spatial_shape:
+            return self.compact()
+        pixel_count = prod(self.spatial_shape)
+        if pixel_count < 1:
+            raise ValueError('Cannot average uncertainty over an empty spatial axis')
+        new_shape = (self.spectral_size,)
+        if Config.ignore_correlations or self._variance is not None:
+            variance = self.variance
+            axes = tuple(range(1, variance.ndim))
+            averaged = np.mean(variance, axis=axes) / pixel_count
+            return self.from_variance_unchecked(averaged, new_shape)
+        covariance = cast(npt.NDArray[np.floating], self._covariance_matrix)
+        if covariance.ndim == 2:
+            # The same matrix is shared by every spatial element.
+            averaged_covariance = covariance / pixel_count
+        else:
+            axes = tuple(range(2, covariance.ndim))
+            averaged_covariance = np.mean(covariance, axis=axes) / pixel_count
+        return self.from_covariance_unchecked(
+            cast(npt.NDArray[np.floating], averaged_covariance), new_shape
         )
 
     def pad_spectral(self, *, left: bool) -> Self:

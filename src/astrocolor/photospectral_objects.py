@@ -6,6 +6,7 @@ Photometric measurements through filter sets.
 data. Multiplication and division operate on reconstructed spectra.
 """
 
+import warnings
 from copy import deepcopy
 from typing import Self, cast, override
 
@@ -26,7 +27,9 @@ from .core import (
 from .errors import (
     InconsistentAxesError,
     InconsistentDimensionError,
+    UncertaintyLossWarning,
     non_finite_values_warning,
+    uncertainty_loss_warning,
 )
 
 # No dependency on .spectral_objects to avoid a cycle!
@@ -196,6 +199,10 @@ class PhotospectralObject(BaseObject):
         `Spectrum`/`SpectralSet`/`SpectralCube` before being observed through
         `self.filter_set`. The final `get_photometry()` therefore always measures
         the product spectrum itself.
+
+        Uncertainty is combined when both operands are 1D. If the operation or
+        an operand's reconstruction loses uncertainty, the operation emits a
+        single `UncertaintyLossWarning`.
         """
         from .measurements import get_photometry, get_spectrometry
         from .spectral_objects import (
@@ -211,18 +218,37 @@ class PhotospectralObject(BaseObject):
         filter_set = self.filter_set
         target_nm = filter_set.wavelength_nm
 
-        left = get_spectrometry(self, target_nm, strictly=True)
-        right = get_spectrometry(other, target_nm, strictly=True)
+        left_uncertainty = self.uncertainty
+        right_uncertainty = other.uncertainty
+        # One user-visible operation should produce at most one loss warning.
+        # Reconstruction may already warn for an operand, so suppress those
+        # warnings here and decide below whether any uncertainty was lost.
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', UncertaintyLossWarning)
+            left = get_spectrometry(self, target_nm, strictly=True)
+            right = get_spectrometry(other, target_nm, strictly=True)
         left_value, right_value = make_same_ndim(left.spectral_dist, right.spectral_dist)
         value = value_handling(left_value, right_value)
-        # Confidence bands for spectral sets and cubes are not computed by the reconstruction.
+        higher = left if left.ndim >= right.ndim else right
         uncertainty = None
         if left.ndim == 1 and right.ndim == 1:
             uncertainty = uncertainty_handling(
                 left.spectral_dist, left.uncertainty,
                 right.spectral_dist, right.uncertainty,
             )
-        higher = left if left.ndim >= right.ndim else right
+        loses_uncertainty = (
+            (left_uncertainty is not None and left.uncertainty is None)
+            or (right_uncertainty is not None and right.uncertainty is None)
+        )
+        if higher.ndim > 1:
+            # The operation itself cannot carry per-pixel confidence bands.
+            loses_uncertainty = (
+                loses_uncertainty
+                or left.uncertainty is not None
+                or right.uncertainty is not None
+            )
+        if loses_uncertainty:
+            uncertainty_loss_warning('the spectral operation', higher.name)
         product_class = (Spectrum, SpectralSet, SpectralCube)[higher.ndim - 1]
         product = product_class(target_nm, value, uncertainty, name=higher.name)
         return get_photometry(product, filter_set)

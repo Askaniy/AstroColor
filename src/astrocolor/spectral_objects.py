@@ -48,6 +48,7 @@ from .errors import (
     empty_spectral_intersection_warning,
     erasing_correlations_warning,
     non_finite_values_warning,
+    uncertainty_loss_warning,
     zero_brightness_warning,
 )
 from .uncertainty import Uncertainty
@@ -367,8 +368,12 @@ class SpectralObject(BaseObject):
         return (self / scale_factors).normalized()
 
     def mean_spectrum(self) -> 'Spectrum':
-        """ Returns the mean spectrum along the spatial axes """
-        # TODO: add cov matrix
+        """
+        Returns the mean spectrum along the spatial axes.
+
+        The uncertainty is propagated under the existing assumption that
+        spatial elements are independent: `C_mean = mean_p(C_p) / P`.
+        """
         match self.ndim:
             case 1:
                 sd = self.spectral_dist
@@ -378,10 +383,19 @@ class SpectralObject(BaseObject):
                 sd = np.mean(self.spectral_dist, axis=(1, 2))
             case _:
                 raise UnsupportedDimensionError(self.ndim, name=self.name)
-        return Spectrum(self.wavelength_nm, sd, name=self.name)
+        uncertainty = None
+        if self.uncertainty is not None:
+            uncertainty = self.uncertainty.mean_spatial()
+        return Spectrum(self.wavelength_nm, sd, uncertainty, name=self.name)
 
     def median_spectrum(self) -> 'Spectrum':
-        """ Returns the median spectrum along the spatial axes """
+        """
+        Returns the median spectrum along the spatial axes.
+
+        The median is not a linear operator, so uncertainty is preserved only
+        when there is a single spatial element: a spectrum, or a set/cube with
+        one pixel. For larger sets and cubes it is dropped with a warning.
+        """
         match self.ndim:
             case 1:
                 sd = self.spectral_dist
@@ -391,7 +405,13 @@ class SpectralObject(BaseObject):
                 sd = np.median(self.spectral_dist, axis=(1, 2))
             case _:
                 raise UnsupportedDimensionError(self.ndim, name=self.name)
-        return Spectrum(self.wavelength_nm, sd, name=self.name)
+        uncertainty = None
+        if self.uncertainty is not None:
+            if self.spatial_size == 1:
+                uncertainty = self.uncertainty.mean_spatial()
+            else:
+                uncertainty_loss_warning('`median_spectrum()`', self.name)
+        return Spectrum(self.wavelength_nm, sd, uncertainty, name=self.name)
 
     def mean_nm(self) -> float | npt.NDArray[np.floating]:
         """

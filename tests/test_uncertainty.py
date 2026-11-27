@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 import astrocolor as ac
@@ -7,6 +8,7 @@ from astrocolor.errors import (
     NegativeStandardDeviationError,
     NegativeVarianceError,
     NonFiniteCovarianceError,
+    UncertaintyLossWarning,
 )
 from astrocolor.uncertainty import Uncertainty, combine_covariance_terms
 
@@ -425,3 +427,325 @@ def test_combine_covariance_terms_handles_large_scalar_weights():
 
     assert result is not None
     assert np.isinf(result)
+
+
+class TestMeanSpectrumUncertainty:
+    """ Spatial aggregation must not lose the spectral uncertainty. """
+
+    def test_mean_spectrum_preserves_spectral_uncertainty(self):
+        nm = np.arange(500, 551, 5)
+        std = np.linspace(0.1, 0.5, nm.size)
+        obj = ac.Spectrum(nm, np.ones(nm.size), std)
+
+        result = obj.mean_spectrum()
+
+        assert result.uncertainty is not None
+        result_std = result.standard_deviation
+        assert result_std is not None
+        np.testing.assert_allclose(result_std, std)
+        np.testing.assert_array_equal(result.spectral_dist, obj.spectral_dist)
+
+    def test_mean_spectrum_preserves_1d_covariance(self):
+        nm = np.arange(500, 531, 5)
+        covariance = np.eye(nm.size) * 0.1
+        covariance[0, 1] = covariance[1, 0] = 0.02
+        obj = ac.Spectrum(nm, np.ones(nm.size), covariance)
+
+        result = obj.mean_spectrum()
+
+        assert result.uncertainty is not None
+        assert result.uncertainty.is_covariance
+        result_covariance = result.covariance_matrix
+        assert result_covariance is not None
+        np.testing.assert_allclose(result_covariance, covariance)
+
+    def test_mean_spectrum_averages_independent_pixels(self):
+        nm = np.arange(500, 551, 5)
+        std = np.linspace(0.1, 0.5, nm.size)[:, np.newaxis] * np.array([1., 2., 3.])[np.newaxis, :]
+        obj = ac.SpectralSet(nm, np.ones((nm.size, 3)), std)
+
+        result = obj.mean_spectrum()
+
+        assert result.uncertainty is not None
+        assert not result.uncertainty.is_covariance
+        expected_variance = np.mean(std**2, axis=1) / 3
+        np.testing.assert_allclose(result.uncertainty.variance, expected_variance)
+
+    def test_mean_spectrum_preserves_full_spectral_covariance(self):
+        nm = np.arange(500, 531, 5)
+        n = nm.size
+        rng = np.random.default_rng(0)
+        base = rng.normal(size=(n, n))
+        covariance = np.stack(
+            [
+                (base @ base.T) / n + np.eye(n) * (0.1 + 0.01 * pixel)
+                for pixel in range(4)
+            ],
+            axis=2,
+        )
+        obj = ac.SpectralSet(nm, np.ones((n, 4)), covariance)
+
+        result = obj.mean_spectrum()
+
+        assert result.uncertainty is not None
+        assert result.uncertainty.is_covariance
+        result_covariance = result.covariance_matrix
+        assert result_covariance is not None
+        np.testing.assert_allclose(result_covariance, covariance.mean(axis=2) / 4)
+
+    def test_mean_spectrum_divides_shared_covariance_by_pixel_count(self):
+        nm = np.arange(500, 531, 5)
+        rng = np.random.default_rng(1)
+        base = rng.normal(size=(nm.size, nm.size))
+        covariance = (base @ base.T) / nm.size + np.eye(nm.size) * 0.1
+        obj = ac.SpectralSet(nm, np.ones((nm.size, 4)), covariance)
+
+        result = obj.mean_spectrum()
+
+        assert result.uncertainty is not None
+        assert result.uncertainty.is_covariance
+        result_covariance = result.covariance_matrix
+        assert result_covariance is not None
+        np.testing.assert_allclose(result_covariance, covariance / 4)
+
+    def test_mean_spectrum_averages_cube_variance(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(ac.Config, 'ignore_uncertainty_for_cubes', False)
+        nm = np.arange(500, 531, 5)
+        std = np.full((nm.size, 2, 3), 0.1)
+        cube = ac.SpectralCube(nm, np.ones((nm.size, 2, 3)), std)
+
+        result = cube.mean_spectrum()
+
+        assert result.uncertainty is not None
+        assert not result.uncertainty.is_covariance
+        np.testing.assert_allclose(result.uncertainty.variance, np.mean(std**2, axis=(1, 2)) / 6)
+
+    def test_mean_spectrum_compacts_covariance_when_correlations_are_ignored(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        nm = np.arange(500, 531, 5)
+        rng = np.random.default_rng(2)
+        base = rng.normal(size=(nm.size, nm.size))
+        covariance = np.stack(
+            [
+                (base @ base.T) / nm.size + np.eye(nm.size) * (0.1 + 0.01 * pixel)
+                for pixel in range(4)
+            ],
+            axis=2,
+        )
+        obj = ac.SpectralSet(nm, np.ones((nm.size, 4)), covariance)
+        assert obj.uncertainty is not None
+        assert obj.uncertainty.is_covariance
+
+        monkeypatch.setattr(ac.Config, 'ignore_correlations', True)
+        result = obj.mean_spectrum()
+
+        assert result.uncertainty is not None
+        assert not result.uncertainty.is_covariance
+        diagonal: npt.NDArray[np.floating] = np.diagonal(
+            covariance, axis1=0, axis2=1
+        ).T
+        expected = diagonal.mean(axis=1) / 4
+        np.testing.assert_allclose(result.uncertainty.variance, expected)
+
+    def test_mean_spatial_rejects_empty_spatial_axis(self):
+        uncertainty = Uncertainty.from_standard_deviation(
+            np.ones((5, 0)), (5, 0)
+        )
+
+        with pytest.raises(ValueError, match='empty spatial'):
+            _ = uncertainty.mean_spatial()
+
+
+class TestMedianSpectrumUncertainty:
+    """ The median is nonlinear, so only one spatial element can preserve uncertainty. """
+
+    def test_median_spectrum_preserves_1d_uncertainty(self):
+        nm = np.arange(500, 551, 5)
+        std = np.linspace(0.1, 0.5, nm.size)
+        obj = ac.Spectrum(nm, np.ones(nm.size), std)
+
+        result = obj.median_spectrum()
+
+        assert result.uncertainty is not None
+        result_std = result.standard_deviation
+        assert result_std is not None
+        np.testing.assert_allclose(result_std, std)
+
+    def test_median_spectrum_preserves_1d_covariance(self):
+        nm = np.arange(500, 531, 5)
+        covariance = np.eye(nm.size) * 0.1
+        covariance[0, 1] = covariance[1, 0] = 0.02
+        obj = ac.Spectrum(nm, np.ones(nm.size), covariance)
+
+        result = obj.median_spectrum()
+
+        assert result.uncertainty is not None
+        assert result.uncertainty.is_covariance
+        result_covariance = result.covariance_matrix
+        assert result_covariance is not None
+        np.testing.assert_allclose(result_covariance, covariance)
+
+    def test_median_spectrum_preserves_single_pixel_set_uncertainty(self):
+        nm = np.arange(500, 531, 5)
+        std = np.full((nm.size, 1), 0.1)
+        obj = ac.SpectralSet(nm, np.ones((nm.size, 1)), std)
+
+        result = obj.median_spectrum()
+
+        assert result.uncertainty is not None
+        result_std = result.standard_deviation
+        assert result_std is not None
+        np.testing.assert_allclose(result_std, std[:, 0])
+
+    def test_median_spectrum_reduces_single_pixel_covariance_shape(self):
+        nm = np.arange(500, 531, 5)
+        covariance = np.eye(nm.size) * 0.1
+        obj = ac.SpectralSet(
+            nm, np.ones((nm.size, 1)), covariance[:, :, np.newaxis]
+        )
+
+        result = obj.median_spectrum()
+
+        assert result.uncertainty is not None
+        assert result.uncertainty.is_covariance
+        result_covariance = result.covariance_matrix
+        assert result_covariance is not None
+        np.testing.assert_allclose(result_covariance, covariance)
+
+    def test_median_spectrum_preserves_single_pixel_cube_uncertainty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(ac.Config, 'ignore_uncertainty_for_cubes', False)
+        nm = np.arange(500, 531, 5)
+        std = np.full((nm.size, 1, 1), 0.1)
+        obj = ac.SpectralCube(nm, np.ones((nm.size, 1, 1)), std)
+
+        result = obj.median_spectrum()
+
+        assert result.uncertainty is not None
+        result_std = result.standard_deviation
+        assert result_std is not None
+        np.testing.assert_allclose(result_std, std[:, 0, 0])
+
+    def test_median_spectrum_warns_and_drops_spatial_uncertainty(self):
+        nm = np.arange(500, 551, 5)
+        std = np.full((nm.size, 3), 0.1)
+        obj = ac.SpectralSet(nm, np.ones((nm.size, 3)), std)
+
+        with pytest.warns(UncertaintyLossWarning, match='median_spectrum'):
+            result = obj.median_spectrum()
+
+        assert result.uncertainty is None
+
+
+class TestSpectralOperationUncertaintyLoss:
+    """ 2D/3D confidence bands are not reconstructed: the loss must be explicit. """
+
+    def test_reconstruction_warns_for_set_uncertainty(self, ubv_filterset: ac.FilterSet):
+        photometry = ac.PhotospectralSet(
+            ubv_filterset, np.ones((3, 2)), np.full((3, 2), 0.1)
+        )
+
+        with pytest.warns(UncertaintyLossWarning, match='reconstruct_from_photometry'):
+            reconstructed = ac.get_spectrometry(
+                photometry, ubv_filterset.wavelength_nm, strictly=True
+            )
+
+        assert reconstructed.uncertainty is None
+
+    def test_reconstruction_warns_for_single_filter_spectrum(self):
+        filter_set = ac.FilterSet.get('Generic/Bessell.V')
+        photometry = ac.Photospectrum(filter_set, [1.0], [0.1])
+
+        with pytest.warns(UncertaintyLossWarning, match='single-filter'):
+            reconstructed = ac.get_spectrometry(
+                photometry, filter_set.wavelength_nm, strictly=True
+            )
+
+        assert reconstructed.uncertainty is None
+
+    def test_reconstruction_supports_single_filter_set(self):
+        filter_set = ac.FilterSet.get('Generic/Bessell.V')
+        photometry = ac.PhotospectralSet(
+            filter_set, np.ones((1, 2)), np.full((1, 2), 0.1)
+        )
+
+        with pytest.warns(UncertaintyLossWarning, match='reconstruct_from_photometry'):
+            reconstructed = ac.get_spectrometry(
+                photometry, filter_set.wavelength_nm, strictly=True
+            )
+
+        assert reconstructed.spectral_dist.shape == (filter_set.wavelength_nm.size, 2)
+        assert reconstructed.uncertainty is None
+
+    def test_spectral_operation_warns_for_2d_uncertainty(self, ubv_filterset: ac.FilterSet):
+        nm = ubv_filterset.wavelength_nm
+        # The photometry itself has no uncertainty: the only possible loss is
+        # the uncertainty of the spectral operand of the product.
+        photometry = ac.PhotospectralSet(ubv_filterset, np.ones((3, 2)))
+        spectra = ac.SpectralSet(
+            nm, np.ones((nm.size, 2)), np.full((nm.size, 2), 0.1)
+        )
+
+        with pytest.warns(UncertaintyLossWarning, match='spectral operation'):
+            result = photometry * spectra
+
+        assert result.uncertainty is None
+
+    def test_spectral_operation_warns_once_for_reconstruction_loss(
+        self, ubv_filterset: ac.FilterSet
+    ):
+        nm = ubv_filterset.wavelength_nm
+        photometry = ac.PhotospectralSet(
+            ubv_filterset, np.ones((3, 2)), np.full((3, 2), 0.1)
+        )
+        spectra = ac.SpectralSet(
+            nm, np.ones((nm.size, 2)), np.full((nm.size, 2), 0.1)
+        )
+
+        with pytest.warns(UncertaintyLossWarning, match='spectral operation') as record:
+            result = photometry * spectra
+
+        loss_warnings = [
+            warning for warning in record
+            if isinstance(warning.message, UncertaintyLossWarning)
+        ]
+        assert len(loss_warnings) == 1
+        assert result.uncertainty is None
+
+    def test_spectral_operation_warns_once_for_two_photometry_operands(
+        self, ubv_filterset: ac.FilterSet
+    ):
+        left = ac.PhotospectralSet(
+            ubv_filterset, np.ones((3, 2)), np.full((3, 2), 0.1)
+        )
+        right = ac.PhotospectralSet(
+            ubv_filterset, np.ones((3, 2)), np.full((3, 2), 0.1)
+        )
+
+        with pytest.warns(UncertaintyLossWarning, match='spectral operation') as record:
+            result = left * right
+
+        loss_warnings = [
+            warning for warning in record
+            if isinstance(warning.message, UncertaintyLossWarning)
+        ]
+        assert len(loss_warnings) == 1
+        assert result.uncertainty is None
+
+    def test_spectral_operation_warns_for_single_filter_operand(self):
+        filter_set = ac.FilterSet.get('Generic/Bessell.V')
+        nm = filter_set.wavelength_nm
+        photometry = ac.Photospectrum(filter_set, [1.0], [0.1])
+        spectrum = ac.Spectrum(nm, np.ones(nm.size), np.full(nm.size, 0.1))
+
+        with pytest.warns(UncertaintyLossWarning, match='spectral operation') as record:
+            result = photometry * spectrum
+
+        loss_warnings = [
+            warning for warning in record
+            if isinstance(warning.message, UncertaintyLossWarning)
+        ]
+        assert len(loss_warnings) == 1
+        assert result.uncertainty is not None

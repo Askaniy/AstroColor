@@ -19,7 +19,7 @@ from scipy.optimize import (
 
 from .auxiliary import smoothness_matrix
 from .config import Config
-from .errors import UnsupportedDimensionError
+from .errors import UnsupportedDimensionError, uncertainty_loss_warning
 from .measurements import get_spectrometry
 from .photospectral_objects import PhotospectralObject
 from .spectral_objects import SpectralCube, SpectralObject, SpectralSet, Spectrum
@@ -46,7 +46,11 @@ def reconstruct_from_photometry(
     and second-order differential operators for the Tikhonov matrix.
     That is, it tries to minimize height variations and curvature in the spectrum.
 
-    Confidence bands are computed only for 1D spectra.
+    Confidence bands are computed only for 1D spectra reconstructed from at
+    least two filters. Sets and cubes drop the uncertainty with an
+    `UncertaintyLossWarning` because a full per-pixel reconstructed covariance
+    would require `O(n² · pixels)` memory; a single-filter 1D reconstruction
+    cannot constrain the spectral shape and also drops it.
     """
     br0 = photospectral_obj.spectral_dist
     filter_set = get_spectrometry(
@@ -61,8 +65,9 @@ def reconstruct_from_photometry(
         cov0 = photospectral_obj.uncertainty
     cov1: Uncertainty | None = None
     if len(filter_set) == 1:
-        # single-point PhotospectralObject support
-        br1 = np.full((nm1.size, 1, 1)[:photospectral_obj.ndim], br0) # not tested
+        # single-filter PhotospectralObject support
+        target_shape = (nm1.size, *photospectral_obj.spatial_shape)
+        br1 = np.broadcast_to(br0, target_shape).copy()
     else:
         filter_matrix = filter_set.matrix
         m_size = cast(int, filter_matrix.shape[0])
@@ -122,6 +127,13 @@ def reconstruct_from_photometry(
             operator = right_matrix_inv @ filter_matrix.T
             cov1 = cov0.propagate(operator)
             #cov1 = filter_matrix.T @ cov0 @ filter_matrix + tikhonov_matrix # doesn't work
+    if cov0 is not None and (photospectral_obj.ndim > 1 or len(filter_set) == 1):
+        operation = (
+            '`reconstruct_from_photometry()` for spectral sets and cubes'
+            if photospectral_obj.ndim > 1
+            else '`reconstruct_from_photometry()` for a single-filter spectrum'
+        )
+        uncertainty_loss_warning(operation, photospectral_obj.name)
     try:
         target_class = (Spectrum, SpectralSet, SpectralCube)[photospectral_obj.ndim - 1]
     except IndexError:

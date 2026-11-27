@@ -1,4 +1,5 @@
-"""High-level representation of celestial bodies from database-style input.
+"""
+High-level representation of celestial bodies from database-style input.
 
 `CelestialObject` parses TrueColorTools-style records into continuous or
 photometric data, builds geometric and spherical albedo, and selects a

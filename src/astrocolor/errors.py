@@ -109,6 +109,13 @@ def missing_derivative_warning(function: str, name: object = None):
     msg = f'{function} does not provide an analytic derivative; the display uncertainty is unavailable'
     warnings.warn(msg + _name_suffix(name) + '.', MissingDerivativeWarning, stacklevel=2)
 
+class UncertaintyLossWarning(UserWarning):
+    pass
+
+def uncertainty_loss_warning(operation: str, name: object = None) -> None:
+    msg = f'The uncertainty is not propagated through {operation}; the result has incomplete or no uncertainty'
+    warnings.warn(msg + _name_suffix(name) + '.', UncertaintyLossWarning, stacklevel=2)
+
 class SpatialAxisWarning(UserWarning):
     pass
 

@@ -189,6 +189,8 @@ Spectral objects, photospectral objects and color objects accept either standard
 
 `standard_deviation` and `covariance_matrix` are read-only properties. `covariance_matrix` materializes a full array on access, but does not change the compact representation.
 
+`mean_spectrum()` keeps the uncertainty of a set or cube that carries one, treating spatial elements as independent: `C_mean = mean_p(C_p) / P`. `median_spectrum()` preserves it for a single spatial element; for larger sets and cubes the median is nonlinear, so the uncertainty is dropped with a warning.
+
 `scale_to_match_value()` accepts `[value, std]` and propagates `std` as a fully correlated (rank-one) covariance component: a common multiplicative error of the scaled spectrum. Such an error cancels in scale-invariant quantities, including color indices, but contributes to absolute brightness. Albedo constraints in `CelestialObject` use the same path, so `bond_albedo=[value, std]` adds a common multiplicative component to the resulting covariance.
 
 `ColorObject.render()` returns display values together with their `Uncertainty` (`None` when the object has none). Covariance is propagated through the color-system conversion, brightness normalization, scaling and the transfer function; the normalization factor is treated as a constant.
