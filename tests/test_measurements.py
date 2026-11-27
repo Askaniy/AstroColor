@@ -1,6 +1,10 @@
+from typing import cast
+
 import numpy as np
+import pytest
 
 import astrocolor as ac
+from astrocolor.errors import NegativeStandardDeviationError
 
 
 class TestGetSpectrometry:
@@ -93,3 +97,81 @@ class TestGetPhotometry:
             [4.094111e-11, 6.374534e-11, 3.626637e-11],
             rtol=0.001,
         )
+
+
+class TestScaleToMatchValue:
+
+    def test_requested_std_adds_rank_one_covariance(self, v_filter: ac.Filter):
+        nm = v_filter.wavelength_nm
+        spectral_dist = np.linspace(1., 2., nm.size)
+        std = np.full(nm.size, 0.01)
+        spectrum = ac.Spectrum(nm, spectral_dist, std)
+        current_value, _ = ac.get_photometry(spectrum, v_filter)
+        result = ac.scale_to_match_value(spectrum, v_filter, (0.5, 0.05))
+        assert result.uncertainty is not None
+        assert result.uncertainty.is_covariance
+        covariance = result.covariance_matrix
+        assert covariance is not None
+        factor = 0.5 / current_value
+        shape = spectral_dist / current_value
+        expected = factor**2 * np.diag(std**2) + 0.05**2 * np.outer(shape, shape)
+        np.testing.assert_allclose(covariance, expected)
+        # The added scale term is a rank-one common mode.
+        scale_term = np.asarray(covariance, dtype=np.float64) - factor**2 * np.diag(std**2)
+        assert np.linalg.matrix_rank(scale_term) == 1
+        diagonal = np.sqrt(np.diag(scale_term))
+        np.testing.assert_allclose(
+            scale_term / np.outer(diagonal, diagonal),
+            np.ones_like(scale_term),
+        )
+
+    def test_value_without_std_keeps_compact_uncertainty(self, v_filter: ac.Filter):
+        nm = v_filter.wavelength_nm
+        std = np.full(nm.size, 0.01)
+        spectrum = ac.Spectrum(nm, np.linspace(1., 2., nm.size), std)
+        current_value, _ = ac.get_photometry(spectrum, v_filter)
+        result = ac.scale_to_match_value(spectrum, v_filter, 0.5)
+        assert result.uncertainty is not None
+        assert not result.uncertainty.is_covariance
+        covariance = result.covariance_matrix
+        assert covariance is not None
+        np.testing.assert_allclose(
+            covariance,
+            (0.5 / current_value)**2 * np.diag(std**2),
+        )
+
+    def test_std_is_a_common_mode_that_cancels_in_color_index(self, v_filter: ac.Filter):
+        filter_set = ac.FilterSet.get(
+            'Generic/Bessell.B', 'Generic/Bessell.V', 'Generic/Bessell.R'
+        )
+        spectrum = ac.Spectrum(filter_set.wavelength_nm, np.ones(filter_set.wavelength_nm.size))
+        photometry = ac.get_photometry(spectrum, filter_set)
+        scaled = ac.scale_to_match_value(photometry, v_filter, (0.5, 0.05))
+        assert scaled.uncertainty is not None
+        covariance = scaled.covariance_matrix
+        assert covariance is not None
+        covariance = np.asarray(covariance, dtype=np.float64)
+        assert np.linalg.matrix_rank(covariance) == 1
+        flux = np.asarray(scaled.spectral_dist, dtype=np.float64)
+        # The B-V magnitude difference is invariant under a common scaling.
+        variance = cast(
+            float,
+            covariance[0, 0] / flux[0]**2
+            + covariance[1, 1] / flux[1]**2
+            - 2 * covariance[0, 1] / (flux[0] * flux[1]),
+        )
+        assert variance == pytest.approx(0., abs=1e-15)
+        # Absolute brightness at the constraining filter keeps the requested error.
+        _, photometric_variance = ac.get_photometry(scaled, v_filter)
+        assert photometric_variance is not None
+        assert photometric_variance == pytest.approx(0.05**2, rel=1e-6)
+
+    def test_negative_requested_std_is_rejected(self, v_filter: ac.Filter):
+        spectrum = ac.Spectrum(v_filter.wavelength_nm, np.ones(v_filter.wavelength_nm.size))
+        with pytest.raises(NegativeStandardDeviationError):
+            _ = ac.scale_to_match_value(spectrum, v_filter, (0.5, -0.05))
+
+    def test_non_finite_requested_std_is_rejected(self, v_filter: ac.Filter):
+        spectrum = ac.Spectrum(v_filter.wavelength_nm, np.ones(v_filter.wavelength_nm.size))
+        with pytest.raises(ValueError, match='finite'):
+            _ = ac.scale_to_match_value(spectrum, v_filter, (0.5, float('nan')))

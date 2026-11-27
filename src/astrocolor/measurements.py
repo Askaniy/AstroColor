@@ -16,9 +16,11 @@ import numpy.typing as npt
 
 from astrocolor.errors import (
     InconsistentAxesError,
+    NegativeStandardDeviationError,
     UnsupportedDimensionError,
 )
 
+from .auxiliary import parse_value_std
 from .filter_objects import Filter, FilterSet
 from .photospectral_objects import (
     PhotospectralCube,
@@ -273,11 +275,17 @@ def get_photometry(
 def scale_to_match_value(
     spectral_data: Spectrum | Photospectrum,
     filter_or_nm: Filter | str | float,
-    requested_value: float | tuple[float, float | None] = 1
+    requested_value: float | Sequence[float | None] = 1
 ) -> Spectrum | Photospectrum:
     """
     Returns a new object that matches the query brightness value (1 by default)
     at the specified filter or wavelength.
+
+    If the requested value contains a standard deviation, it is propagated as a
+    fully correlated (rank-one) covariance component, i.e. a common
+    multiplicative error of the scaled spectrum. Such an error cancels in
+    scale-invariant quantities, including color indices, but contributes to
+    absolute brightness.
     """
     # Input data preparation
     bandpass = None
@@ -290,12 +298,41 @@ def scale_to_match_value(
             bandpass = Filter.monochromatic(filter_or_nm)
     if not isinstance(bandpass, Filter):  # pyright: ignore[reportUnnecessaryIsInstance]
         raise TypeError('The input cannot be used to set a filter object!')
+    if isinstance(requested_value, int | float):
+        value, value_std = float(requested_value), None
+    else:
+        value, value_std = parse_value_std(
+            cast(Sequence[float], requested_value)
+        )
+    if value_std is not None:
+        if not np.isfinite(value_std):
+            raise ValueError(
+                f'Requested standard deviation must be finite, not {value_std}'
+            )
+        if value_std < 0:
+            raise NegativeStandardDeviationError(spectral_data.name)
     # Synthetic measurement
     current_value, _ = get_photometry(spectral_data, bandpass)
     if current_value <= 0:
         # Prevents errors of dividing by zero and inversion
         return spectral_data
-    if isinstance(requested_value, Sequence):
-        requested_value = requested_value[0] # likely a [value, std]
-    # TODO: process std?
-    return spectral_data * (requested_value / current_value)
+    output = spectral_data * (value / current_value)
+    if value_std is not None and value_std > 0:
+        # A common multiplicative error: all spectral points are scaled by the
+        # same random factor, so the covariance is rank-one.
+        shape = cast(
+            npt.NDArray[np.floating],
+            np.asarray(spectral_data.spectral_dist, dtype=np.float64),
+        ) / current_value
+        amplitude = value_std * shape
+        scale_covariance = np.outer(amplitude, amplitude)
+        if output.uncertainty is None:
+            output.uncertainty = Uncertainty.from_covariance(
+                scale_covariance, output.spectral_dist.shape, output.name
+            )
+        else:
+            covariance = output.uncertainty.covariance_matrix + scale_covariance
+            output.uncertainty = Uncertainty.from_covariance(
+                covariance, output.spectral_dist.shape, output.name
+            )
+    return output

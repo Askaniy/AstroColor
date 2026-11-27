@@ -402,6 +402,22 @@ class TestAlbedo:
         sun = solar_filter()
         assert photometry(obj.spectral_data_spherical, sun) == pytest.approx(0.25)
 
+    def test_bond_albedo_std_is_propagated(self):
+        sun = solar_filter()
+        nm = sun.wavelength_nm
+        obj = ac.CelestialObject(
+            'test',
+            wavelength_nm=nm,
+            spectral_dist=np.ones(nm.size),
+            bond_albedo=[0.25, 0.01]
+        )
+        spherical = obj.spectral_data_spherical
+        assert spherical is not None
+        assert spherical.uncertainty is not None
+        assert spherical.uncertainty.is_covariance
+        _, variance = ac.get_photometry(spherical, sun)
+        assert variance == pytest.approx(0.01**2)
+
     def test_bond_albedo_with_photospectrum(self):
         obj = ac.CelestialObject(
             'test',
