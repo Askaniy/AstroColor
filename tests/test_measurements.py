@@ -1,10 +1,12 @@
-from typing import cast
+from typing import assert_type, cast
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 import astrocolor as ac
 from astrocolor.errors import NegativeStandardDeviationError
+from astrocolor.spectral_objects import SpectralObject
 
 
 class TestGetSpectrometry:
@@ -56,17 +58,36 @@ class TestGetSpectrometry:
 class TestGetPhotometry:
 
     def test_stub_and_possibility(self):
-        assert isinstance(ac.get_photometry(ac.Spectrum.stub(), ac.Filter.stub()), tuple)
+        spectrum_value, spectrum_error = ac.get_photometry(ac.Spectrum.stub(), ac.Filter.stub())
+        _ = assert_type(spectrum_value, float)
+        _ = assert_type(spectrum_error, float | None)
+        set_value, set_error = ac.get_photometry(ac.SpectralSet.stub(), ac.Filter.stub())
+        _ = assert_type(set_value, npt.NDArray[np.floating])
+        _ = assert_type(set_error, npt.NDArray[np.floating] | None)
+        assert set_value.shape == (1,)
+        cube_value, _ = ac.get_photometry(ac.SpectralCube.stub(), ac.Filter.stub())
+        _ = assert_type(cube_value, npt.NDArray[np.floating])
+        assert cube_value.shape == (1, 1)
+        photospectral_value, _ = ac.get_photometry(ac.Photospectrum.stub(), ac.Filter.stub())
+        _ = assert_type(photospectral_value, float)
+        photoset_value, _ = ac.get_photometry(ac.PhotospectralSet.stub(), ac.Filter.stub())
+        _ = assert_type(photoset_value, npt.NDArray[np.floating])
+        assert photoset_value.shape == (1,)
+        photocube_value, _ = ac.get_photometry(ac.PhotospectralCube.stub(), ac.Filter.stub())
+        _ = assert_type(photocube_value, npt.NDArray[np.floating])
+        assert photocube_value.shape == (1, 1)
+        # A generic target must resolve to the union, not to a missing overload.
+        generic_value, generic_error = ac.get_photometry(
+            cast(SpectralObject, ac.SpectralCube.stub()), ac.Filter.stub()
+        )
+        _ = assert_type(generic_value, float | npt.NDArray[np.floating])
+        _ = assert_type(generic_error, float | npt.NDArray[np.floating] | None)
+
         assert isinstance(ac.get_photometry(ac.Spectrum.stub(), ac.FilterSet.stub()), ac.Photospectrum)
-        assert isinstance(ac.get_photometry(ac.SpectralSet.stub(), ac.Filter.stub()), tuple)
         assert isinstance(ac.get_photometry(ac.SpectralSet.stub(), ac.FilterSet.stub()), ac.PhotospectralSet)
-        assert isinstance(ac.get_photometry(ac.SpectralCube.stub(), ac.Filter.stub()), tuple)
         assert isinstance(ac.get_photometry(ac.SpectralCube.stub(), ac.FilterSet.stub()), ac.PhotospectralCube)
-        assert isinstance(ac.get_photometry(ac.Photospectrum.stub(), ac.Filter.stub()), tuple)
         assert isinstance(ac.get_photometry(ac.Photospectrum.stub(), ac.FilterSet.stub()), ac.Photospectrum)
-        assert isinstance(ac.get_photometry(ac.PhotospectralSet.stub(), ac.Filter.stub()), tuple)
         assert isinstance(ac.get_photometry(ac.PhotospectralSet.stub(), ac.FilterSet.stub()), ac.PhotospectralSet)
-        assert isinstance(ac.get_photometry(ac.PhotospectralCube.stub(), ac.Filter.stub()), tuple)
         assert isinstance(ac.get_photometry(ac.PhotospectralCube.stub(), ac.FilterSet.stub()), ac.PhotospectralCube)
 
     def test_convolution_filter_integral(self, v_filter: ac.Filter, vega_calspec: ac.Spectrum):

@@ -180,9 +180,23 @@ def _aligned_spectral_data(
 
 @overload
 def get_photometry(
-    target: Spectrum | Photospectrum | SpectralSet | PhotospectralSet | SpectralCube | PhotospectralCube | SpectralObject | PhotospectralObject,
+    target: Spectrum | Photospectrum,
     bandpass: Filter
 ) -> tuple[float, float | None]:
+    ...
+
+@overload
+def get_photometry(
+    target: SpectralSet | PhotospectralSet | SpectralCube | PhotospectralCube,
+    bandpass: Filter
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating] | None]:
+    ...
+
+@overload
+def get_photometry(
+    target: SpectralObject | PhotospectralObject,
+    bandpass: Filter
+) -> tuple[float | npt.NDArray[np.floating], float | npt.NDArray[np.floating] | None]:
     ...
 
 @overload
@@ -216,10 +230,14 @@ def get_photometry(
 def get_photometry(
     target: SpectralObject | PhotospectralObject,
     bandpass: Filter | FilterSet
-) -> tuple[float, float | npt.NDArray[np.floating] | None] | PhotospectralObject:
+) -> tuple[float | npt.NDArray[np.floating], float | npt.NDArray[np.floating] | None] | PhotospectralObject:
     """
     Implementation of convolution between a (photo)spectral object and a filter or a filter set.
     Ignores the uncertainty of filter profiles.
+
+    With a single `Filter`, returns a `(value, error)` pair: scalars for 1D data,
+    arrays over the spatial axes for sets and cubes. With a `FilterSet`, returns
+    the corresponding `PhotospectralObject`.
     """
     if isinstance(target, PhotospectralObject) and isinstance(bandpass, FilterSet) and target.filter_set == bandpass:
         # The data is already measured in these filters: do not lose it to a reconstruction round trip.
@@ -250,7 +268,7 @@ def get_photometry(
                 )
                 if np.ndim(error) == 0:
                     error = float(error)
-            return cast(float, value), error
+            return value, error
         case FilterSet():
             # Perf: BLAS matmul instead of einsum over spatial axes.
             # 3 filters on 61 x 100 x 100: 0.77 -> 0.18 ms.
