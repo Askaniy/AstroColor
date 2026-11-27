@@ -2,8 +2,11 @@
 Transfer functions between linear and display-encoded color values.
 
 The module is intentionally independent of color-space metadata, spectral data
-and filters: it only contains the nonlinear curves and their inverse. Standard
-singletons are exposed at module level (`linear`, `srgb`, `gamma_22`,
+and filters: it only contains the nonlinear curves and their inverse. Each
+curve also exposes its analytic derivative, which is used for first-order
+(delta-method) uncertainty propagation.
+
+Standard singletons are exposed at module level (`linear`, `srgb`, `gamma_22`,
 `prophoto`, `rec709`, `rec2020`) and can be reused when constructing custom
 `ColorSpace` objects.
 """
@@ -34,36 +37,28 @@ class TransferFunction(ABC):
         """ Converts display-encoded values back to linear values. """
         ...
 
-    def encode_covariance(
-        self,
-        values: npt.NDArray[np.floating],
-        covariance: npt.NDArray[np.floating],
-    ) -> npt.NDArray[np.floating]:
+    def encode_derivative(self, values: npt.ArrayLike) -> npt.NDArray[np.floating]:
         """
-        Propagates covariance through `encode`.
+        Local derivative of `encode` with respect to its linear argument.
 
-        Stub for the next implementation step: nonlinear transfer functions
-        need a local Jacobian, and spatial axes must be preserved.
+        Used to propagate uncertainty through `encode`. A custom transfer
+        function that needs uncertainty propagation must override it.
         """
-        _ = values, covariance  # Part of the future propagation contract.
+        _ = values
         raise NotImplementedError(
-            'Covariance propagation through transfer functions is not implemented yet.'
+            f'{type(self).__name__} does not implement encode_derivative(), which is required for uncertainty propagation.'
         )
 
-    def decode_covariance(
-        self,
-        values: npt.NDArray[np.floating],
-        covariance: npt.NDArray[np.floating],
-    ) -> npt.NDArray[np.floating]:
+    def decode_derivative(self, values: npt.ArrayLike) -> npt.NDArray[np.floating]:
         """
-        Propagates covariance through `decode`.
+        Local derivative of `decode` with respect to its encoded argument.
 
-        Stub for the next implementation step: nonlinear transfer functions
-        need a local Jacobian, and spatial axes must be preserved.
+        Used to propagate uncertainty through `decode`. A custom transfer
+        function that needs uncertainty propagation must override it.
         """
-        _ = values, covariance  # Part of the future propagation contract.
+        _ = values
         raise NotImplementedError(
-            'Covariance propagation through transfer functions is not implemented yet.'
+            f'{type(self).__name__} does not implement decode_derivative(), which is required for uncertainty propagation.'
         )
 
     @override
@@ -81,6 +76,14 @@ class LinearTransferFunction(TransferFunction):
     @override
     def decode(self, values: npt.ArrayLike) -> npt.NDArray[np.floating]:
         return np.asarray(values, dtype=np.float64)
+
+    @override
+    def encode_derivative(self, values: npt.ArrayLike) -> npt.NDArray[np.floating]:
+        return np.ones_like(np.asarray(values, dtype=np.float64))
+
+    @override
+    def decode_derivative(self, values: npt.ArrayLike) -> npt.NDArray[np.floating]:
+        return np.ones_like(np.asarray(values, dtype=np.float64))
 
 
 class _PiecewiseTransferFunction(TransferFunction):
@@ -123,6 +126,32 @@ class _PiecewiseTransferFunction(TransferFunction):
             np.where(arr < self.decode_threshold, linear, nonlinear),
         )
 
+    @override
+    def encode_derivative(self, values: npt.ArrayLike) -> npt.NDArray[np.floating]:
+        arr = np.asarray(values, dtype=np.float64)
+        with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+            nonlinear = (self.alpha / self.gamma) * np.power(
+                np.maximum(arr, 0.),
+                1. / self.gamma - 1.,
+            )
+        return cast(
+            npt.NDArray[np.floating],
+            np.where(arr < self.encode_threshold, self.encode_slope, nonlinear),
+        )
+
+    @override
+    def decode_derivative(self, values: npt.ArrayLike) -> npt.NDArray[np.floating]:
+        arr = np.asarray(values, dtype=np.float64)
+        with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+            nonlinear = (self.gamma / self.alpha) * np.power(
+                np.maximum((arr + self.offset) / self.alpha, 0.),
+                self.gamma - 1.,
+            )
+        return cast(
+            npt.NDArray[np.floating],
+            np.where(arr < self.decode_threshold, self.decode_slope, nonlinear),
+        )
+
 
 class SRGBTransferFunction(_PiecewiseTransferFunction):
     """ The piecewise sRGB transfer function, also used by Display P3. """
@@ -162,6 +191,40 @@ class GammaTransferFunction(TransferFunction):
         return cast(
             npt.NDArray[np.floating],
             np.sign(arr) * np.power(np.abs(arr), self.gamma),
+        )
+
+    @override
+    def encode_derivative(self, values: npt.ArrayLike) -> npt.NDArray[np.floating]:
+        """
+        Derivative of the signed power law.
+
+        At exactly zero the slope is infinite for gamma > 1; it is defined as
+        zero there so that the linearization stays finite.
+        """
+        arr = np.asarray(values, dtype=np.float64)
+        magnitude = cast(npt.NDArray[np.floating], np.abs(arr))
+        with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+            derivative = (1. / self.gamma) * np.power(magnitude, 1. / self.gamma - 1.)
+        return cast(
+            npt.NDArray[np.floating],
+            np.nan_to_num(derivative, nan=0., posinf=0., neginf=0.),
+        )
+
+    @override
+    def decode_derivative(self, values: npt.ArrayLike) -> npt.NDArray[np.floating]:
+        """
+        Derivative of the signed power law.
+
+        At exactly zero the slope is infinite for gamma < 1; it is defined as
+        zero there so that the linearization stays finite.
+        """
+        arr = np.asarray(values, dtype=np.float64)
+        magnitude = cast(npt.NDArray[np.floating], np.abs(arr))
+        with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+            derivative = self.gamma * np.power(magnitude, self.gamma - 1.)
+        return cast(
+            npt.NDArray[np.floating],
+            np.nan_to_num(derivative, nan=0., posinf=0., neginf=0.),
         )
 
 

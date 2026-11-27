@@ -553,29 +553,13 @@ class ColorSystem:
         """ Applies the inverse color space transfer function: display -> linear. """
         return self.transfer_function.decode(values)
 
-    def encode_covariance(
-        self,
-        values: npt.NDArray[np.floating],
-        covariance: npt.NDArray[np.floating],
-    ) -> npt.NDArray[np.floating]:
-        """
-        Propagates covariance through the transfer function: linear -> display.
+    def encode_derivative(self, values: npt.ArrayLike) -> npt.NDArray[np.floating]:
+        """ Local derivative of the transfer function: linear -> display. """
+        return self.transfer_function.encode_derivative(values)
 
-        Not implemented yet; this currently raises `NotImplementedError`.
-        """
-        return self.transfer_function.encode_covariance(values, covariance)
-
-    def decode_covariance(
-        self,
-        values: npt.NDArray[np.floating],
-        covariance: npt.NDArray[np.floating],
-    ) -> npt.NDArray[np.floating]:
-        """
-        Propagates covariance through the inverse transfer function: display -> linear.
-
-        Not implemented yet; this currently raises `NotImplementedError`.
-        """
-        return self.transfer_function.decode_covariance(values, covariance)
+    def decode_derivative(self, values: npt.ArrayLike) -> npt.NDArray[np.floating]:
+        """ Local derivative of the inverse transfer function: display -> linear. """
+        return self.transfer_function.decode_derivative(values)
 
 
 xyz_color_system = ColorSystem('CIE 1931 XYZ', 'Illuminant E')

@@ -8,9 +8,11 @@ channels; the remaining spatial axes distinguish `ColorPoint`, `ColorLine` and
 `from_spectral_data()`, or with `get_color()`.
 
 `DisplaySettings` describes presentation rather than stored data: target color
-system, transfer function, brightness normalization and scaling. `render()` and
-`to_html()` never modify the object, so the same linear color can be displayed
-in several ways. `to_color_system()` changes the stored color system.
+system, transfer function, brightness normalization and scaling. `render()`
+returns display values together with their uncertainty, and `to_html()` renders
+a hexadecimal string; neither modifies the object, so the same linear color can
+be displayed in several ways. `to_color_system()` changes the stored color
+system.
 
 `spectral_dist` is always linear. Pass `gamma_corrected=True` to the constructor
 when the input values are transfer-encoded; they are decoded immediately.
@@ -32,7 +34,11 @@ from .color_standards import (
     xyz_color_system,
 )
 from .config import Config
-from .errors import InvalidColorChannelsError
+from .errors import (
+    InvalidColorChannelsError,
+    missing_derivative_warning,
+    non_finite_scale_warning,
+)
 from .measurements import get_photometry
 from .photospectral_objects import (
     PhotospectralCube,
@@ -115,8 +121,10 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
 
         `spectral_dist` is always stored linear. Set `gamma_corrected=True`
         when the input is display-encoded in `color_system`; it is decoded
-        immediately. Covariance propagation through that nonlinear step is a
-        separate, not yet implemented operation.
+        immediately. The uncertainty is propagated through that nonlinear step
+        by first-order linearization. If a custom transfer function does not
+        provide `decode_derivative()`, a warning is emitted and the uncertainty
+        is omitted.
 
         `name` is an optional label for diagnostics; it is not used by the
         color calculations.
@@ -137,17 +145,21 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
         )
         # `spectral_dist` is stored linear, so encoded input is decoded here.
         if gamma_corrected:
-            if uncertainty_obj is None:
-                values = color_system.decode(values)
-            else:
-                covariance = uncertainty_obj.covariance_matrix
-                decoded_covariance = color_system.decode_covariance(values, covariance)
-                values = color_system.decode(values)
-                uncertainty_obj = Uncertainty.from_covariance(
-                    decoded_covariance,
-                    values.shape,
-                    name,
-                )
+            if uncertainty_obj is not None:
+                # The derivative is taken at the encoded values, before decoding.
+                try:
+                    derivative = color_system.decode_derivative(values)
+                except NotImplementedError:
+                    missing_derivative_warning(
+                        type(color_system.transfer_function).__name__,
+                        name,
+                    )
+                    uncertainty_obj = None
+                else:
+                    uncertainty_obj = uncertainty_obj.apply_pointwise(
+                        derivative, name
+                    )
+            values = color_system.decode(values)
         self.spectral_dist: npt.NDArray[np.floating] = values
         self.uncertainty: Uncertainty | None = uncertainty_obj
         self.name: object = name
@@ -216,25 +228,68 @@ class ColorObject[DimensionallyCorrectType: SpectralObject | PhotospectralObject
     def render(
         self,
         settings: DisplaySettings = DEFAULT_SETTINGS,
-    ) -> npt.NDArray[np.floating]:
+    ) -> tuple[npt.NDArray[np.floating], Uncertainty | None]:
         """
-        Returns a display-ready array: converts the color to `settings.color_system`,
-        optionally normalizes brightness, applies `scale_factor` and the target
-        color space transfer function.
-        The object itself is not modified.
+        Returns display-ready values and their uncertainty.
+
+        Converts the color to `settings.color_system`, optionally normalizes
+        brightness, applies `scale_factor` and the target color space transfer
+        function. The object itself is not modified.
+
+        The uncertainty is propagated through every step by first-order
+        linearization. The brightest value used by `maximize_brightness` is
+        treated as a fixed constant, so correlations with it are not included.
+        Returns `(values, uncertainty)`; `uncertainty` is `None` when the
+        object has no uncertainty.
+
+        A non-finite display scaling factor or non-finite scaled values produce
+        a warning. If the uncertainty cannot be scaled because the factor or
+        its square is not finite, it is omitted with a warning. A transfer
+        function without an analytic derivative also produces a warning and
+        `uncertainty=None`.
         """
         color = self
+        uncertainty = self.uncertainty
         if self.color_system != settings.color_system:
             color = self.to_color_system(settings.color_system)
+            uncertainty = color.uncertainty
         arr = np.nan_to_num(color.spectral_dist, copy=True)
-        maximum = float(arr.max())
-        if settings.maximize_brightness and maximum != 0:
-            arr /= maximum
-        if settings.scale_factor != 1:
-            arr *= settings.scale_factor
+        factor = settings.scale_factor
+        if settings.maximize_brightness:
+            maximum = float(arr.max())
+            if maximum != 0:
+                factor /= maximum
+        if factor != 1:
+            with np.errstate(invalid='ignore', over='ignore'):
+                arr *= factor
+            non_finite_scale = (
+                not np.isfinite(factor)
+                or not bool(np.all(np.isfinite(arr)))
+            )
+            if non_finite_scale:
+                non_finite_scale_warning(self.name)
+                if uncertainty is not None:
+                    uncertainty = None
+            elif uncertainty is not None:
+                try:
+                    uncertainty = uncertainty.scale(factor)
+                except ValueError:
+                    non_finite_scale_warning(self.name)
+                    uncertainty = None
         if settings.gamma_correction:
+            if uncertainty is not None:
+                try:
+                    derivative = settings.color_system.encode_derivative(arr)
+                except NotImplementedError:
+                    missing_derivative_warning(
+                        type(settings.color_system.transfer_function).__name__,
+                        self.name,
+                    )
+                    uncertainty = None
+                else:
+                    uncertainty = uncertainty.apply_pointwise(derivative, self.name)
             arr = settings.color_system.encode(arr)
-        return arr
+        return arr, uncertainty
 
     def grayscale(self) -> npt.NDArray[np.floating] | float:
         """ Converts color to linear grayscale using CIE 1931 luminance (Y in XYZ color space) """
@@ -254,7 +309,7 @@ class ColorPoint(ColorObject[Spectrum | Photospectrum]):
     """
     Class to work with a point of three color channels.
     Stores linear brightness values in the `spectral_dist` attribute, numpy array of shape (3).
-    Use `render()` or `to_html()` for display-ready values.
+    Use `render()` for display-ready values and uncertainty, or `to_html()` for a hexadecimal string.
     """
 
     def to_bit(
@@ -265,7 +320,7 @@ class ColorPoint(ColorObject[Spectrum | Photospectrum]):
     ) -> npt.NDArray[np.floating]:
         """ Returns display-ready color array, scaled to the appropriate power of two (not rounded) """
         factor = cast(int, 2**bit) - 1
-        arr = self.render(settings)
+        arr, _ = self.render(settings)
         if clip:
             arr = np.clip(arr, 0, 1)
         return arr * factor
@@ -279,7 +334,7 @@ class ColorLine(ColorObject[SpectralSet | PhotospectralSet]):
     """
     Class to work with a line of three color channels.
     Stores linear brightness values in the `spectral_dist` attribute, numpy array of shape (3, X).
-    Use `render()` for display-ready values.
+    Use `render()` for display-ready values and their uncertainty.
     """
 
     def __init__(self, *args, **kwargs):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
@@ -298,7 +353,7 @@ class ColorImage(ColorObject[SpectralCube | PhotospectralCube]):
     """
     Class to work with an image of three color channels.
     Stores linear brightness values in the `spectral_dist` attribute, numpy array of shape (3, X, Y).
-    Use `render()` for display-ready values.
+    Use `render()` for display-ready values and their uncertainty.
     """
 
     def __init__(self, *args, **kwargs):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]

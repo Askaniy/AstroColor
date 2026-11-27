@@ -38,6 +38,38 @@ def test_color():
     color_html = color.to_html()
     assert color_html == '#ecfeff'
 
+def test_color_from_color_indices_with_uncertainty():
+    hyperion = ac.CelestialObject(
+        name='Hyperion',
+        filter_set='Generic/Bessell',
+        color_indices={
+            'B-V': [0.798, 0.030],
+            'V-R': [0.438, 0.031],
+        },
+        calibration_system='Vega',
+        is_reflecting_sunlight=True,
+    )
+    photometry, estimated = hyperion.get_spectral_data()
+    assert isinstance(photometry, ac.Photospectrum)
+    assert estimated is None
+
+    color = ac.get_color(photometry)
+    assert isinstance(color, ac.ColorPoint)
+
+    rgb, uncertainty = color.render()
+    assert uncertainty is not None
+    np.testing.assert_allclose(
+        rgb,
+        [1.0, 0.969620571146, 0.924210199371],
+        rtol=1e-6,
+    )
+    np.testing.assert_allclose(
+        uncertainty.standard_deviation,
+        [0.008126852744, 0.01067020282, 0.009706936377],
+        rtol=1e-6,
+    )
+    assert np.all(uncertainty.standard_deviation > 0)
+
 def test_models():
     bb_7000K = ac.get_spectrometry(ac.physical_models.BlackBodyModel(7000), [400, 450])
     np.testing.assert_equal(bb_7000K.wavelength_nm, [400, 405, 410, 415, 420, 425, 430, 435, 440, 445, 450])
@@ -78,17 +110,19 @@ def test_photometric_models():
 def test_color_output():
     color_obj = ac.get_color(ac.get_standard_spectrum('Sun'))
     linear_rgb = color_obj.spectral_dist  # internal linear sRGB/E
-    display_rgb = color_obj.render()      # sRGB/E + gamma + maximize
+    display_rgb, display_uncertainty = color_obj.render()  # sRGB/E + gamma + maximize
     assert linear_rgb.shape == (3,)
     assert display_rgb.shape == (3,)
+    assert display_uncertainty is None
 
     display_settings = ac.DisplaySettings(
         color_system=ac.ColorSystem('sRGB', 'Sun'),
         maximize_brightness=False,
         scale_factor=0.5
     )
-    display_rgb = color_obj.render(display_settings)
+    display_rgb, display_uncertainty = color_obj.render(display_settings)
     assert display_rgb.shape == (3,)
+    assert display_uncertainty is None
     linear_in_target = color_obj.to_color_system(display_settings.color_system).spectral_dist
     np.testing.assert_allclose(
         display_rgb,

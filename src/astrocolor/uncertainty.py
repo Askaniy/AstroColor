@@ -26,6 +26,7 @@ from scipy.sparse import csr_matrix, issparse
 from .algebra import broadcast_means
 from .config import Config
 from .errors import (
+    InconsistentDerivativeShapeError,
     InconsistentUncertaintyShapeError,
     InconsistentUncertaintySizeError,
     NegativeStandardDeviationError,
@@ -165,9 +166,9 @@ def combine_covariance_terms(
     if weight_x.ndim == 0 and weight_y.ndim == 0:
         total = 0.
         if cov_x is not None:
-            total += weight_x.item()**2 * cast(float, np.asarray(cov_x).item())
+            total += weight_x.item() * weight_x.item() * cast(float, np.asarray(cov_x).item())
         if cov_y is not None:
-            total += weight_y.item()**2 * cast(float, np.asarray(cov_y).item())
+            total += weight_y.item() * weight_y.item() * cast(float, np.asarray(cov_y).item())
         return total if not np.allclose(total, 0) else None
     if weight_x.ndim == 0:
         weight_x = np.broadcast_to(weight_x, weight_y.shape)
@@ -570,6 +571,78 @@ class Uncertainty:
             return self.from_covariance_unchecked(covariance, new_shape)
         covariance = cast(npt.NDArray[np.floating], self._covariance_matrix)
         return self.from_covariance_unchecked(propagate_covariance(covariance, matrix), new_shape)
+
+    def apply_pointwise(
+        self,
+        derivative: npt.ArrayLike,
+        name: object = None,
+    ) -> Self:
+        """
+        Propagates the uncertainty through an elementwise function.
+
+        `derivative` contains the local derivatives `d f / d x` for every
+        element and must match the data shape. The Jacobian is diagonal, so
+        each covariance entry is scaled by `derivative[i] * derivative[j]`.
+        A compact uncertainty stays compact, and a shared `(n, n)` matrix stays
+        shared when the derivative is spatially constant; if the derivative
+        varies, the result has to be a full matrix.
+
+        Raises `InconsistentDerivativeShapeError` if `derivative` does not
+        match the data shape.
+        """
+        slope = np.asarray(derivative, dtype=np.float64)
+        if slope.shape != self._data_shape:
+            raise InconsistentDerivativeShapeError(
+                slope.shape, self._data_shape, name
+            )
+        # Perf: the compact representation and the diagonal-only mode stay
+        # compact instead of materializing a (n, n, *spatial) matrix just to
+        # scale it by a diagonal Jacobian.
+        with np.errstate(invalid='ignore', over='ignore'):
+            if self._variance is not None or Config.ignore_correlations:
+                variance = self.variance * slope**2
+                return self.from_variance_unchecked(variance, self._data_shape)
+            covariance = cast(npt.NDArray[np.floating], self._covariance_matrix)
+            if covariance.ndim == 2:
+                # Perf: a shared (n, n) matrix stays shared when the derivative is
+                # spatially constant, instead of growing to (n, n, *spatial).
+                spectral_slope = _reduce_spatial_weight(slope, self._data_shape)
+                if spectral_slope is not None:
+                    scaled = covariance * spectral_slope[:, np.newaxis] * spectral_slope[np.newaxis, :]
+                    return self.from_covariance_unchecked(scaled, self._data_shape)
+                covariance = covariance.reshape(
+                    (self.spectral_size, self.spectral_size, *((1,) * len(self.spatial_shape)))
+                )
+            scaled_covariance = covariance * slope[:, np.newaxis] * slope[np.newaxis, :]
+            return self.from_covariance_unchecked(scaled_covariance, self._data_shape)
+
+    def scale(self, factor: float) -> Self:
+        """
+        Scales the uncertainty by a constant factor, preserving correlations.
+
+        Variances and covariance entries are multiplied by the squared
+        factor; the compact representation stays compact.
+
+        Raises:
+        - `ValueError`: if `factor` is not finite or its square overflows.
+        """
+        factor = float(factor)
+        if not np.isfinite(factor):
+            raise ValueError(f'Scale factor must be finite, not {factor}')
+        squared = factor * factor
+        if not np.isfinite(squared):
+            raise ValueError(
+                f'Scale factor {factor} is too large: its square is not finite.'
+            )
+        with np.errstate(invalid='ignore', over='ignore'):
+            if self._variance is not None or Config.ignore_correlations:
+                return self.from_variance_unchecked(
+                    self.variance * squared, self._data_shape
+                )
+            covariance = cast(npt.NDArray[np.floating], self._covariance_matrix)
+            return self.from_covariance_unchecked(
+                covariance * squared, self._data_shape
+            )
 
     def _propagate_sparse(self, matrix: csr_matrix) -> Self:
         """ Applies a sparse linear operator without materializing it as dense. """

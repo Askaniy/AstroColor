@@ -3,11 +3,12 @@ import pytest
 
 import astrocolor as ac
 from astrocolor.errors import (
+    InconsistentDerivativeShapeError,
     NegativeStandardDeviationError,
     NegativeVarianceError,
     NonFiniteCovarianceError,
 )
-from astrocolor.uncertainty import Uncertainty
+from astrocolor.uncertainty import Uncertainty, combine_covariance_terms
 
 
 def test_standard_deviation_input_stays_compact():
@@ -360,3 +361,67 @@ def test_non_finite_covariance_raises_typed_error(
     message = str(exc_info.value)
     assert message == expected_message
     assert '"None"' not in message
+
+
+def test_scale_scales_standard_deviation_and_keeps_compact():
+    std = np.array([1., 2., 3.])
+    uncertainty = Uncertainty.from_standard_deviation(std, std.shape)
+
+    scaled = uncertainty.scale(2.5)
+
+    assert not scaled.is_covariance
+    assert scaled.nbytes == uncertainty.nbytes
+    np.testing.assert_allclose(scaled.standard_deviation, std * 2.5)
+    np.testing.assert_allclose(uncertainty.standard_deviation, std)
+
+
+def test_scale_scales_shared_covariance_without_expanding_it():
+    covariance = np.array([
+        [0.04, 0.01, 0.0],
+        [0.01, 0.09, 0.02],
+        [0.0, 0.02, 0.16],
+    ])
+    uncertainty = Uncertainty.from_covariance(covariance, (3,))
+
+    scaled = uncertainty.scale(2.)
+
+    assert scaled.is_covariance
+    assert scaled.covariance_input().shape == (3, 3)
+    np.testing.assert_allclose(scaled.covariance_matrix, covariance * 4.)
+    np.testing.assert_allclose(uncertainty.covariance_matrix, covariance)
+
+
+def test_apply_pointwise_rejects_wrong_derivative_shape():
+    uncertainty = Uncertainty.from_standard_deviation(np.ones(3), (3,))
+
+    with pytest.raises(
+        InconsistentDerivativeShapeError,
+        match='Derivative shape',
+    ) as exc_info:
+        _ = uncertainty.apply_pointwise(np.ones((3, 2)), name='test color')
+
+    assert 'test color' in str(exc_info.value)
+
+
+def test_scale_rejects_non_finite_factor():
+    std = np.array([1., 2., 3.])
+    uncertainty = Uncertainty.from_standard_deviation(std, std.shape)
+
+    for factor in (float('nan'), float('inf'), float('-inf')):
+        with pytest.raises(ValueError, match='Scale factor must be finite'):
+            _ = uncertainty.scale(factor)
+
+
+def test_scale_rejects_factor_whose_square_overflows():
+    std = np.array([1., 2., 3.])
+    uncertainty = Uncertainty.from_standard_deviation(std, std.shape)
+
+    with pytest.raises(ValueError, match='square is not finite'):
+        _ = uncertainty.scale(1e300)
+
+
+def test_combine_covariance_terms_handles_large_scalar_weights():
+    result = combine_covariance_terms(1., 1e200, None, 1.)
+
+    assert result is not None
+    assert np.isinf(result)

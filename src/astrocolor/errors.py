@@ -50,6 +50,11 @@ class InconsistentUncertaintyShapeError(AstroColorError, ValueError):
         msg = f'Uncertainty shape {shape_error} does not match the data shape {shape_values}'
         super().__init__(msg + _name_suffix(name) + '. It cannot be a standard deviation or a covariance matrix.')
 
+class InconsistentDerivativeShapeError(AstroColorError, ValueError):
+    def __init__(self, shape_derivative: object, shape_values: object, name: object = None):
+        msg = f'Derivative shape {shape_derivative} does not match the data shape {shape_values}'
+        super().__init__(msg + _name_suffix(name) + '.')
+
 class NegativeVarianceError(AstroColorError, ValueError):
     def __init__(self, name: object = None):
         super().__init__(f'Covariance matrix contains negative variances{_name_suffix(name)}.')
@@ -89,6 +94,20 @@ class NonFiniteValuesWarning(UserWarning):
 def non_finite_values_warning(input: str, name: object = None, action: str = 'replaced with zeros'):
     msg = f'Non-finite values detected in the {input} input have been {action}'
     warnings.warn(msg + _name_suffix(name) + '.', NonFiniteValuesWarning, stacklevel=2)
+
+class NonFiniteScaleWarning(UserWarning):
+    pass
+
+def non_finite_scale_warning(name: object = None):
+    msg = 'The display scaling factor is non-finite or produces non-finite results'
+    warnings.warn(msg + _name_suffix(name) + '.', NonFiniteScaleWarning, stacklevel=2)
+
+class MissingDerivativeWarning(UserWarning):
+    pass
+
+def missing_derivative_warning(function: str, name: object = None):
+    msg = f'{function} does not provide an analytic derivative; the display uncertainty is unavailable'
+    warnings.warn(msg + _name_suffix(name) + '.', MissingDerivativeWarning, stacklevel=2)
 
 class SpatialAxisWarning(UserWarning):
     pass

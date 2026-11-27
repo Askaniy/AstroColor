@@ -184,3 +184,41 @@ class TestColorSystemEquality:
 
         np.testing.assert_allclose(converted.spectral_dist, color.spectral_dist)
         assert converted.color_system is target
+
+
+_TRANSFER_FUNCTIONS = (
+    ac.transfer_functions.linear,
+    ac.transfer_functions.srgb,
+    ac.transfer_functions.gamma_22,
+    ac.transfer_functions.prophoto,
+    ac.transfer_functions.rec709,
+    ac.transfer_functions.rec2020,
+)
+
+
+class TestTransferFunctionDerivatives:
+    """ Analytic transfer-function derivatives used by uncertainty propagation. """
+
+    @pytest.mark.parametrize('function', _TRANSFER_FUNCTIONS)
+    def test_derivatives_match_finite_differences(
+        self, function: ac.transfer_functions.TransferFunction
+    ):
+        # Points stay away from the piecewise thresholds and from zero, where
+        # some curves are not differentiable.
+        values = np.array([-0.5, -0.05, 0.0002, 0.005, 0.01, 0.05, 0.2, 0.7, 1.5])
+        step = 1e-7
+        numeric_encode = (function.encode(values + step) - function.encode(values - step)) / (2 * step)
+        numeric_decode = (function.decode(values + step) - function.decode(values - step)) / (2 * step)
+
+        np.testing.assert_allclose(
+            function.encode_derivative(values), numeric_encode, rtol=1e-6, atol=1e-8
+        )
+        np.testing.assert_allclose(
+            function.decode_derivative(values), numeric_decode, rtol=1e-6, atol=1e-8
+        )
+
+    def test_pure_gamma_derivative_at_zero_stays_finite(self):
+        function = ac.transfer_functions.gamma_22
+
+        np.testing.assert_array_equal(function.encode_derivative(np.array([0.])), [0.])
+        np.testing.assert_array_equal(function.decode_derivative(np.array([0.])), [0.])

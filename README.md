@@ -74,6 +74,11 @@ photospectrum = ac.get_photometry(photospectrum_BVR, sloan_gr)
 spectrum = ac.get_spectrometry(photospectrum_BVR, requested_wavelengths=[400, 700])
 ```
 
+- Models
+```py
+bb_7000K = ac.get_spectrometry(ac.physical_models.BlackBodyModel(7000), [400, 450])
+```
+
 - Color calculations
 ```py
 # sRGB + illuminant E chromatic adaptation by default
@@ -81,9 +86,25 @@ color = ac.get_color(ac.get_standard_spectrum('Sun'))
 color_html = color.to_html()  # '#ecfeff'
 ```
 
-- Models
+- End-to-end true color estimation
 ```py
-bb_7000K = ac.get_spectrometry(ac.physical_models.BlackBodyModel(7000), [400, 450])
+hyperion = ac.CelestialObject(
+    name='Hyperion',
+    filter_set='Generic/Bessell',
+    color_indices={
+        'B-V': [0.798, 0.030], # [value, standard deviation]
+        'V-R': [0.438, 0.031],
+    },
+    calibration_system='Vega',
+    is_reflecting_sunlight=True,
+)
+photometry, _ = hyperion.get_spectral_data()   # Photospectrum in B, V, R
+color = ac.get_color(photometry)               # linear sRGB/E
+
+rgb, uncertainty = color.render()              # sRGB/E + gamma + maximize
+rgb_std = uncertainty.standard_deviation       # errors of the display values
+# rgb     ≈ [1.0, 0.9696, 0.9242]
+# rgb_std ≈ [0.0081, 0.0107, 0.0097]
 ```
 
 
@@ -168,6 +189,8 @@ Spectral objects, photospectral objects and color objects accept either standard
 
 `standard_deviation` and `covariance_matrix` are read-only properties. `covariance_matrix` materializes a full array on access, but does not change the compact representation.
 
+`ColorObject.render()` returns display values together with their `Uncertainty` (`None` when the object has none). Covariance is propagated through the color-system conversion, brightness normalization, scaling and the transfer function; the normalization factor is treated as a constant.
+
 Setting `Config.ignore_correlations = True` disables correlation handling: covariance inputs are reduced to their diagonal at construction, and operations on an existing full-covariance object produce compact results. The existing object itself is not modified. Explicit `covariance_matrix` access still materializes the matrix.
 
 
@@ -216,19 +239,21 @@ Display processing is controlled by `DisplaySettings`:
 - `maximize_brightness` normalizes the output to its brightest value.
 - `scale_factor` multiplies the result by a non-negative constant.
 
-`DEFAULT_SETTINGS` is the recommended display preset; `LINEAR_SETTINGS` disables both the transfer function and brightness normalization. Processing order is: color-system conversion, brightness normalization, scaling, then the transfer function. Examples:
+`DEFAULT_SETTINGS` is the recommended display preset; `LINEAR_SETTINGS` disables both the transfer function and brightness normalization. Processing order is: color-system conversion, brightness normalization, scaling, then the transfer function.
+
+`render()` returns `(values, uncertainty)`. The uncertainty is propagated through every step by first-order linearization; the brightest value used by `maximize_brightness` is treated as a fixed constant. If the scale factor overflows or the transfer function does not provide an analytic derivative, a warning is emitted and `uncertainty` is `None`. It is also `None` when the color object has no uncertainty. `to_bit()` and `to_html()` use only the values. Examples:
 
 ```py
 color_obj = ac.get_color(ac.get_standard_spectrum('Sun'))
 linear_rgb = color_obj.spectral_dist  # internal linear sRGB/E
-display_rgb = color_obj.render()      # sRGB/E + gamma + maximize
+display_rgb, display_uncertainty = color_obj.render()  # sRGB/E + gamma + maximize
 
 display_settings = ac.DisplaySettings(
     color_system=ac.ColorSystem('sRGB', 'Sun'),
     maximize_brightness=False,
     scale_factor=0.5
 )
-display_rgb = color_obj.render(custom_settings)
+display_rgb, display_uncertainty = color_obj.render(display_settings)
 ```
 
 Custom white points and color spaces can be passed to `ColorSystem` directly. A white point can be defined by CIE xy coordinates or derived from a spectrum:
@@ -245,7 +270,7 @@ custom_space = ac.ColorSpace(
 custom_system = ac.ColorSystem(custom_space)
 ```
 
-`spectral_dist` of a color object is always linear. If the input already carries a transfer function, pass `gamma_corrected=True` to the constructor; the values are decoded immediately, and `to_color_system()` then performs only the linear matrix conversion:
+`spectral_dist` of a color object is always linear. If the input already carries a transfer function, pass `gamma_corrected=True` to the constructor; the values are decoded immediately, and `to_color_system()` then performs only the linear matrix conversion. An uncertainty passed together with gamma-corrected values is propagated through the curve by first-order (delta-method) linearization.
 
 ```py
 srgb_d65 = ac.ColorSystem('sRGB')
