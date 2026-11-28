@@ -301,18 +301,9 @@ The refactoring took place in 2026; it opens up a general astronomical applicati
 
 `uv sync --group dev` to set the environment and build the library.
 
-`uv run pytest` for testing.
+`uv run pytest` and `uv run pytest benchmarks --benchmark-only` for testing and benchmarks.
 
 `dev` folder for local experiments.
-
-Benchmarks:
-```sh
-uv run python benchmarks/benchmark.py
-uv run python benchmarks/benchmark.py --suite 2d3d
-uv run python benchmarks/benchmark.py --suite algebra
-uv run python benchmarks/benchmark.py --suite uncertainty
-uv run python benchmarks/benchmark.py --suite construction
-```
 
 Any changes suggested by AI must be thoroughly reviewed by the person who generated them. The responsibility always lies with the person.
 

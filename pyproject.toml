@@ -38,6 +38,7 @@ Changelog = "https://github.com/Askaniy/AstroColor/releases"
 dev = [
     "basedpyright>=1.40.2",
     "pytest>=9.2.0",
+    "pytest-benchmark>=5.3.1",
 ]
 
 [tool.basedpyright]

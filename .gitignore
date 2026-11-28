@@ -14,3 +14,6 @@ AGENTS.md
 .agents/
 dev/
 temp/
+
+# pytest-benchmark saved runs
+.benchmarks/
