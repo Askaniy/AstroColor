@@ -4,8 +4,9 @@ Performance benchmarks for AstroColor.
 Run from the repository root:
     uv run python benchmarks/benchmark.py
     uv run python benchmarks/benchmark.py --suite 2d3d
-    uv run python benchmarks/benchmark.py --suite construction
+    uv run python benchmarks/benchmark.py --suite algebra
     uv run python benchmarks/benchmark.py --suite uncertainty
+    uv run python benchmarks/benchmark.py --suite construction
 
 Each operation is measured in `--rounds` independent rounds of `--repeats`
 samples. A sample times a batch of calls, so fast operations are not dominated
@@ -30,14 +31,16 @@ import numpy as np
 
 import astrocolor as ac
 from astrocolor.algebra import div_value
+from astrocolor.auxiliary import is_diagonal
 from astrocolor.config import Config
 
 Results = dict[str, dict[str, dict[str, float]]]
 
 SUITE_METRICS: dict[str, dict[str, str]] = {
     '2d3d': {'best': 'best, ms', 'median': 'median, ms'},
-    'construction': {'best': 'best, ms', 'median': 'median, ms'},
+    'algebra': {'best': 'best, ms', 'median': 'median, ms'},
     'uncertainty': {'compact': 'compact, ms', 'full': 'full, ms'},
+    'construction': {'best': 'best, ms', 'median': 'median, ms'},
 }
 
 
@@ -133,38 +136,35 @@ def run_2d3d(
     return results
 
 
-def run_construction(
+def run_algebra(
     repeats: int,
     rounds: int,
     target_ms: float,
+    seed: int,
 ) -> dict[str, dict[str, float]]:
-    """ Times object construction and the hot division/normalization paths. """
+    """ Times algebraic helpers and the diagonal check. """
     nm = np.arange(400., 701., 5.)
     values = np.linspace(1., 2., nm.size)
     values_2d = np.repeat(values[:, np.newaxis], 100, axis=1)
-    values_cube = np.repeat(values_2d[:, :, np.newaxis], 100, axis=2)
-    spectral_set = ac.SpectralSet(nm, values_2d)
-    v_filter = ac.Filter.get('Generic/Bessell.V')
-    filter_nm = v_filter.wavelength_nm
-    filter_profiles = np.repeat(v_filter.spectral_dist[:, np.newaxis], 3, axis=1)
-    color_point = np.array([0.5, 0.25, 0.1])
-    color_line = np.repeat(color_point[:, np.newaxis], 100, axis=1)
-    color_image = np.repeat(color_line[:, :, np.newaxis], 100, axis=2)
+    rng = np.random.default_rng(seed)
+
+    matrix = rng.normal(size=(nm.size, nm.size))
+    covariance_61 = (matrix @ matrix.T / nm.size + np.eye(nm.size) * 0.1) * 1e-12
+    covariance_3 = np.array([
+        [1.0, 0.5, 0.2],
+        [0.5, 1.0, 0.3],
+        [0.2, 0.3, 1.0],
+    ]) * 1e-12
+    covariance_61x100 = np.repeat(covariance_61[:, :, np.newaxis], 100, axis=2)
 
     workload: dict[str, Callable[[], object]] = {
-        'Spectrum construction': lambda: ac.Spectrum(nm, values),
-        'SpectralSet construction': lambda: ac.SpectralSet(nm, values_2d),
-        'SpectralCube construction': lambda: ac.SpectralCube(nm, values_cube),
-        'Filter construction': lambda: ac.Filter(filter_nm, v_filter.spectral_dist),
-        'FilterSet construction': lambda: ac.FilterSet(filter_nm, filter_profiles),
-        'ColorPoint construction': lambda: ac.ColorPoint(color_point),
-        'ColorLine construction': lambda: ac.ColorLine(color_line),
-        'ColorImage construction': lambda: ac.ColorImage(color_image),
-        'SpectralSet normalized': spectral_set.normalized,
         'div_value (61×100)': lambda: div_value(values_2d, values_2d + 1.),
+        'is_diagonal 3×3': lambda: is_diagonal(covariance_3),
+        'is_diagonal 61×61': lambda: is_diagonal(covariance_61),
+        'is_diagonal 61×61×100': lambda: is_diagonal(covariance_61x100),
     }
 
-    print(f'Construction and division: spectra {nm.size} points, filters {filter_nm.size} points, 100×100 spatial, color 3×100×100, {repeats} samples × {rounds} rounds')
+    print(f'Algebra: division 61×100, is_diagonal on small-scale covariance, {repeats} samples × {rounds} rounds')
     print(f'{"operation":36s} {"best, ms":>10s} {"median, ms":>12s}')
     print('-' * 60)
     results: dict[str, dict[str, float]] = {}
@@ -224,6 +224,47 @@ def run_uncertainty(
         full_best, _ = benchmark(full_function, repeats, rounds, target_ms)
         results[name] = {'compact': compact_best, 'full': full_best}
         print(f'{name:36s} {compact_best:12.3f} {full_best:10.3f}')
+    return results
+
+
+def run_construction(
+    repeats: int,
+    rounds: int,
+    target_ms: float,
+) -> dict[str, dict[str, float]]:
+    """ Times object construction and normalization. """
+    nm = np.arange(400., 701., 5.)
+    values = np.linspace(1., 2., nm.size)
+    values_2d = np.repeat(values[:, np.newaxis], 100, axis=1)
+    values_cube = np.repeat(values_2d[:, :, np.newaxis], 100, axis=2)
+    spectral_set = ac.SpectralSet(nm, values_2d)
+    v_filter = ac.Filter.get('Generic/Bessell.V')
+    filter_nm = v_filter.wavelength_nm
+    filter_profiles = np.repeat(v_filter.spectral_dist[:, np.newaxis], 3, axis=1)
+    color_point = np.array([0.5, 0.25, 0.1])
+    color_line = np.repeat(color_point[:, np.newaxis], 100, axis=1)
+    color_image = np.repeat(color_line[:, :, np.newaxis], 100, axis=2)
+
+    workload: dict[str, Callable[[], object]] = {
+        'Spectrum construction': lambda: ac.Spectrum(nm, values),
+        'SpectralSet construction': lambda: ac.SpectralSet(nm, values_2d),
+        'SpectralCube construction': lambda: ac.SpectralCube(nm, values_cube),
+        'Filter construction': lambda: ac.Filter(filter_nm, v_filter.spectral_dist),
+        'FilterSet construction': lambda: ac.FilterSet(filter_nm, filter_profiles),
+        'ColorPoint construction': lambda: ac.ColorPoint(color_point),
+        'ColorLine construction': lambda: ac.ColorLine(color_line),
+        'ColorImage construction': lambda: ac.ColorImage(color_image),
+        'SpectralSet normalized': spectral_set.normalized,
+    }
+
+    print(f'Construction: spectra {nm.size} points, filters {filter_nm.size} points, 100×100 spatial, color 3×100×100, {repeats} samples × {rounds} rounds')
+    print(f'{"operation":36s} {"best, ms":>10s} {"median, ms":>12s}')
+    print('-' * 60)
+    results: dict[str, dict[str, float]] = {}
+    for name, function in workload.items():
+        best, med = benchmark(function, repeats, rounds, target_ms)
+        results[name] = {'best': best, 'median': med}
+        print(f'{name:36s} {best:10.3f} {med:12.3f}')
     return results
 
 
@@ -304,7 +345,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     _ = parser.add_argument(
         '--suite',
-        choices=('all', '2d3d', 'construction', 'uncertainty'),
+        choices=('all', '2d3d', 'algebra', 'uncertainty', 'construction'),
         default='all',
         help='benchmark suite to run (default: all)',
     )
@@ -345,12 +386,16 @@ def main() -> None:
         results['2d3d'] = run_2d3d(repeats, rounds, target_ms, seed)
     if suite == 'all':
         print()
-    if suite in ('all', 'construction'):
-        results['construction'] = run_construction(repeats, rounds, target_ms)
+    if suite in ('all', 'algebra'):
+        results['algebra'] = run_algebra(repeats, rounds, target_ms, seed)
     if suite == 'all':
         print()
     if suite in ('all', 'uncertainty'):
         results['uncertainty'] = run_uncertainty(repeats, rounds, target_ms)
+    if suite == 'all':
+        print()
+    if suite in ('all', 'construction'):
+        results['construction'] = run_construction(repeats, rounds, target_ms)
 
     if json_path is not None:
         write_results(

@@ -139,6 +139,7 @@ words = [
     "rdiv",
     "rmul",
     "ror",
+    "roundoff",
     "rsub",
     "rtol",
     "rtruediv",

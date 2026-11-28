@@ -426,14 +426,44 @@ def spatial_downscaling(
     else:
         return spectral_dist[:,::factor,::factor], covariance_matrix[:,:,::factor,::factor]
 
-def is_diagonal(arr: npt.NDArray[np.floating]):
-    """ Checks if array is diagonal along the first two axes """
+def is_diagonal(
+    arr: npt.NDArray[np.floating],
+    rtol: float = 1e-8,
+) -> bool:
+    """
+    Checks if an array is diagonal along the first two axes.
+
+    Off-diagonal elements are compared with the local covariance scale
+    `sqrt(|C_ii * C_jj|)`, falling back to the largest diagonal entry when a
+    variance is zero. A fixed absolute tolerance would classify matrices whose
+    variances are much smaller than one (for example, spectra in physical flux
+    units) as diagonal and silently discard real correlations.
+    """
     if arr.ndim < 2:
         return False
     axis0 = cast(int, arr.shape[0])
     axis1 = cast(int, arr.shape[1])
     mask = ~np.eye(axis0, axis1, dtype=bool)  # a mask for non-diagonal elements
-    return np.allclose(arr[mask], 0, atol=1e-8)
+    off_diagonal = arr[mask]
+    if off_diagonal.size == 0:
+        return True
+    # np.diagonal() puts the diagonal on the last axis, so move it to the front
+    # to match the shape of the off-diagonal elements.
+    diagonal = np.moveaxis(np.diagonal(arr, axis1=0, axis2=1), -1, 0)
+    max_variance = np.max(np.abs(diagonal), axis=0)
+    row, col = cast(
+        tuple[npt.NDArray[np.integer], npt.NDArray[np.integer]],
+        np.nonzero(mask),
+    )
+    local_scale = np.zeros(off_diagonal.shape, dtype=np.float64)
+    diagonal_size = cast(int, diagonal.shape[0])
+    within = (row < diagonal_size) & (col < diagonal_size)
+    if np.any(within):
+        local_scale[within] = np.sqrt(
+            np.abs(diagonal[row[within]] * diagonal[col[within]])
+        )
+    scale = np.where(local_scale > 0, local_scale, max_variance)
+    return bool(np.all(np.abs(off_diagonal) <= rtol * scale))
 
 def smoothness_matrix(
     n: int,

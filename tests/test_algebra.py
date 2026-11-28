@@ -935,6 +935,45 @@ class TestCovarianceHandling:
             covariance,
         )
 
+    @staticmethod
+    def _broken_extend(
+        _covariance: npt.NDArray[np.floating],
+        _old_wavelengths: npt.NDArray[np.integer | np.floating],
+        _new_wavelengths: npt.NDArray[np.integer | np.floating],
+        _new_standard_deviation: npt.NDArray[np.floating] | None,
+    ) -> npt.NDArray[np.floating]:
+        """ Forces the defensive fallback in determine_at_trusted_wavelengths. """
+        raise ValueError('forced fallback')
+
+    def test_small_scale_correlations_warn_when_covariance_cannot_be_extended(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        nm = np.arange(500, 601, 5)
+        covariance = correlated_covariance(nm.size) * 1e-12
+        obj = ac.Spectrum(nm, np.ones(nm.size), covariance)
+
+        monkeypatch.setattr(
+            'astrocolor.spectral_objects._extend_covariance', self._broken_extend
+        )
+        with pytest.warns(ErasingCorrelationsWarning):
+            output = obj.determine_at_trusted_wavelengths(np.arange(490, 611, 5))
+        assert output.covariance_matrix is not None
+
+    def test_small_scale_diagonal_covariance_does_not_warn_when_extended(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        nm = np.arange(500, 601, 5)
+        covariance = np.diag(np.full(nm.size, 1e-12))
+        obj = ac.Spectrum(nm, np.ones(nm.size), covariance)
+
+        monkeypatch.setattr(
+            'astrocolor.spectral_objects._extend_covariance', self._broken_extend
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', ErasingCorrelationsWarning)
+            output = obj.determine_at_trusted_wavelengths(np.arange(490, 611, 5))
+        assert output.covariance_matrix is not None
+
     def test_photometry_uses_full_covariance(self):
         nm = np.arange(470, 711, 5)
         covariance = correlated_covariance(nm.size)

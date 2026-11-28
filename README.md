@@ -309,7 +309,9 @@ Benchmarks:
 ```sh
 uv run python benchmarks/benchmark.py
 uv run python benchmarks/benchmark.py --suite 2d3d
+uv run python benchmarks/benchmark.py --suite algebra
 uv run python benchmarks/benchmark.py --suite uncertainty
+uv run python benchmarks/benchmark.py --suite construction
 ```
 
 Any changes suggested by AI must be thoroughly reviewed by the person who generated them. The responsibility always lies with the person.

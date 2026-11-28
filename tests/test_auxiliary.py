@@ -10,6 +10,7 @@ from astrocolor.auxiliary import (
     color_indices_parser,
     get_extremal_grid_endpoints,
     grid_endpoints_preprocessing,
+    is_diagonal,
     linear_interp,
     mag2irradiance,
     parse_value_std,
@@ -577,3 +578,55 @@ class TestReprGenerator:
         result = repr_generator(arr)
         expected = '[\n\t[42]\n]'
         assert result == expected
+
+
+class TestIsDiagonal:
+    """ Tests for the relative-tolerance diagonal check. """
+
+    def test_diagonal_matrix(self):
+        assert is_diagonal(np.diag([1.0, 2.0, 3.0]))
+
+    def test_correlated_matrix(self):
+        assert not is_diagonal(np.array([[1.0, 0.5], [0.5, 1.0]]))
+
+    def test_small_scale_correlations_are_not_ignored(self):
+        covariance = 1e-12 * np.array([[1.0, 0.5], [0.5, 1.0]])
+        assert not is_diagonal(covariance)
+
+    def test_small_scale_diagonal_matrix(self):
+        assert is_diagonal(np.diag([1e-12, 4e-12]))
+
+    def test_small_scale_roundoff_is_ignored(self):
+        covariance = np.diag([1e-12, 4e-12])
+        covariance[0, 1] = covariance[1, 0] = 1e-30
+        assert is_diagonal(covariance)
+
+    def test_mixed_scales_are_compared_locally(self):
+        # A global scale would treat 1e-10 as negligible next to 1.0 and miss
+        # the real correlation between the two small-variance entries.
+        covariance = np.array([[1.0, 1e-10], [1e-10, 1e-12]])
+        assert not is_diagonal(covariance)
+
+    def test_zero_variance_with_nonzero_covariance(self):
+        covariance = np.array([[0.0, 1e-12], [1e-12, 0.0]])
+        assert not is_diagonal(covariance)
+
+    def test_all_zero_matrix(self):
+        assert is_diagonal(np.zeros((3, 3)))
+
+    def test_1d_input(self):
+        assert not is_diagonal(np.array([1.0, 2.0]))
+
+    def test_spatial_axes_are_checked_independently(self):
+        covariance = np.zeros((2, 2, 3))
+        covariance[0, 0] = 1.0
+        covariance[1, 1] = 1.0
+        assert is_diagonal(covariance)
+        covariance[0, 1, 1] = covariance[1, 0, 1] = 0.5
+        assert not is_diagonal(covariance)
+
+    def test_rectangular_input(self):
+        assert is_diagonal(np.zeros((2, 3)))
+        covariance = np.zeros((3, 2))
+        covariance[2, 0] = 1.0
+        assert not is_diagonal(covariance)
